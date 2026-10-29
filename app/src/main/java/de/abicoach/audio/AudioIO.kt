@@ -247,6 +247,10 @@ class AudioRouting(context: Context) {
     private val manager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     private var previousMode = AudioManager.MODE_NORMAL
 
+    /** With headphones the microphone cannot hear the examiner, so the student may talk over him. */
+    @Volatile var usingHeadset = false
+        private set
+
     @Suppress("DEPRECATION")
     fun enter() {
         previousMode = manager.mode
@@ -261,12 +265,13 @@ class AudioRouting(context: Context) {
                     AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
                     AudioDeviceInfo.TYPE_BLE_HEADSET,
                 )
-            val target =
-                devices.firstOrNull { it.type in headsetTypes }
-                    ?: devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
+            val headset = devices.firstOrNull { it.type in headsetTypes }
+            usingHeadset = headset != null
+            val target = headset ?: devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
             if (target != null) manager.setCommunicationDevice(target)
         } else {
-            manager.isSpeakerphoneOn = !headsetConnected()
+            usingHeadset = headsetConnected()
+            manager.isSpeakerphoneOn = !usingHeadset
         }
     }
 

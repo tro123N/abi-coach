@@ -17,7 +17,6 @@ object MaterialGenerator {
                 system = Prompts.MATERIAL_SYSTEM,
                 parts = listOf(GeminiRest.textPart(Prompts.materialRequest(topicArea, textType, app.settings.courseTopics))),
                 schema = Prompts.materialSchema(),
-                temperature = 0.9,
             )
         val tasksArray = json.optJSONArray("tasks")
         val tasks =
@@ -74,7 +73,6 @@ class Analyzer(private val app: AbiCoachApp) {
                 system = Prompts.ANALYSIS_SYSTEM,
                 parts = parts,
                 schema = Prompts.analysisSchema(),
-                temperature = 0.3,
             )
         return Prompts.parseDebrief(json, record.studentText, audioAdded)
     }

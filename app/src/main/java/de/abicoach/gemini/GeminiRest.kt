@@ -25,20 +25,20 @@ class GeminiRest(private val http: OkHttpClient, private val apiKey: () -> Strin
         system: String,
         parts: List<JSONObject>,
         schema: JSONObject,
-        temperature: Double = 0.4,
+        // Gemini 3 models work best at their default temperature, so it is only sent when set explicitly.
+        temperature: Double? = null,
     ): JSONObject =
         withContext(Dispatchers.IO) {
+            val config =
+                JSONObject()
+                    .put("responseMimeType", "application/json")
+                    .put("responseSchema", schema)
+            if (temperature != null) config.put("temperature", temperature)
             val body =
                 JSONObject()
                     .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", system))))
                     .put("contents", JSONArray().put(JSONObject().put("role", "user").put("parts", JSONArray(parts))))
-                    .put(
-                        "generationConfig",
-                        JSONObject()
-                            .put("responseMimeType", "application/json")
-                            .put("responseSchema", schema)
-                            .put("temperature", temperature),
-                    )
+                    .put("generationConfig", config)
             val request =
                 Request.Builder()
                     .url("$base/models/${model.removePrefix("models/")}:generateContent")

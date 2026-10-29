@@ -170,7 +170,9 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
         val now = System.currentTimeMillis()
         val level = AudioUtil.level(pcm)
         val examinerAudible = player.isPlaying(now) || now < muteUntil
-        examiner?.sendAudio(pcm)
+        // On the loudspeaker the examiner would hear (and interrupt) himself: send silence while he talks.
+        // With headphones the real microphone signal goes through, so the student can cut in.
+        examiner?.sendAudio(if (examinerAudible && !routing.usingHeadset) ByteArray(pcm.size) else pcm)
         // While the examiner (or the app) is speaking, the microphone mostly hears the loudspeaker:
         // keep that out of the student's transcript and recording.
         if (!examinerAudible) {

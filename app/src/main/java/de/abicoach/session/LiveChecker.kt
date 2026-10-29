@@ -48,7 +48,6 @@ class LiveChecker(
                                 system = Prompts.CHECK_SYSTEM,
                                 parts = listOf(GeminiRest.textPart(Prompts.checkRequest(text, context))),
                                 schema = Prompts.checkSchema(),
-                                temperature = 0.1,
                             )
                         val reference = Prompts.normalize(text)
                         val errors = Prompts.parseErrors(json.optJSONArray("errors")).filter { Prompts.isQuoted(it.quote, reference) }
