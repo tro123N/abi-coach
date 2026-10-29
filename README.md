@@ -7,10 +7,12 @@ Android-App zur Vorbereitung auf die **mündliche Abiturprüfung Englisch in NRW
 ## Die vier Bereiche (Leiste unten)
 
 ### Abi-Weg
+- **Kletterweg wie in Mental Math Plus:** 6 Welten zu Format und Aufgaben (Startklar, Zusammenfassen, Analysieren, Kommentieren, Vortrag, Prüfungsgespräch), je eine Welt pro Themenfeld (die mit dem meisten Material zuerst) und die Generalprobe mit drei Simulationen. Jedes Level: Erklärung mit Beispiel zum Anhören, dann die Übung; Sterne nach Punkten; Wiederholen nach 1, 3, 7, 14 und 30 Tagen; eingerostete Levels werden aufgefrischt.
 - **Punktprognose** mit Spanne, Countdown bis zur Prüfung, Tage in Folge, Übungszeit heute.
 - **Heute dran:** Die App wählt aus deinem Lernprofil die Übung, die am meisten Punkte bringt (z. B. „Aufgabe 2 üben: Analysieren – dein größter Hebel“).
 - **Meilensteine** bis zur Prognose von 13 Punkten.
-- **Einstufung** (ca. 15 Min.): kurzer Text, Vortrag und Gespräch – danach kennt die App deinen Stand.
+- **Einstufung** (ca. 15 Min.): kurzer Text, Vortrag und Gespräch – danach kennt die App deinen Stand und öffnet Welten, die du schon kannst.
+- **Tägliche Erinnerung** zur gewählten Uhrzeit mit dem nächsten Schritt – nur, wenn du an dem Tag noch nicht genug geübt hast.
 
 ### Training
 - **Prüfungssimulation** wie im Abi: neuer Text mit drei Aufgaben (1. zusammenfassen, 2. analysieren, z. B. „Examine how the author perceives …“, 3. kommentieren), Vorbereitungszeit, Vortrag, Prüfungsgespräch mit Themenwechsel.
@@ -59,6 +61,7 @@ Pflicht ist nur der **Gemini-Schlüssel** (aistudio.google.com/apikey). Die Schl
 - `ai/` – Gemini (REST, Live, Einbettungen, Vorlesen), Claude (strukturierte Antworten), GPT-Live-1 (Live-WebSocket), `AiHub` verteilt die Aufgaben mit Ausweichmodellen
 - `memory/` – Import, Lesen im Hintergrund (WorkManager), Abschnitte, Vektoren, Auswertung, hybride Suche, Kurs-Kontext für alle Prompts
 - `profile/` – Lernprofil nach dem NRW-Raster, Prognose, Hebel
+- `path/` – Abi-Weg: Welten und Levels (`Curriculum`), Freischalten, Sterne und Wiederholungsplan (`PathEngine`), Erinnerung
 - `session/` – Prompts, Live-Gespräch, Live-Fehlerprüfung, Material und Auswertung
 - `ui/` – Oberfläche im Stil von Mental Math Plus (Farbthemen, Karten, Sterne, Töne)
 
