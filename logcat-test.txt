@@ -1,0 +1,61 @@
+--------- beginning of main
+10-29 17:37:54.939 D/AndroidRuntime( 2718): >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+10-29 17:37:54.948 I/AndroidRuntime( 2718): Using default boot image
+10-29 17:37:54.948 I/AndroidRuntime( 2718): Leaving lock profiling enabled
+10-29 17:37:55.139 D/AndroidRuntime( 2718): Calling main entry com.android.commands.am.Am
+10-29 17:38:05.806 I/TestRunner( 2796): run started: 2 tests
+10-29 17:38:05.807 I/TestRunner( 2796): started: a_freshStart(de.abicoach.SmokeTest)
+10-29 17:38:13.030 I/AbiCoachSmoke( 2796): Bild: 001_start_abiweg.png
+10-29 17:38:14.712 I/AbiCoachSmoke( 2796): Bild: 002_start_training.png
+10-29 17:38:16.460 I/AbiCoachSmoke( 2796): Bild: 003_start_kurs.png
+10-29 17:38:18.074 I/AbiCoachSmoke( 2796): Bild: 004_start_statistik.png
+10-29 17:38:21.588 I/AbiCoachSmoke( 2796): Bild: 005_start_einstellungen.png
+10-29 17:38:23.087 I/AbiCoachSmoke( 2796): Bild: 006_start_einstufung.png
+10-29 17:38:24.753 I/TestRunner( 2796): finished: a_freshStart(de.abicoach.SmokeTest)
+10-29 17:38:24.755 I/TestRunner( 2796): started: b_withDemoData(de.abicoach.SmokeTest)
+10-29 17:38:29.032 I/AbiCoachSmoke( 2796): Bild: 007_abiweg.png
+10-29 17:38:31.030 I/AbiCoachSmoke( 2796): Bild: 008_abiweg_weg.png
+10-29 17:38:32.788 I/AbiCoachSmoke( 2796): Bild: 009_abiweg_welten.png
+10-29 17:38:34.213 I/AbiCoachSmoke( 2796): Bild: 010_abiweg_unten.png
+10-29 17:38:35.738 I/AbiCoachSmoke( 2796): Bild: 011_level_perceive.png
+10-29 17:38:36.830 I/AbiCoachSmoke( 2796): Bild: 012_level_perceive_unten.png
+10-29 17:38:37.853 I/AbiCoachSmoke( 2796): Bild: 013_level_lernen.png
+10-29 17:38:38.970 I/AbiCoachSmoke( 2796): Bild: 014_level_themenfeld.png
+10-29 17:38:39.834 I/AbiCoachSmoke( 2796): Bild: 015_level_themenfeld_unten.png
+10-29 17:38:41.406 I/AbiCoachSmoke( 2796): Bild: 016_training.png
+10-29 17:38:42.712 I/AbiCoachSmoke( 2796): Bild: 017_training_unten.png
+10-29 17:38:43.787 I/AbiCoachSmoke( 2796): Bild: 018_kurs.png
+10-29 17:38:44.801 I/AbiCoachSmoke( 2796): Bild: 019_kurs_mitte.png
+10-29 17:38:45.770 I/AbiCoachSmoke( 2796): Bild: 020_kurs_unten.png
+10-29 17:38:46.845 I/AbiCoachSmoke( 2796): Bild: 021_dokument_buch.png
+10-29 17:38:47.835 I/AbiCoachSmoke( 2796): Bild: 022_dokument_buch_unten.png
+10-29 17:38:49.000 I/AbiCoachSmoke( 2796): Bild: 023_dokument_klausur.png
+10-29 17:38:50.097 I/AbiCoachSmoke( 2796): Bild: 024_frag_dein_material.png
+10-29 17:38:51.494 I/AbiCoachSmoke( 2796): Bild: 025_statistik.png
+10-29 17:38:53.175 I/AbiCoachSmoke( 2796): Bild: 026_statistik_mitte.png
+10-29 17:38:54.141 I/AbiCoachSmoke( 2796): Bild: 027_statistik_unten.png
+10-29 17:38:55.592 I/AbiCoachSmoke( 2796): Bild: 028_auswertung.png
+10-29 17:38:56.736 I/AbiCoachSmoke( 2796): Bild: 029_auswertung_2.png
+10-29 17:38:57.763 I/AbiCoachSmoke( 2796): Bild: 030_auswertung_3.png
+10-29 17:38:58.992 I/AbiCoachSmoke( 2796): Bild: 031_auswertung_4.png
+10-29 17:39:00.183 I/AbiCoachSmoke( 2796): Bild: 032_einrichten_simulation.png
+10-29 17:39:01.259 I/AbiCoachSmoke( 2796): Bild: 033_einrichten_simulation_unten.png
+10-29 17:39:02.420 I/AbiCoachSmoke( 2796): Bild: 034_einrichten_aufgabe2.png
+10-29 17:39:03.583 I/AbiCoachSmoke( 2796): Bild: 035_vorbereitung.png
+10-29 17:39:04.822 I/AbiCoachSmoke( 2796): Bild: 036_vorbereitung_unten.png
+10-29 17:39:05.844 I/AbiCoachSmoke( 2796): Bild: 037_gespraech_live.png
+10-29 17:39:07.005 I/AbiCoachSmoke( 2796): Bild: 038_vortrag_live.png
+10-29 17:39:07.930 I/AbiCoachSmoke( 2796): Bild: 039_auswertung_laeuft.png
+10-29 17:39:09.071 I/AbiCoachSmoke( 2796): Bild: 040_einstellungen.png
+10-29 17:39:10.110 I/AbiCoachSmoke( 2796): Bild: 041_einstellungen_2.png
+10-29 17:39:11.080 I/AbiCoachSmoke( 2796): Bild: 042_einstellungen_3.png
+10-29 17:39:12.507 I/AbiCoachSmoke( 2796): Bild: 043_dunkel_abiweg.png
+10-29 17:39:13.546 I/AbiCoachSmoke( 2796): Bild: 044_dunkel_kurs.png
+10-29 17:39:14.587 I/AbiCoachSmoke( 2796): Bild: 045_dunkel_statistik.png
+10-29 17:39:15.872 I/AbiCoachSmoke( 2796): Bild: 046_dunkel_auswertung.png
+10-29 17:39:17.285 I/AbiCoachSmoke( 2796): Bild: 047_dunkel_vorbereitung.png
+10-29 17:39:18.718 I/AbiCoachSmoke( 2796): Bild: 048_dunkel_gespraech.png
+10-29 17:39:20.125 I/AbiCoachSmoke( 2796): Bild: 049_dunkel_wald.png
+10-29 17:39:21.376 I/TestRunner( 2796): finished: b_withDemoData(de.abicoach.SmokeTest)
+10-29 17:39:21.378 I/TestRunner( 2796): run finished: 2 tests, 0 failed, 0 ignored
+10-29 17:39:21.609 I/AndroidRuntime( 2718): VM exiting with result code 0.
