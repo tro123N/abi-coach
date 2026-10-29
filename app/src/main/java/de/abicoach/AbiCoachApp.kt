@@ -11,6 +11,9 @@ import de.abicoach.memory.Importer
 import de.abicoach.memory.IngestScheduler
 import de.abicoach.memory.MemoryStore
 import de.abicoach.memory.Retriever
+import de.abicoach.path.Curriculum
+import de.abicoach.path.PathStore
+import de.abicoach.path.World
 import de.abicoach.profile.ProfileStore
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
@@ -33,6 +36,11 @@ class AbiCoachApp : Application() {
         private set
     lateinit var feedback: Feedback
         private set
+    lateinit var path: PathStore
+        private set
+
+    /** The worlds of the Abi-Weg; topic fields with the most material come first. */
+    fun worlds(): List<World> = Curriculum.worlds(course.coveredTopics().map { it.first })
 
     val http: OkHttpClient by lazy {
         OkHttpClient.Builder()
@@ -53,6 +61,8 @@ class AbiCoachApp : Application() {
         ai = AiHub(http, settings)
         course = CourseContext(memory, Retriever(memory, ai), settings, profiles)
         feedback = Feedback(this, { settings.sound }, { settings.vibration })
+        path = PathStore(this)
+        de.abicoach.path.Reminder.createChannel(this)
         resumeReading()
     }
 

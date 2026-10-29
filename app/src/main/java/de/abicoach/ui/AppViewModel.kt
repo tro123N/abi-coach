@@ -58,6 +58,8 @@ sealed interface Screen {
     data object Sessions : Screen
 
     data object PlacementIntro : Screen
+
+    data class Level(val id: String) : Screen
 }
 
 /** A tiny back stack; the Abi-Weg always stays at the bottom, like the Kletterweg in Mental Math Plus. */
@@ -217,6 +219,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                                 textType = s.textType,
                                 source = if (s.fixedDocId != null) Knowledge.Source.MATERIAL else s.source,
                                 short = s.kind == SessionKind.PLACEMENT,
+                                instruction = s.instruction,
                             )
                         val (generated, note) =
                             withContext(Dispatchers.Default) {
@@ -227,7 +230,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         tasksDone.clear()
                         notice = note ?: app.ai.lastNotice.also { app.ai.lastNotice = null }
                         prepEndsAt = System.currentTimeMillis() + s.prepMinutes * 60_000L
-                        draft = SessionRecord.create(s.kind, s.feedback, topicId, generated, s.focusTask, s.focusCategories)
+                        draft = SessionRecord.create(s.kind, s.feedback, topicId, generated, s.focusTask, s.focusCategories).copy(levelId = s.levelId.orEmpty())
                         app.feedback.play(FeedbackType.ENABLE)
                         if (nav.current == Screen.Generating) nav.replaceTop(Screen.Prep)
                     } catch (e: CancellationException) {
@@ -251,7 +254,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private fun startConversation(s: SessionSetup, topicId: Int) {
         task = null
         notes = ""
-        val record = SessionRecord.create(s.kind, s.feedback, topicId, null, 0, s.focusCategories)
+        val record = SessionRecord.create(s.kind, s.feedback, topicId, null, 0, s.focusCategories).copy(levelId = s.levelId.orEmpty())
         draft = record
         viewModelScope.launch {
             val context = withContext(Dispatchers.Default) { runCatching { app.course.forTopic(topicId, maxChars = 4_000) }.getOrDefault("") }
@@ -264,6 +267,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     topicContext = context,
                     teacherNotes = app.course.teacherNotes(6),
                     part2Style = s.kind == SessionKind.PART2,
+                    extra = s.instruction,
                 )
             val conversation =
                 LiveConversation(
@@ -276,7 +280,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         vocabulary = vocabulary(),
                         wavFile = app.store.audioFile(record.id, if (s.kind == SessionKind.PART2) 2 else 0),
                         checkerContext = "Conversation about: ${Knowledge.topic(topicId)?.english ?: "the course"}",
-                        targetSeconds = if (s.kind == SessionKind.PART2) 600 else 480,
+                        targetSeconds = s.talkMinutes * 60,
                     ),
                 )
             live = conversation
@@ -430,6 +434,16 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         val rated = p.withRatings(debrief.skills, record.kind.profileWeight, System.currentTimeMillis(), record.kind.short)
                         if (record.kind == SessionKind.PLACEMENT) rated.copy(placementDone = true, placementAt = System.currentTimeMillis()) else rated
                     }
+                    if (record.levelId.isNotBlank()) {
+                        de.abicoach.path.Curriculum.level(record.levelId)?.let { level ->
+                            val points = de.abicoach.path.PathEngine.pointsFor(level, debrief)
+                            app.path.update { de.abicoach.path.PathEngine.applyResult(it, level, points) }
+                        }
+                    }
+                    if (record.kind == SessionKind.PLACEMENT) {
+                        val profile = app.profiles.profile.value
+                        app.path.update { de.abicoach.path.PathEngine.applyPlacement(it, app.worlds(), profile) }
+                    }
                     notice = app.ai.lastNotice.also { app.ai.lastNotice = null }
                     app.feedback.play(de.abicoach.audio.Feedback.forPoints(debrief.totalPoints))
                     if (nav.current == Screen.Analyzing) nav.replaceTop(Screen.Debrief(id)) else nav.push(Screen.Debrief(id))
@@ -542,6 +556,49 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun keySaved(provider: String) {
         keyChecks = keyChecks - provider
         if (provider == "gemini") app.resumeReading()
+    }
+
+    // ---------- Abi-Weg ----------
+
+    fun openLevel(id: String) {
+        tap()
+        nav.push(Screen.Level(id))
+    }
+
+    fun markLearned(id: String) {
+        val level = de.abicoach.path.Curriculum.level(id) ?: return
+        app.path.update { de.abicoach.path.PathEngine.markLearned(it, level) }
+        app.feedback.play(FeedbackType.CORRECT)
+    }
+
+    /** Starts the exercise of a level with everything the level defines. */
+    fun startLevel(id: String, feedback: FeedbackMode) {
+        val level = de.abicoach.path.Curriculum.level(id) ?: return
+        start(levelSetup(level, feedback))
+    }
+
+    fun levelSetup(level: de.abicoach.path.Level, feedback: FeedbackMode): SessionSetup {
+        val mode = if (level.strict) FeedbackMode.PRUEFUNG else feedback
+        val topic = level.topicId ?: Knowledge.FROM_COURSE
+        val textType = if (level.literary) Knowledge.TextType.LITERARISCH else Knowledge.TextType.GEMISCHT
+        return when (level.type) {
+            de.abicoach.path.LevelType.TASK ->
+                SessionSetup(SessionKind.PART1, topicChoice = topic, textType = textType, prepMinutes = if (level.strict) 10 else 8, feedback = mode, focusTask = level.focusTask, levelId = level.id, instruction = level.instruction)
+            de.abicoach.path.LevelType.PRESENTATION ->
+                SessionSetup(SessionKind.PART1, topicChoice = topic, textType = textType, prepMinutes = if (level.strict) 20 else 15, feedback = mode, levelId = level.id, instruction = level.instruction)
+            de.abicoach.path.LevelType.TALK ->
+                SessionSetup(
+                    if (level.strict || level.topicId != null) SessionKind.PART2 else SessionKind.TRAINING,
+                    topicChoice = topic,
+                    feedback = mode,
+                    levelId = level.id,
+                    instruction = level.instruction,
+                    talkMinutes = level.minutes.coerceIn(3, 12),
+                )
+            de.abicoach.path.LevelType.SIMULATION ->
+                SessionSetup(SessionKind.SIMULATION, topicChoice = topic, prepMinutes = 30, feedback = FeedbackMode.PRUEFUNG, levelId = level.id)
+            de.abicoach.path.LevelType.LEARN -> SessionSetup(SessionKind.TRAINING, topicChoice = topic, feedback = mode, levelId = level.id)
+        }
     }
 
     // ---------- demo hooks for the emulator test (screenshots without network) ----------

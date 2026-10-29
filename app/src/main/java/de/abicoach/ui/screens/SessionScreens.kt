@@ -391,7 +391,7 @@ fun LiveScreen(vm: AppViewModel) {
     val title =
         when (state.part) {
             1 -> if ((draft?.focusTask ?: 0) in 1..3) "Aufgabe ${draft?.focusTask}" else "Teil 1 – Vortrag"
-            2 -> "Teil 2 – Prüfungsgespräch"
+            2 -> "Teil 2 – Gespräch"
             else -> "Gesprächstraining"
         }
     val toPart2 = state.part == 1 && draft?.kind?.hasPart2 == true
@@ -404,7 +404,7 @@ fun LiveScreen(vm: AppViewModel) {
             Surface(color = MaterialTheme.colorScheme.background) {
                 Box(Modifier.navigationBarsPadding().padding(horizontal = 20.dp, vertical = 12.dp)) {
                     StartButton(
-                        text = vm.busy ?: if (toPart2) "Weiter zu Teil 2" else "Beenden & auswerten",
+                        text = vm.busy ?: if (toPart2) "Weiter zu Teil 2" else "Auswerten",
                         onClick = { if (toPart2) vm.finishPart1() else vm.finishSession() },
                         enabled = vm.busy == null,
                         icon = if (toPart2) R.drawable.arrow_forward_24dp else R.drawable.stop_24dp,

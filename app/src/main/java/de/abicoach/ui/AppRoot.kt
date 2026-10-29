@@ -80,6 +80,7 @@ fun AppRoot(vm: AppViewModel) {
                 Screen.Ask -> AskScreen(vm)
                 Screen.Sessions -> SessionsScreen(vm)
                 Screen.PlacementIntro -> PlacementIntroScreen(vm)
+                is Screen.Level -> de.abicoach.ui.screens.LevelScreen(vm, screen.id)
             }
         }
     }

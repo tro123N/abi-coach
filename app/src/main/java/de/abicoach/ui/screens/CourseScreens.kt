@@ -11,7 +11,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -222,10 +224,10 @@ fun CourseScreen(vm: AppViewModel) {
 private fun StatusCard(stats: MemoryStats, docs: List<CourseDoc>) {
     val active = docs.firstOrNull { it.status == DocStatus.READING || it.status == DocStatus.INDEXING || it.status == DocStatus.DIGESTING } ?: docs.firstOrNull { it.status == DocStatus.QUEUED }
     AbiCard(modifier = Modifier.testTag("course_status")) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            StatTile(stats.documents.toString(), "Dokumente", Modifier.weight(1f), icon = R.drawable.folder_24dp, color = accent)
-            StatTile("${stats.pagesRead}/${stats.pages}", "Seiten gelesen", Modifier.weight(1f), icon = R.drawable.menu_book_24dp, color = if (stats.pagesRead >= stats.pages) green else yellow)
-            StatTile(stats.passages.toString(), "Abschnitte", Modifier.weight(1f), icon = R.drawable.hub_24dp, color = accent)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.height(androidx.compose.foundation.layout.IntrinsicSize.Min)) {
+            StatTile(stats.documents.toString(), "Dokumente", Modifier.weight(1f).fillMaxHeight(), icon = R.drawable.folder_24dp, color = accent)
+            StatTile("${stats.pagesRead}/${stats.pages}", "Seiten gelesen", Modifier.weight(1f).fillMaxHeight(), icon = R.drawable.menu_book_24dp, color = if (stats.pagesRead >= stats.pages) green else yellow)
+            StatTile(stats.passages.toString(), "Abschnitte", Modifier.weight(1f).fillMaxHeight(), icon = R.drawable.hub_24dp, color = accent)
         }
         if (active != null) {
             Gap(12.dp)

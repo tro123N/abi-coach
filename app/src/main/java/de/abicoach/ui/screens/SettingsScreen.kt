@@ -170,6 +170,7 @@ fun SettingsScreen(vm: AppViewModel) {
                 ActionButton("Speichern", R.drawable.check_24dp, green, { vm.tap(); settings.courseTopics = topics }, container = MaterialTheme.colorScheme.background)
             }
         }
+        ReminderCard(vm)
         AbiCard {
             CardTitle("Stimmen", icon = R.drawable.record_voice_over_24dp)
             if (app.ai.useOpenAi) {
@@ -382,6 +383,55 @@ private fun ModelField(label: String, current: String, onSave: (String) -> Unit)
         AbiTextField(value, { value = it }, label = label, modifier = Modifier.weight(1f))
         if (value != current && value.isNotBlank()) {
             TextButton(onClick = { onSave(value.trim()) }) { Text("OK", color = accent) }
+        }
+    }
+}
+
+@Composable
+private fun ReminderCard(vm: AppViewModel) {
+    val app = vm.app
+    val settings = app.settings
+    val context = LocalContext.current
+    val permission =
+        androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted) {
+                settings.reminderOn = true
+                de.abicoach.path.Reminder.schedule(context, settings.reminderHour)
+            } else {
+                vm.errorMessage = "Ohne Erlaubnis für Benachrichtigungen kann die App nicht erinnern."
+            }
+        }
+    AbiCard(modifier = Modifier.testTag("settings_reminder")) {
+        CardTitle("Erinnerung", icon = R.drawable.notifications_active_24dp)
+        SwitchRow(
+            "Tägliche Erinnerung",
+            "Nur wenn du an dem Tag noch nicht genug geübt hast – mit dem nächsten Schritt auf deinem Abi-Weg.",
+            settings.reminderOn,
+            { on ->
+                if (!on) {
+                    settings.reminderOn = false
+                    de.abicoach.path.Reminder.cancel(context)
+                } else if (android.os.Build.VERSION.SDK_INT >= 33 && !de.abicoach.path.Reminder.canNotify(context)) {
+                    permission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                } else {
+                    settings.reminderOn = true
+                    de.abicoach.path.Reminder.schedule(context, settings.reminderHour)
+                }
+            },
+        )
+        if (settings.reminderOn) {
+            Gap(8.dp)
+            ChoiceChips(
+                listOf(15, 16, 17, 18, 19, 20, 21),
+                settings.reminderHour,
+                { "$it Uhr" },
+                { hour ->
+                    vm.tap()
+                    settings.reminderHour = hour
+                    de.abicoach.path.Reminder.schedule(context, hour)
+                },
+                tagPrefix = "reminderhour",
+            )
         }
     }
 }

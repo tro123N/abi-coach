@@ -2,6 +2,8 @@ package de.abicoach.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
@@ -90,7 +92,7 @@ fun StatsScreen(vm: AppViewModel) {
                             values = profile.history.takeLast(30).map { it.total.toFloat() },
                             color = accent,
                             guides = listOf(ChartGuide(13f, "13", green), ChartGuide(10f, "10", yellow)),
-                            minY = 0f,
+                            minY = maxOf(0f, (profile.history.takeLast(30).minOf { it.total }.toFloat() - 2f)),
                             maxY = 15f,
                             valueText = { points(it.toDouble()) },
                         )
@@ -126,10 +128,10 @@ fun StatsScreen(vm: AppViewModel) {
             AbiCard {
                 CardTitle("Übungszeit", icon = R.drawable.timer_24dp)
                 val total = sessions.sumOf { it.durationSec } / 60
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    StatTile(sessions.size.toString(), "Sitzungen", Modifier.weight(1f), color = accent)
-                    StatTile("$total", "Minuten gesamt", Modifier.weight(1f), color = accent)
-                    StatTile(app.store.streak().toString(), "Tage in Folge", Modifier.weight(1f), icon = R.drawable.whatshot_24dp, color = red)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.height(androidx.compose.foundation.layout.IntrinsicSize.Min)) {
+                    StatTile(sessions.size.toString(), "Sitzungen", Modifier.weight(1f).fillMaxHeight(), icon = R.drawable.history_24dp, color = accent)
+                    StatTile("$total", "Minuten gesamt", Modifier.weight(1f).fillMaxHeight(), icon = R.drawable.timer_24dp, color = accent)
+                    StatTile(app.store.streak().toString(), "Tage in Folge", Modifier.weight(1f).fillMaxHeight(), icon = R.drawable.whatshot_24dp, color = red)
                 }
                 Gap(12.dp)
                 ColorBarChart(

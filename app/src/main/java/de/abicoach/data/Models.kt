@@ -255,6 +255,8 @@ data class SessionRecord(
     val examiner: String = "",
     /** Billed seconds of the live examiner session (GPT-Live). */
     val examinerSeconds: Double = 0.0,
+    /** The Abi-Weg level this session was played for (empty = free practice). */
+    val levelId: String = "",
 ) {
     val studentText: String
         get() = utterances.filter { it.speaker == Speaker.STUDENT }.joinToString(" ") { it.text }
@@ -278,6 +280,7 @@ data class SessionRecord(
             .put("focusCategories", focusCategories.toJsonArray())
             .put("examiner", examiner)
             .put("examinerSeconds", examinerSeconds)
+            .put("levelId", levelId)
 
     companion object {
         fun create(kind: SessionKind, feedback: FeedbackMode, topicId: Int, task: ExamTask?, focusTask: Int = 0, focusCategories: List<String> = emptyList()) =
@@ -316,6 +319,7 @@ data class SessionRecord(
                 focusCategories = o.optJSONArray("focusCategories").strings(),
                 examiner = o.optString("examiner"),
                 examinerSeconds = o.optDouble("examinerSeconds", 0.0),
+                levelId = o.optString("levelId"),
             )
     }
 }

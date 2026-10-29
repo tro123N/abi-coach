@@ -44,6 +44,12 @@ data class SessionSetup(
     /** A specific text from the material: document id and its start page. */
     val fixedDocId: String? = null,
     val fixedPage: Int = 0,
+    /** The Abi-Weg level this session belongs to. */
+    val levelId: String? = null,
+    /** Extra requirement of the level for the material or the examiner (English). */
+    val instruction: String = "",
+    /** Length of a conversation (part 2 or training) in minutes. */
+    val talkMinutes: Int = if (kind == SessionKind.PART2) 10 else 8,
 ) {
     companion object {
         fun defaults(kind: SessionKind, focusTask: Int = 0, defaultFeedback: FeedbackMode): SessionSetup =

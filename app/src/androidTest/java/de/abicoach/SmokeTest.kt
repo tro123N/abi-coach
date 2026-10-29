@@ -113,6 +113,7 @@ class SmokeTest {
         ui {
             app.store.deleteAll()
             app.profiles.reset()
+            app.path.reset()
             app.memory.docs.value.forEach { app.memory.delete(it.id) }
             app.settings.themeMode = ThemeMode.LIGHT
             app.settings.geminiKey = ""
@@ -140,7 +141,18 @@ class SmokeTest {
         val vm = compose.activity.vm
         ui { vm.nav.openTab(Tab.WEG) }
         shot("abiweg")
-        swipeShot("list_weg", "abiweg_unten", 2)
+        swipeShot("list_weg", "abiweg_weg", 1)
+        swipeShot("list_weg", "abiweg_welten", 1)
+        swipeShot("list_weg", "abiweg_unten", 3)
+        ui { vm.nav.push(Screen.Level("w3.perceive")) }
+        shot("level_perceive")
+        swipeShot("level", "level_perceive_unten", 2)
+        ui { vm.nav.pop(); vm.nav.push(Screen.Level("w1.ablauf")) }
+        shot("level_lernen")
+        ui { vm.nav.pop(); vm.nav.push(Screen.Level("t4.wissen")) }
+        shot("level_themenfeld")
+        swipeShot("level", "level_themenfeld_unten", 1)
+        ui { vm.nav.pop() }
 
         ui { vm.nav.openTab(Tab.TRAINING) }
         shot("training")
@@ -384,6 +396,22 @@ object Demo {
                     startedAt = now - daysAgo * DAY,
                     durationSec = 600 + i * 120,
                     debrief = debrief.copy(totalPoints = pts, inhaltPoints = pts - 1, darstellungPoints = pts + 1),
+                ),
+            )
+        }
+
+        val hour = 3_600_000L
+        app.path.update {
+            de.abicoach.path.PathProgress(
+                mapOf(
+                    "w1.ablauf" to de.abicoach.path.LevelProgress(passedAt = now - 14 * DAY, attempts = 1),
+                    "w1.aufgaben" to de.abicoach.path.LevelProgress(passedAt = now - 14 * DAY, attempts = 1),
+                    "w1.vorbereitung" to de.abicoach.path.LevelProgress(passedAt = now - 13 * DAY, attempts = 1),
+                    "w1.frei" to de.abicoach.path.LevelProgress(stars = 2, best = 11, attempts = 2, passedAt = now - 12 * DAY, reviewStage = 2, nextReviewAt = now + 2 * DAY),
+                    "w2.einleitung" to de.abicoach.path.LevelProgress(stars = 3, best = 13, attempts = 2, passedAt = now - 9 * DAY, reviewStage = 3, nextReviewAt = now + 5 * DAY),
+                    "w2.kern" to de.abicoach.path.LevelProgress(stars = 1, best = 10, attempts = 1, passedAt = now - 4 * DAY, reviewStage = 1, nextReviewAt = now - hour),
+                    "w2.outline" to de.abicoach.path.LevelProgress(stars = 2, best = 12, attempts = 1, passedAt = now - 3 * DAY, reviewStage = 1, nextReviewAt = now + DAY),
+                    "w3.haltung" to de.abicoach.path.LevelProgress(stars = 1, best = 9, attempts = 3, passedAt = now - 6 * DAY, reviewStage = 1, nextReviewAt = now + DAY, rusty = true),
                 ),
             )
         }

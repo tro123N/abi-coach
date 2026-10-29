@@ -13,6 +13,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.res.painterResource
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -155,5 +159,19 @@ fun rememberMicGate(action: () -> Unit): () -> Unit {
         } else {
             launcher.launch(Manifest.permission.RECORD_AUDIO)
         }
+    }
+}
+
+/** Read-aloud button: Gemini's voice, tap again to stop. */
+@Composable
+fun SpeakButton(vm: AppViewModel, text: String) {
+    val active = vm.speaking == text
+    IconButton(onClick = { if (active) vm.stopSpeaking() else vm.speak(text) }) {
+        Icon(
+            painterResource(if (active) R.drawable.stop_24dp else R.drawable.volume_up_24dp),
+            contentDescription = if (active) "Stopp" else "Vorlesen",
+            tint = if (active) red else accent,
+            modifier = Modifier.size(AbiTheme.dimens.icons.menuItem * 0.8f),
+        )
     }
 }

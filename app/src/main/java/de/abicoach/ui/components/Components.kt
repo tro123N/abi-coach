@@ -282,7 +282,7 @@ fun StartButton(
             )
             Text(
                 text = text,
-                fontSize = dimens.fonts.actionButton * 0.8f,
+                fontSize = dimens.fonts.actionButton * (if (text.length > 18) 0.62f else 0.8f),
                 modifier = Modifier.align(Alignment.Center).padding(horizontal = dimens.icons.actionButton),
                 textAlign = TextAlign.Center,
                 maxLines = 1,

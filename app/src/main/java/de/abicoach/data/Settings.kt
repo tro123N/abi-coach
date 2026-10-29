@@ -153,6 +153,15 @@ class Settings(context: Context) {
     var sound by BoolPref("sound", true)
     var vibration by BoolPref("vibration", true)
 
+    var reminderOn by BoolPref("reminder_on", false)
+
+    var reminderHour: Int
+        get() = prefs.getInt("reminder_hour", 18)
+        set(value) {
+            prefs.edit().putInt("reminder_hour", value).apply()
+            changed()
+        }
+
     /** Shown once: the welcome card on the Abi-Weg. */
     var welcomeDone by BoolPref("welcome_done", false)
 

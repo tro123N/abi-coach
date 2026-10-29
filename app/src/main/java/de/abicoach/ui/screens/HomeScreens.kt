@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -61,8 +62,11 @@ fun AbiWegScreen(vm: AppViewModel) {
     val profile by app.profiles.profile.collectAsState()
     val sessions by app.store.sessions.collectAsState()
     val docs by app.memory.docs.collectAsState()
+    val progress by app.path.progress.collectAsState()
     val recommendations = remember(version, profile, sessions, docs) { Planner.today(app) }
     val milestones = remember(version, profile, sessions, docs) { Planner.milestones(app) }
+    val worlds = remember(docs) { app.worlds() }
+    val next = remember(progress, profile, worlds) { de.abicoach.path.PathEngine.next(worlds, progress, profile) }
     TabScaffold(
         vm,
         Tab.WEG,
@@ -78,7 +82,22 @@ fun AbiWegScreen(vm: AppViewModel) {
         }
         if (vm.errorMessage != null || vm.notice != null) item { MessageBanners(vm) }
         item { OverviewCard(vm, profile) }
-        item { TodayCard(vm, recommendations) }
+        item { ClimbCard(vm, worlds, progress, profile) }
+        if (recommendations.isNotEmpty()) item { TodayCard(vm, recommendations) }
+        worlds.forEachIndexed { index, world ->
+            item(key = world.id) {
+                WorldCard(
+                    vm = vm,
+                    world = world,
+                    worldIndex = index,
+                    worlds = worlds,
+                    progress = progress,
+                    profile = profile,
+                    nextId = next?.level?.id,
+                    openByDefault = next?.world?.id == world.id,
+                )
+            }
+        }
         if (profile.skills.isNotEmpty()) item { AreasCard(vm, profile) }
         item { MilestonesCard(milestones) }
     }
@@ -119,10 +138,10 @@ private fun OverviewCard(vm: AppViewModel, profile: Profile) {
             }
         }
         Gap(14.dp)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            StatTile(days?.toString() ?: "?", if (days == 1L) "Tag bis zum Abi" else "Tage bis zum Abi", Modifier.weight(1f), icon = R.drawable.event_24dp, color = accent)
-            StatTile(streak.toString(), if (streak == 1) "Tag in Folge" else "Tage in Folge", Modifier.weight(1f), icon = R.drawable.whatshot_24dp, color = if (streak > 0) red else MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.5f))
-            StatTile("$today/${app.settings.dailyMinutes}", "Min. heute", Modifier.weight(1f), icon = R.drawable.timer_24dp, color = if (today >= app.settings.dailyMinutes) green else yellow)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.height(androidx.compose.foundation.layout.IntrinsicSize.Min)) {
+            StatTile(days?.toString() ?: "?", if (days == 1L) "Tag bis zum Abi" else "Tage bis zum Abi", Modifier.weight(1f).fillMaxHeight(), icon = R.drawable.event_24dp, color = accent)
+            StatTile(streak.toString(), if (streak == 1) "Tag in Folge" else "Tage in Folge", Modifier.weight(1f).fillMaxHeight(), icon = R.drawable.whatshot_24dp, color = if (streak > 0) red else MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.5f))
+            StatTile("$today/${app.settings.dailyMinutes}", "Min. heute", Modifier.weight(1f).fillMaxHeight(), icon = R.drawable.timer_24dp, color = if (today >= app.settings.dailyMinutes) green else yellow)
         }
     }
 }

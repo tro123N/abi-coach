@@ -23,6 +23,8 @@ object MaterialGenerator {
         val textType: Knowledge.TextType,
         val source: Knowledge.Source,
         val short: Boolean = false,
+        /** Requirement of an Abi-Weg level, e.g. "Task 2 must be 'Examine how the author perceives …'". */
+        val instruction: String = "",
     )
 
     /** Returns the material and, if the wished source was not possible, a note for the student. */
@@ -73,8 +75,9 @@ object MaterialGenerator {
             }
         val shortLine =
             if (request.short) "\nIMPORTANT: This is a short placement test. The text must have only 170 to 220 words; keep the three tasks simple." else ""
+        val levelLine = if (request.instruction.isNotBlank()) "\nIMPORTANT – requirement of this exercise: ${request.instruction}" else ""
         onProgress("${app.ai.brainLabel()} schreibt Text und Aufgaben …")
-        val answer = app.ai.brainJson(Prompts.MATERIAL_SYSTEM, finalPrompt + shortLine, Prompts.materialSchema, maxTokens = 12_000, thinking = true)
+        val answer = app.ai.brainJson(Prompts.MATERIAL_SYSTEM, finalPrompt + shortLine + levelLine, Prompts.materialSchema, maxTokens = 12_000, thinking = true)
         val task = parse(app, answer.json, request.topicId, source.name.lowercase())
         return task to note
     }

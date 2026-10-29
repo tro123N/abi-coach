@@ -82,6 +82,7 @@ $EXAMINER_RULES
         topicContext: String,
         teacherNotes: String,
         part2Style: Boolean,
+        extra: String = "",
     ): String {
         val coach =
             if (mode == FeedbackMode.COACH) {
@@ -102,7 +103,7 @@ $EXAMINER_RULES
 You are an experienced English teacher in North Rhine-Westphalia, Germany, running a speaking practice that prepares a student for the oral Abitur exam in English (basic course). You start speaking with one short greeting and your first question.
 
 Topic field: $topic$focusLine
-$style${courseBlock(courseOverview, topicContext, teacherNotes)}
+$style${if (extra.isNotBlank()) "\nSpecial focus of this exercise: $extra" else ""}${courseBlock(courseOverview, topicContext, teacherNotes)}
 $EXAMINER_RULES
 $coach
 """.trim()

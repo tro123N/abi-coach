@@ -98,6 +98,11 @@ fun DebriefScreen(vm: AppViewModel, id: String) {
             return@DetailScaffold
         }
         SummaryCard(record, d)
+        if (record.levelId.isNotBlank()) {
+            de.abicoach.path.Curriculum.level(record.levelId)?.let { level ->
+                LevelResultCard(vm, record.levelId, de.abicoach.path.PathEngine.pointsFor(level, d))
+            }
+        }
         if (d.levers.isNotEmpty()) {
             AbiCard(modifier = Modifier.testTag("debrief_levers")) {
                 CardTitle("Das bringt dir die meisten Punkte", icon = R.drawable.rocket_launch_24dp)
@@ -309,18 +314,5 @@ private fun TranscriptSection(record: SessionRecord) {
                 Text(u.text, fontSize = dimens.fonts.body * 0.95f, lineHeight = dimens.fonts.body * 1.3f, color = MaterialTheme.colorScheme.onPrimary)
             }
         }
-    }
-}
-
-@Composable
-private fun SpeakButton(vm: AppViewModel, text: String) {
-    val active = vm.speaking == text
-    IconButton(onClick = { if (active) vm.stopSpeaking() else vm.speak(text) }) {
-        Icon(
-            painterResource(if (active) R.drawable.stop_24dp else R.drawable.volume_up_24dp),
-            contentDescription = if (active) "Stopp" else "Vorlesen",
-            tint = if (active) red else accent,
-            modifier = Modifier.size(AbiTheme.dimens.icons.menuItem * 0.8f),
-        )
     }
 }
