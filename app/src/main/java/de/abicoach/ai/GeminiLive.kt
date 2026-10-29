@@ -1,4 +1,4 @@
-package de.abicoach.gemini
+package de.abicoach.ai
 
 import android.util.Base64
 import okhttp3.OkHttpClient
@@ -11,32 +11,57 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URLEncoder
 
-/** Everything a Gemini Live session can report back to the app. */
-sealed interface LiveEvent {
-    data object Ready : LiveEvent
+/** Setup messages for the two kinds of Gemini Live sessions. */
+object GeminiSetup {
+    /** The "second ear": text-only session that transcribes the microphone word for word, mistakes included. */
+    fun transcriber(model: String, vocabulary: List<String>, minimal: Boolean): JSONObject {
+        val transcription = JSONObject().put("mode", "VERBATIM")
+        if (!minimal) {
+            transcription.put("languageCodes", JSONArray().put("en-GB"))
+            transcription.put("customVocabulary", JSONArray(vocabulary.distinct().take(100)))
+        }
+        val setup =
+            JSONObject()
+                .put("model", "models/" + model.removePrefix("models/"))
+                .put("generationConfig", JSONObject().put("responseModalities", JSONArray().put("TEXT")))
+                .put("inputAudioTranscription", transcription)
+        return JSONObject().put("setup", setup)
+    }
 
-    class Audio(val pcm: ByteArray) : LiveEvent
-
-    /** A piece of the transcript of what the model says. */
-    data class ModelText(val text: String) : LiveEvent
-
-    /** A piece (examiner session) or a finished utterance (transcription session) of what the student said. */
-    data class UserText(val text: String) : LiveEvent
-
-    /** The current, still changing hypothesis of the transcription session. */
-    data class UserInterim(val text: String) : LiveEvent
-
-    data object TurnComplete : LiveEvent
-
-    data object Interrupted : LiveEvent
-
-    data class Info(val message: String) : LiveEvent
-
-    data class Failed(val message: String) : LiveEvent
+    /** The examiner when no OpenAI key is set: Gemini Live with a voice. */
+    fun examiner(model: String, voice: String, system: String, handle: String?, minimal: Boolean): JSONObject {
+        val generation =
+            JSONObject()
+                .put("responseModalities", JSONArray().put("AUDIO"))
+                .put(
+                    "speechConfig",
+                    JSONObject().put("voiceConfig", JSONObject().put("prebuiltVoiceConfig", JSONObject().put("voiceName", voice))),
+                )
+        val setup =
+            JSONObject()
+                .put("model", "models/" + model.removePrefix("models/"))
+                .put("generationConfig", generation)
+                .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", system))))
+                .put("outputAudioTranscription", JSONObject())
+                .put("inputAudioTranscription", JSONObject())
+        if (!minimal) {
+            // Learners pause to think: wait longer before treating silence as the end of a turn.
+            setup.put(
+                "realtimeInputConfig",
+                JSONObject().put(
+                    "automaticActivityDetection",
+                    JSONObject().put("endOfSpeechSensitivity", "END_SENSITIVITY_LOW").put("silenceDurationMs", 1400),
+                ),
+            )
+            setup.put("contextWindowCompression", JSONObject().put("slidingWindow", JSONObject()))
+            setup.put("sessionResumption", if (handle != null) JSONObject().put("handle", handle) else JSONObject())
+        }
+        return JSONObject().put("setup", setup)
+    }
 }
 
 /**
- * One WebSocket connection to the Gemini Live API.
+ * One WebSocket connection to the Gemini Live API (examiner or verbatim transcriber).
  * Reconnects by itself when Google ends a session (time limit, goAway); the examiner session resumes with
  * its context via a session-resumption handle.
  */

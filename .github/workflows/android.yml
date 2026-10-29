@@ -1,9 +1,18 @@
 name: Android-APK bauen
 
+# Jeder Push auf main baut die APK und veröffentlicht sie als Release "latest".
+# Der Test auf dem virtuellen Handy (Bildschirmfotos auf dem Branch "ci-smoke") läuft nur,
+# wenn die Commit-Nachricht "[smoke]" enthält oder der Lauf von Hand gestartet wird –
+# das spart Actions-Minuten, weil das Repository privat ist.
 on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      smoke:
+        description: "Auf virtuellem Handy testen"
+        type: boolean
+        default: true
 
 permissions:
   contents: write
@@ -44,16 +53,75 @@ jobs:
             --notes "Automatisch gebaut aus Commit ${GITHUB_SHA::7}. Auf dem Handy: AbiCoach.apk antippen, herunterladen und installieren." \
             --prerelease
 
-      - name: Build-Fehler als Issue melden
+      - name: Build-Fehler melden
         if: failure()
         env:
           GH_TOKEN: ${{ github.token }}
+          RUN_NUMBER: ${{ github.run_number }}
         run: |
+          mkdir -p ci-out
           {
-            echo "Build ${{ github.run_number }} für Commit ${GITHUB_SHA::7} ist fehlgeschlagen."
+            echo "Build ${RUN_NUMBER} für Commit ${GITHUB_SHA::7} ist fehlgeschlagen."
             echo
-            echo '```'
-            grep -E "^e: |error:|What went wrong|FAILURE|Could not|Unresolved|^> " build.log | head -n 150 || true
-            echo '```'
-          } > report.md
-          gh issue create --title "Build-Fehler (Build ${{ github.run_number }})" --body-file report.md || true
+            grep -E "^e: |error:|What went wrong|FAILURE|Could not|Unresolved|^> " build.log | head -n 200 || true
+          } > ci-out/errors.txt
+          tail -n 400 build.log > ci-out/tail.txt || true
+          source ci/publish-branch.sh
+          publish_branch ci-logs ci-out "Build-Fehler (Build ${RUN_NUMBER})"
+
+  smoke:
+    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.smoke) || contains(github.event.head_commit.message, '[smoke]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Speicher freimachen
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /usr/local/share/boost \
+            /usr/share/swift /usr/local/share/powershell /opt/hostedtoolcache/CodeQL || true
+
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v5
+
+      - name: Test-APKs bauen
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          chmod +x gradlew
+          set -o pipefail
+          if ! ./gradlew --no-daemon assembleDebug assembleDebugAndroidTest 2>&1 | tee smoke-build.log; then
+            mkdir -p ci-out
+            grep -E "^e: |error:|What went wrong|FAILURE|Could not|Unresolved|^> " smoke-build.log | head -n 200 > ci-out/summary.txt || true
+            tail -n 300 smoke-build.log > ci-out/tail.txt || true
+            source ci/publish-branch.sh
+            publish_branch ci-smoke ci-out "Smoke-Build fehlgeschlagen (Lauf ${RUN_NUMBER})"
+            exit 1
+          fi
+
+      - name: KVM aktivieren
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Auf virtuellem Handy durchklicken
+        uses: reactivecircus/android-emulator-runner@v2
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_NUMBER: ${{ github.run_number }}
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          ram-size: 4096M
+          disk-size: 6144M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          script: bash ci/smoke.sh

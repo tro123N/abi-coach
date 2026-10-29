@@ -1,8 +1,12 @@
 package de.abicoach.session
 
 import de.abicoach.AbiCoachApp
+import de.abicoach.ai.LiveEvent
+import de.abicoach.ai.LiveSocket
+import de.abicoach.ai.VoiceAgent
 import de.abicoach.audio.AudioRouting
 import de.abicoach.audio.AudioUtil
+import de.abicoach.audio.FeedbackType
 import de.abicoach.audio.MicStreamer
 import de.abicoach.audio.PcmPlayer
 import de.abicoach.audio.Tts
@@ -11,8 +15,6 @@ import de.abicoach.data.FeedbackMode
 import de.abicoach.data.LiveError
 import de.abicoach.data.Speaker
 import de.abicoach.data.Utterance
-import de.abicoach.gemini.LiveEvent
-import de.abicoach.gemini.LiveSocket
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -37,23 +39,26 @@ data class LiveUiState(
     val liveErrors: List<LiveError> = emptyList(),
     val lastAlert: LiveError? = null,
     val elapsedSec: Int = 0,
+    val targetSec: Int = 600,
     val micLevel: Float = 0f,
     val examinerSpeaking: Boolean = false,
+    val examinerLabel: String = "",
+    val hasExaminer: Boolean = false,
     val info: String? = null,
     val error: String? = null,
 )
 
 /**
- * One live part of a session: the examiner (Gemini Live, optional), the verbatim transcriber running in
- * parallel, the live error check and the recording for the later pronunciation analysis.
+ * One live part of a session: the examiner (GPT-Live-1 or Gemini Live, optional), the verbatim transcriber
+ * running in parallel, the live error check and the recording for the later pronunciation analysis.
  */
 class LiveConversation(private val app: AbiCoachApp, private val config: Config) {
     data class Config(
         /** 1 = presentation, 2 = exam conversation, 0 = training. */
         val part: Int,
-        /** System instructions for the examiner; null means no examiner (the presentation in part 1). */
+        /** Instructions for the examiner; null means no examiner (the presentation in part 1). */
         val examinerPrompt: String?,
-        /** Text turn that makes the examiner start speaking. */
+        /** Instruction that makes the examiner start speaking. */
         val kickoff: String?,
         val feedback: FeedbackMode,
         val vocabulary: List<String>,
@@ -62,19 +67,20 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
         val targetSeconds: Int,
     )
 
-    data class Result(val utterances: List<Utterance>, val liveErrors: List<LiveError>, val seconds: Int)
+    data class Result(val utterances: List<Utterance>, val liveErrors: List<LiveError>, val seconds: Int, val examinerSeconds: Double, val examinerLabel: String)
 
-    private val _state = MutableStateFlow(LiveUiState(part = config.part))
+    private val _state =
+        MutableStateFlow(LiveUiState(part = config.part, targetSec = config.targetSeconds, hasExaminer = config.examinerPrompt != null))
     val state: StateFlow<LiveUiState> = _state.asStateFlow()
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val routing = AudioRouting(app)
-    private val player = PcmPlayer()
+    private val player = PcmPlayer(24_000)
     private val tts = Tts(app)
     private var mic: MicStreamer? = null
     private var wav: WavWriter? = null
 
-    @Volatile private var examiner: LiveSocket? = null
+    @Volatile private var examiner: VoiceAgent? = null
 
     @Volatile private var transcriber: LiveSocket? = null
     private var checker: LiveChecker? = null
@@ -87,51 +93,45 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
 
     @Volatile private var kickoffSent = false
 
+    @Volatile private var timeUpSent = false
+
     @Volatile private var lastSpeechAt = System.currentTimeMillis()
 
     @Volatile private var lastImpulseAt = 0L
 
     @Volatile private var muteUntil = 0L
 
+    @Volatile private var examinerSeconds = 0.0
+
     @Volatile private var finished = false
     private val startedAt = System.currentTimeMillis()
 
+    /** Shows a prepared state without microphone or network (screenshots in the emulator test). */
+    fun startDemo(demo: LiveUiState) {
+        finished = true
+        _state.value = demo.copy(part = config.part, targetSec = config.targetSeconds, hasExaminer = config.examinerPrompt != null)
+    }
+
     fun start() {
-        val key = app.settings.geminiKey
-        if (key.isBlank()) {
-            _state.update { it.copy(error = "Kein API-Schlüssel eingetragen (Einstellungen).") }
+        if (!app.ai.hasGemini) {
+            _state.update { it.copy(error = "Kein Gemini-Schlüssel eingetragen (Einstellungen).") }
             return
         }
         routing.enter()
         player.start()
         config.wavFile?.let { wav = WavWriter(it, 16_000) }
 
-        transcriber =
-            LiveSocket(
-                http = app.http,
-                apiKey = key,
-                name = "Mitschrift",
-                supportsResumption = false,
-                setupFactory = { _, minimal -> Prompts.transcriberSetup(app.settings.transcribeModel, config.vocabulary, minimal) },
-                onEvent = ::onTranscriberEvent,
-            ).also { it.connect() }
+        transcriber = app.ai.transcriber(config.vocabulary, ::onTranscriberEvent).also { it.connect() }
 
         config.examinerPrompt?.let { prompt ->
-            examiner =
-                LiveSocket(
-                    http = app.http,
-                    apiKey = key,
-                    name = "Prüfer",
-                    supportsResumption = true,
-                    setupFactory = { handle, minimal ->
-                        Prompts.examinerSetup(app.settings.liveModel, app.settings.voice, prompt, handle, minimal)
-                    },
-                    onEvent = ::onExaminerEvent,
-                ).also { it.connect() }
+            val agent = app.ai.examiner(prompt, ::onExaminerEvent)
+            examiner = agent
+            _state.update { it.copy(examinerLabel = agent.label) }
+            agent.connect()
         }
 
         if (config.feedback != FeedbackMode.PRUEFUNG) {
-            checker = LiveChecker(app.rest, app.settings.analysisModel, scope, config.checkerContext, ::onLiveErrors).also { it.start() }
+            checker = LiveChecker(app.ai, scope, config.checkerContext, ::onLiveErrors).also { it.start() }
         }
 
         mic = MicStreamer(::onMic).also { it.start(scope) }
@@ -154,6 +154,11 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
             muteUntil = now + 5_000
             tts.say(Prompts.IMPULSES.random())
         }
+        // The examiner ends the conversation politely when the time is up.
+        if (examiner != null && !timeUpSent && seconds >= config.targetSeconds + 20) {
+            timeUpSent = true
+            examiner?.sendInstruction("TIME_UP")
+        }
     }
 
     private fun statusText(s: LiveUiState): String =
@@ -170,12 +175,13 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
         val now = System.currentTimeMillis()
         val level = AudioUtil.level(pcm)
         val examinerAudible = player.isPlaying(now) || now < muteUntil
+        val headset = routing.usingHeadset
         // On the loudspeaker the examiner would hear (and interrupt) himself: send silence while he talks.
         // With headphones the real microphone signal goes through, so the student can cut in.
-        examiner?.sendAudio(if (examinerAudible && !routing.usingHeadset) ByteArray(pcm.size) else pcm)
-        // While the examiner (or the app) is speaking, the microphone mostly hears the loudspeaker:
-        // keep that out of the student's transcript and recording.
-        if (!examinerAudible) {
+        examiner?.sendAudio(if (examinerAudible && !headset) ByteArray(pcm.size) else pcm)
+        // While the examiner (or the app) is speaking over the loudspeaker, the microphone mostly hears the
+        // loudspeaker: keep that out of the student's transcript and recording.
+        if (!examinerAudible || headset) {
             transcriber?.sendAudio(pcm)
             wav?.write(pcm)
             if (level > 0.06f) lastSpeechAt = now
@@ -214,7 +220,7 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
                 _state.update { it.copy(examinerReady = true) }
                 if (!kickoffSent) {
                     kickoffSent = true
-                    config.kickoff?.let { examiner?.sendUserTurn(it) }
+                    config.kickoff?.let { examiner?.sendInstruction(it) }
                 }
             }
             is LiveEvent.Audio -> {
@@ -234,6 +240,7 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
                 player.flush()
                 flushExaminer(interrupted = true)
             }
+            is LiveEvent.Usage -> examinerSeconds = event.seconds
             is LiveEvent.Failed -> _state.update { it.copy(error = event.message) }
             is LiveEvent.Info -> _state.update { it.copy(info = event.message) }
             else -> Unit
@@ -282,11 +289,11 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
         val alert = important.firstOrNull() ?: errors.firstOrNull()?.takeIf { config.feedback == FeedbackMode.FLUESTERN }
         if (alert == null) return
         _state.update { it.copy(lastAlert = alert) }
-        AudioUtil.vibrate(app)
+        app.feedback.buzz(FeedbackType.ALERT)
         if (config.feedback == FeedbackMode.COACH && important.isNotEmpty()) {
-            val examinerSocket = examiner
-            if (examinerSocket != null) {
-                examinerSocket.sendUserTurn(Prompts.coachMessage(alert))
+            val examinerAgent = examiner
+            if (examinerAgent != null) {
+                examinerAgent.sendInstruction(Prompts.coachMessage(alert))
             } else {
                 muteUntil = System.currentTimeMillis() + 4_000
                 tts.say("Quick correction: ${alert.correction}")
@@ -335,5 +342,7 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
             utterances = _state.value.utterances,
             liveErrors = _state.value.liveErrors,
             seconds = ((System.currentTimeMillis() - startedAt) / 1000).toInt(),
+            examinerSeconds = examinerSeconds,
+            examinerLabel = _state.value.examinerLabel,
         )
 }

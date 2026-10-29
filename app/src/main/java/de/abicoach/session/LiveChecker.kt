@@ -1,8 +1,8 @@
 package de.abicoach.session
 
+import de.abicoach.ai.AiException
+import de.abicoach.ai.AiHub
 import de.abicoach.data.LiveError
-import de.abicoach.gemini.GeminiException
-import de.abicoach.gemini.GeminiRest
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -11,12 +11,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * The "second ear": checks each finished utterance for errors while the conversation goes on.
- * Requests are batched and spaced out so the free tier's per-minute limit is not exceeded.
+ * The "second ear": checks each finished utterance for errors while the conversation goes on
+ * (Claude Haiku when its key is set, otherwise Gemini Flash). Requests are batched and spaced out.
  */
 class LiveChecker(
-    private val rest: GeminiRest,
-    private val model: String,
+    private val hub: AiHub,
     private val scope: CoroutineScope,
     private val context: String,
     private val onErrors: (List<LiveError>) -> Unit,
@@ -34,7 +33,7 @@ class LiveChecker(
                 var lastCall = 0L
                 for (first in queue) {
                     val batch = StringBuilder(first)
-                    delay(1200)
+                    delay(900)
                     drainInto(batch)
                     val wait = MIN_INTERVAL_MS - (System.currentTimeMillis() - lastCall)
                     if (wait > 0) delay(wait)
@@ -42,19 +41,13 @@ class LiveChecker(
                     lastCall = System.currentTimeMillis()
                     val text = batch.toString()
                     try {
-                        val json =
-                            rest.generateJson(
-                                model = model,
-                                system = Prompts.CHECK_SYSTEM,
-                                parts = listOf(GeminiRest.textPart(Prompts.checkRequest(text, context))),
-                                schema = Prompts.checkSchema(),
-                            )
+                        val json = hub.fastJson(Prompts.CHECK_SYSTEM, Prompts.checkRequest(text, context), Prompts.checkSchema)
                         val reference = Prompts.normalize(text)
                         val errors = Prompts.parseErrors(json.optJSONArray("errors")).filter { Prompts.isQuoted(it.quote, reference) }
                         if (errors.isNotEmpty()) onErrors(errors)
                     } catch (e: CancellationException) {
                         throw e
-                    } catch (e: GeminiException) {
+                    } catch (e: AiException) {
                         if (e.code == 429) delay(30_000)
                     } catch (e: Exception) {
                         // A failed live check is not critical: the full debrief checks everything again.
@@ -76,6 +69,6 @@ class LiveChecker(
     }
 
     private companion object {
-        const val MIN_INTERVAL_MS = 6_500L
+        const val MIN_INTERVAL_MS = 4_500L
     }
 }

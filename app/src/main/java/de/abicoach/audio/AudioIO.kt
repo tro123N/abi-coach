@@ -61,6 +61,42 @@ object AudioUtil {
         }
 }
 
+/**
+ * Converts 16-bit mono PCM between sample rates by linear interpolation, chunk by chunk without gaps
+ * (used to turn the 16 kHz microphone into the 24 kHz that GPT-Live expects).
+ */
+class LinearResampler(private val inRate: Int, private val outRate: Int) {
+    private var pos = 0.0
+    private var prev: Short = 0
+
+    @Synchronized
+    fun process(pcm: ByteArray): ByteArray {
+        val n = pcm.size / 2
+        if (n == 0) return ByteArray(0)
+        val input = ShortArray(n) { i -> ((pcm[2 * i + 1].toInt() shl 8) or (pcm[2 * i].toInt() and 0xff)).toShort() }
+        val step = inRate.toDouble() / outRate
+        val out = ShortArray((n * outRate.toLong() / inRate + 4).toInt())
+        var count = 0
+        while (pos < n - 1 && count < out.size) {
+            val i = kotlin.math.floor(pos).toInt()
+            val frac = pos - i
+            val a = if (i < 0) prev.toInt() else input[i].toInt()
+            val b = input[i + 1].toInt()
+            out[count++] = (a + (b - a) * frac).toInt().coerceIn(-32768, 32767).toShort()
+            pos += step
+        }
+        pos -= n
+        prev = input[n - 1]
+        val bytes = ByteArray(count * 2)
+        for (k in 0 until count) {
+            val s = out[k].toInt()
+            bytes[2 * k] = (s and 0xff).toByte()
+            bytes[2 * k + 1] = ((s shr 8) and 0xff).toByte()
+        }
+        return bytes
+    }
+}
+
 /** Records the microphone at 16 kHz mono in 100 ms chunks, with echo cancellation where the phone supports it. */
 class MicStreamer(private val onChunk: (ByteArray) -> Unit) {
     private var record: AudioRecord? = null
@@ -119,8 +155,8 @@ class MicStreamer(private val onChunk: (ByteArray) -> Unit) {
     }
 }
 
-/** Plays the examiner's 24 kHz PCM audio as it streams in. */
-class PcmPlayer(private val rate: Int = 24_000) {
+/** Plays 16-bit PCM as it streams in: the examiner (call audio) or a read-aloud clip (media audio). */
+class PcmPlayer(private val rate: Int = 24_000, private val usage: Int = AudioAttributes.USAGE_VOICE_COMMUNICATION) {
     private val queue = LinkedBlockingQueue<ByteArray>()
     private var track: AudioTrack? = null
     private var thread: Thread? = null
@@ -135,7 +171,7 @@ class PcmPlayer(private val rate: Int = 24_000) {
             AudioTrack.Builder()
                 .setAudioAttributes(
                     AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                        .setUsage(usage)
                         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                         .build(),
                 )
@@ -170,6 +206,9 @@ class PcmPlayer(private val rate: Int = 24_000) {
 
     /** True while examiner audio is (probably) audible, plus a short tail for room echo. */
     fun isPlaying(now: Long): Boolean = now < playingUntil + 400
+
+    /** Milliseconds of audio still queued or playing. */
+    fun remainingMs(): Long = (playingUntil - System.currentTimeMillis()).coerceAtLeast(0)
 
     /** Stops the current answer immediately, e.g. when the student interrupts. */
     fun flush() {
