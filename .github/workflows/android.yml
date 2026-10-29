@@ -1,0 +1,59 @@
+name: Android-APK bauen
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: apk-build
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v5
+
+      - name: APK bauen
+        run: |
+          chmod +x gradlew
+          set -o pipefail
+          ./gradlew --no-daemon assembleDebug 2>&1 | tee build.log
+
+      - name: APK als Release "latest" veröffentlichen
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk AbiCoach.apk
+          gh release delete latest --yes --cleanup-tag || true
+          gh release create latest AbiCoach.apk \
+            --title "AbiCoach – neueste Version (Build ${{ github.run_number }})" \
+            --notes "Automatisch gebaut aus Commit ${GITHUB_SHA::7}. Auf dem Handy: AbiCoach.apk antippen, herunterladen und installieren." \
+            --prerelease
+
+      - name: Build-Fehler als Issue melden
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "Build ${{ github.run_number }} für Commit ${GITHUB_SHA::7} ist fehlgeschlagen."
+            echo
+            echo '```'
+            grep -E "^e: |error:|What went wrong|FAILURE|Could not|Unresolved|^> " build.log | head -n 150 || true
+            echo '```'
+          } > report.md
+          gh issue create --title "Build-Fehler (Build ${{ github.run_number }})" --body-file report.md || true
