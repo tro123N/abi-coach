@@ -60,6 +60,10 @@ sealed interface Screen {
     data object PlacementIntro : Screen
 
     data class Level(val id: String) : Screen
+
+    data object Vocab : Screen
+
+    data object Pronunciation : Screen
 }
 
 /** A tiny back stack; the Abi-Weg always stays at the bottom, like the Kletterweg in Mental Math Plus. */
@@ -98,7 +102,13 @@ class Navigator {
     }
 }
 
-data class AskMessage(val fromUser: Boolean, val text: String, val sources: List<String> = emptyList(), val by: String = "")
+data class AskMessage(
+    val fromUser: Boolean,
+    val text: String,
+    val sources: List<String> = emptyList(),
+    val by: String = "",
+    val actions: List<de.abicoach.session.CoachAction> = emptyList(),
+)
 
 /** Holds the flow of a session across screens: material, notes, the live parts and the analysis. */
 class AppViewModel(application: Application) : AndroidViewModel(application) {
@@ -161,6 +171,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             Target.Keys, Target.ExamDate -> nav.push(Screen.Settings)
             Target.Course -> nav.openTab(Tab.KURS)
             Target.Placement -> nav.push(Screen.PlacementIntro)
+            Target.Vocab -> openVocab()
             is Target.Setup -> nav.push(Screen.Setup(target.setup))
         }
     }
@@ -430,6 +441,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 try {
                     val debrief = withContext(Dispatchers.Default) { Analyzer(app).analyze(record) { message -> progressText = message } }
                     app.store.save(record.copy(debrief = debrief))
+                    app.vocab.addAll(de.abicoach.practice.PracticeFeed.fromDebrief(debrief, record.topicId))
                     app.profiles.update { p ->
                         val rated = p.withRatings(debrief.skills, record.kind.profileWeight, System.currentTimeMillis(), record.kind.short)
                         if (record.kind == SessionKind.PLACEMENT) rated.copy(placementDone = true, placementAt = System.currentTimeMillis()) else rated
@@ -523,7 +535,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             try {
                 val answer = withContext(Dispatchers.Default) { MaterialQuestion.ask(app, q, history) }
-                askMessages += AskMessage(false, answer.text, answer.hits.mapIndexed { i, h -> "[${i + 1}] ${h.citation}" }, answer.by)
+                askMessages += AskMessage(false, answer.text, answer.hits.mapIndexed { i, h -> "[${i + 1}] ${h.citation}" }, answer.by, answer.actions)
             } catch (e: Exception) {
                 askMessages += AskMessage(false, "Das hat nicht geklappt: ${e.message}")
             } finally {
@@ -535,6 +547,129 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun clearAsk() {
         askMessages.clear()
     }
+
+    /** Runs a button the coach suggested under its answer. */
+    fun runAction(action: de.abicoach.session.CoachAction) {
+        if (action.kind == "wortschatz") return openVocab()
+        if (action.kind == "aussprache") return openPronunciation()
+        tap()
+        val f = app.settings.defaultFeedback
+        when (action.kind) {
+            "aufgabe1", "aufgabe2", "aufgabe3" -> nav.push(Screen.Setup(SessionSetup.defaults(SessionKind.PART1, action.kind.last().digitToInt(), f)))
+            "vortrag" -> nav.push(Screen.Setup(SessionSetup.defaults(SessionKind.PART1, 0, f)))
+            "gespraech" -> nav.push(Screen.Setup(SessionSetup.defaults(SessionKind.PART2, 0, f)))
+            "sprint" -> nav.push(Screen.Setup(SessionSetup.sprint(f)))
+            "simulation" -> nav.push(Screen.Setup(SessionSetup.defaults(SessionKind.SIMULATION, 0, f)))
+            "level" -> nav.push(Screen.Level(action.arg))
+        }
+    }
+
+    // ---------- vocabulary ----------
+
+    /** The cards of the current review round; the first one is shown. */
+    val vocabQueue = mutableStateListOf<de.abicoach.practice.VocabCard>()
+    var vocabRevealed by mutableStateOf(false)
+    var vocabDone by mutableStateOf(0)
+        private set
+
+    fun openVocab() {
+        tap()
+        vocabQueue.clear()
+        vocabQueue.addAll(app.vocab.due())
+        vocabRevealed = false
+        vocabDone = 0
+        nav.push(Screen.Vocab)
+    }
+
+    fun gradeCard(grade: de.abicoach.practice.Grade) {
+        val card = vocabQueue.firstOrNull() ?: return
+        val next = de.abicoach.practice.Scheduler.review(card, grade)
+        app.vocab.update(next)
+        vocabQueue.removeAt(0)
+        // "Nochmal" comes back at the end of this round.
+        if (grade == de.abicoach.practice.Grade.AGAIN) vocabQueue.add(next)
+        vocabDone++
+        vocabRevealed = false
+        app.feedback.play(if (grade == de.abicoach.practice.Grade.AGAIN) FeedbackType.WRONG else FeedbackType.CORRECT)
+        if (vocabQueue.isEmpty()) app.feedback.play(FeedbackType.RESULT_GOOD)
+    }
+
+    fun deleteCard(id: String) {
+        app.vocab.delete(id)
+        vocabQueue.removeAll { it.id == id }
+        vocabRevealed = false
+    }
+
+    // ---------- pronunciation lab ----------
+
+    var pronTarget by mutableStateOf("")
+    var pronRecording by mutableStateOf(false)
+        private set
+    var pronBusy by mutableStateOf(false)
+        private set
+    var pronResult by mutableStateOf<de.abicoach.practice.PronunciationCheck.Result?>(null)
+        private set
+    private var recorder: de.abicoach.practice.ShortRecorder? = null
+
+    fun openPronunciation(word: String = "") {
+        tap()
+        if (word.isNotBlank()) pronTarget = word
+        pronResult = null
+        nav.push(Screen.Pronunciation)
+    }
+
+    fun pronSelect(word: String) {
+        tap()
+        pronTarget = word
+        pronResult = null
+    }
+
+    fun pronStart() {
+        if (pronBusy || pronRecording || pronTarget.isBlank()) return
+        if (!app.ai.hasGemini) {
+            errorMessage = "Für das Aussprache-Labor brauchst du den Gemini-Schlüssel (Einstellungen → KI)."
+            return
+        }
+        stopSpeaking()
+        recorder?.release()
+        recorder = de.abicoach.practice.ShortRecorder().also { it.start() }
+        pronRecording = true
+        pronResult = null
+        app.feedback.play(FeedbackType.START)
+    }
+
+    fun pronStop() {
+        val r = recorder ?: return
+        val wav = r.stop()
+        r.release()
+        recorder = null
+        pronRecording = false
+        app.feedback.play(FeedbackType.STOP)
+        if (wav.size < 44 + 16_000) {
+            errorMessage = "Die Aufnahme war zu kurz. Tippe auf „Aufnehmen“, sprich und tippe dann auf „Fertig“."
+            return
+        }
+        val target = pronTarget
+        pronBusy = true
+        viewModelScope.launch {
+            try {
+                val result = withContext(Dispatchers.Default) { de.abicoach.practice.PronunciationCheck.check(app, target, wav) }
+                pronResult = result
+                app.pron.record(target, result.score)
+                app.feedback.play(de.abicoach.audio.Feedback.forPoints(result.score * 15 / 100))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                errorMessage = "Die Prüfung der Aussprache hat nicht geklappt: ${e.message}"
+            } finally {
+                pronBusy = false
+            }
+        }
+    }
+
+    /** Words to practise: the pronunciation tips of the last sessions, newest first. */
+    fun pronWords(): List<de.abicoach.data.PronTip> =
+        app.store.sessions.value.mapNotNull { it.debrief }.flatMap { it.pronunciation }.distinctBy { it.word.lowercase().trim() }.filter { it.word.isNotBlank() }.take(20)
 
     // ---------- keys ----------
 
@@ -631,6 +766,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         nav.push(Screen.Live)
     }
 
+    fun demoPronResult(result: de.abicoach.practice.PronunciationCheck.Result) {
+        pronResult = result
+    }
+
     fun demoClear() {
         live = null
         draft = null
@@ -683,6 +822,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     override fun onCleared() {
+        recorder?.release()
         live?.abort()
         stopSpeaking()
         androidTts.shutdown()

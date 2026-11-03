@@ -88,12 +88,14 @@ private fun kindDescription(s: SessionSetup): String =
                 else -> "Der ganze erste Prüfungsteil: ein neuer Text mit drei Aufgaben, ca. 10 Minuten freier Vortrag."
             }
         SessionKind.PART2 -> "Der zweite Prüfungsteil: 10 Minuten Gespräch über größere Zusammenhänge, mit Themenwechsel wie im Abi."
-        SessionKind.TRAINING -> "Ein freies Gespräch zu einem Themenfeld – ideal, um mit Flüstern oder Coach an deinen Fehlern zu arbeiten."
+        SessionKind.TRAINING ->
+            if (s.isSprint) "3 Minuten so viel wie möglich sprechen: Der Prüfer stellt kurze, fordernde Fragen und hakt nach – das trainiert flüssiges, längeres Antworten." else "Ein freies Gespräch zu einem Themenfeld – ideal, um mit Flüstern oder Coach an deinen Fehlern zu arbeiten."
     }
 
 private fun setupTitle(s: SessionSetup): String =
     when {
         s.kind == SessionKind.PART1 && s.focusTask in 1..3 -> "Aufgabe ${s.focusTask}: " + Knowledge.TASK_PATTERNS[s.focusTask - 1].germanName
+        s.isSprint -> "Gesprächs-Sprint"
         else -> s.kind.label
     }
 
@@ -120,7 +122,7 @@ fun SetupScreen(vm: AppViewModel, initial: SessionSetup) {
             }
         },
     ) {
-        AreaIntro(de.abicoach.ui.screens.kindIcon(s.kind), s.kind.label, kindDescription(s))
+        AreaIntro(if (s.isSprint) R.drawable.speed_24dp else de.abicoach.ui.screens.kindIcon(s.kind), if (s.isSprint) "Gesprächs-Sprint" else s.kind.label, kindDescription(s))
         MessageBanners(vm)
         AbiCard {
             CardTitle("Themenfeld", icon = R.drawable.hub_24dp)

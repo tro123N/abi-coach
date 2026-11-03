@@ -167,8 +167,33 @@ class SmokeTest {
         swipeShot("doc", "dokument_buch_unten", 2)
         ui { vm.nav.pop(); vm.nav.push(Screen.Doc(Demo.KLAUSUR)) }
         shot("dokument_klausur")
-        ui { vm.nav.pop(); vm.nav.push(Screen.Ask) }
-        shot("frag_dein_material")
+        ui {
+            vm.nav.pop()
+            vm.clearAsk()
+            vm.askMessages += de.abicoach.ui.AskMessage(true, "Wie werde ich in Aufgabe 2 besser?")
+            vm.askMessages +=
+                de.abicoach.ui.AskMessage(
+                    false,
+                    "In deinen letzten Auswertungen fehlen bei der Analyse vor allem **Textbelege**. Geh in drei Schritten vor:\n\n1. Behauptung: *The author presents the young people as resourceful.*\n2. Beleg: Zitat mit Zeile (\"Nobody is waiting for permission anymore\", l. 3)\n3. Wirkung: *This quote gives them a confident voice.*\n\nIn eurer Klausur Q1.2 hat deine Lehrkraft genau das angemerkt [2].",
+                    listOf("[1] Green Line Oberstufe NRW, S. 142", "[2] Klausur Q1.2 – Brexit, S. 2"),
+                    "Claude Opus 5.5",
+                    listOf(de.abicoach.session.CoachAction("aufgabe2"), de.abicoach.session.CoachAction("level", "w3.perceive")),
+                )
+            vm.nav.push(Screen.Ask)
+        }
+        shot("ki_coach")
+        ui { vm.nav.pop() }
+        ui { vm.openVocab() }
+        shot("wortschatz")
+        runCatching { compose.onNodeWithTag("vocab_reveal").performClick() }
+        shot("wortschatz_antwort")
+        ui { vm.nav.pop(); vm.openPronunciation("thoroughly") }
+        ui { vm.demoPronResult(de.abicoach.practice.PronunciationCheck.Result(72, "sorougly", listOf("„th“ klang wie „s“", "Betonung richtig auf der ersten Silbe"), "Leg die Zungenspitze leicht zwischen die Zähne und puste – wie bei „think“.", "Gemini 4 Argon")) }
+        shot("aussprache")
+        swipeShot("pron", "aussprache_unten", 2)
+        ui { vm.nav.pop(); vm.nav.push(Screen.Setup(SessionSetup.sprint(FeedbackMode.FLUESTERN))) }
+        shot("einrichten_sprint")
+        ui { vm.nav.pop() }
 
         ui { vm.nav.openTab(Tab.STATS) }
         shot("statistik")
@@ -180,6 +205,7 @@ class SmokeTest {
         swipeShot("debrief", "auswertung_2", 1)
         swipeShot("debrief", "auswertung_3", 1)
         swipeShot("debrief", "auswertung_4", 2)
+        swipeShot("debrief", "auswertung_5", 2)
 
         ui { vm.nav.openTab(Tab.TRAINING); vm.nav.push(Screen.Setup(SessionSetup.defaults(SessionKind.SIMULATION, 0, FeedbackMode.FLUESTERN))) }
         shot("einrichten_simulation")
@@ -267,6 +293,53 @@ object Demo {
             source = "course",
             courseLinks = listOf("TED Talk „The danger of a single story“ (Green Line, S. 142)", "Klausur Q1.2: Arbeitsmarkt und Jugendarbeitslosigkeit"),
         )
+
+    /** A realistic presentation: three tasks over about ten minutes, with some fillers and one long pause. */
+    fun talk(): List<Utterance> {
+        val tasks =
+            listOf(
+                Triple(
+                    "The article Lagos Rising, published in a newspaper, deals with young creative people in Lagos and how they shape the future of their city.",
+                    listOf(
+                        "First the author describe how a young woman called Chioma is editing a short film on a borrowed laptop in a converted warehouse.",
+                        "um He then explains that the creative industries, from Nollywood to Afrobeats, are among the fastest growing sectors of the economy.",
+                        "Finally he mentions that many young Nigerians still struggle to find jobs and that a lot of talented people er emigrate.",
+                    ),
+                    0 to 125_000,
+                ),
+                Triple(
+                    "Moving on to the analysis, the author perceives the young creatives in a very positive and energetic way.",
+                    listOf(
+                        "um He lets them speak for themselves, for example Chioma says that nobody is waiting for permission anymore, which makes her sound confident.",
+                        "The tone of the article is optimistic, although er the author does mention the structural problems of the country.",
+                        "Furthermore the contrast between power cuts and traffic jams on the one hand and creativity on the other hand makes the young people look even more resourceful.",
+                    ),
+                    125_000 to 390_000,
+                ),
+                Triple(
+                    "Now I would like to comment on the producer's claim that young Nigerians cannot fix the roads but can tell their own stories.",
+                    listOf(
+                        "In my opinion this is partly true, because as we saw in class with Adichie, there is a danger of a single story about Africa.",
+                        "um On the other hand cultural success alone does not create enough jobs, so the government still has to invest in infrastructure.",
+                        "All in all I think that telling their own stories is an important first step, but it cannot replace political change.",
+                    ),
+                    390_000 to 605_000,
+                ),
+            )
+        val out = ArrayList<Utterance>()
+        tasks.forEachIndexed { t, (first, rest, window) ->
+            out += Utterance(Speaker.STUDENT, first, 1, window.first + 9_000L)
+            var at = window.first + 9_000L
+            var i = 0
+            while (true) {
+                at += if (t == 1 && i == 6) 32_000L else 10_000L
+                if (at > window.second) break
+                out += Utterance(Speaker.STUDENT, rest[i % rest.size], 1, at)
+                i++
+            }
+        }
+        return out
+    }
 
     fun liveState(part: Int): LiveUiState {
         val utterances =
@@ -379,9 +452,9 @@ object Demo {
                 startedAt = now - DAY,
                 durationSec = 1260,
                 part1Sec = 610,
-                debrief = debrief,
+                debrief = debrief.copy(segments = listOf(1 to "The article Lagos Rising", 2 to "Moving on to the analysis", 3 to "Now I would like to comment")),
                 examiner = "GPT-Live-1",
-                utterances = liveState(1).utterances + liveState(2).utterances,
+                utterances = talk() + liveState(2).utterances,
             ),
         )
         listOf(
@@ -399,6 +472,20 @@ object Demo {
                 ),
             )
         }
+
+        app.vocab.reset()
+        app.vocab.addAll(de.abicoach.practice.PracticeFeed.fromDebrief(debrief, 4))
+        app.vocab.addAll(
+            listOf(
+                Vocab("brain drain", "Abwanderung von Fachkräften", 10),
+                Vocab("upward mobility", "sozialer Aufstieg", 3),
+                Vocab("colonial legacy", "koloniales Erbe", 1),
+            ).map { v -> de.abicoach.practice.VocabCard(java.util.UUID.randomUUID().toString(), v.de, v.en, "", de.abicoach.practice.CardSource.COURSE, v.topic) },
+        )
+        app.vocab.cards.value.take(3).forEach { c -> app.vocab.update(c.copy(reps = 4, intervalDays = 12.0, dueAt = now + 6 * DAY)) }
+        app.pron.record("thoroughly", 72)
+        app.pron.record("development", 91)
+        app.pron.record("hierarchy", 58)
 
         val hour = 3_600_000L
         app.path.update {

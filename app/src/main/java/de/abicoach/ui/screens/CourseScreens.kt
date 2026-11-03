@@ -521,11 +521,12 @@ fun AskScreen(vm: AppViewModel) {
             "Welche Texte aus meinem Material passen zum American Dream?",
             "Welche Fehler mache ich in Klausuren am häufigsten?",
             "Wie unterscheidet sich eine Analyse von einer Zusammenfassung?",
+            "Was soll ich heute üben, um auf 15 Punkte zu kommen?",
         )
     Scaffold(
         topBar = {
             AbiTopBar(
-                title = "Frag dein Material",
+                title = "KI-Coach",
                 onBack = { vm.tap(); vm.nav.pop() },
                 actions = { if (vm.askMessages.isNotEmpty()) TopBarAction(R.drawable.delete_24dp, "Verlauf löschen", { vm.clearAsk() }) },
             )
@@ -618,14 +619,14 @@ fun AskScreen(vm: AppViewModel) {
                     }
                 }
             }
-            itemsIndexed(vm.askMessages) { _, m -> AskBubble(m) }
+            itemsIndexed(vm.askMessages) { _, m -> AskBubble(vm, m) }
             if (vm.askBusy) item { LoadingCard("Ich schaue in dein Material …") }
         }
     }
 }
 
 @Composable
-private fun AskBubble(m: AskMessage) {
+private fun AskBubble(vm: AppViewModel, m: AskMessage) {
     val dimens = AbiTheme.dimens
     if (m.fromUser) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
@@ -651,6 +652,7 @@ private fun AskBubble(m: AskMessage) {
                 .padding(horizontal = 14.dp, vertical = 12.dp),
         ) {
             MarkdownText(m.text)
+            CoachActionButtons(vm, m.actions)
             if (m.sources.isNotEmpty()) {
                 Gap(8.dp)
                 CaptionText("Aus deinem Material: " + m.sources.joinToString(" · "))

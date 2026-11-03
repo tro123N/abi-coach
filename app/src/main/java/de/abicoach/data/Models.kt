@@ -176,6 +176,10 @@ data class Debrief(
     /** Which AI graded (e.g. "Claude Opus 5.5") and which one listened to the recording. */
     val gradedBy: String = "",
     val listenedBy: String = "",
+    /** Where each task of the presentation begins: task number and the first words said for it. */
+    val segments: List<Pair<Int, String>> = emptyList(),
+    /** The recording suggests that the student read out the notes. */
+    val readingAloud: Boolean = false,
 ) {
     val stars: Int get() = when {
         totalPoints >= 13 -> 3
@@ -204,6 +208,8 @@ data class Debrief(
             .put("courseLinks", courseLinks.toJsonArray())
             .put("gradedBy", gradedBy)
             .put("listenedBy", listenedBy)
+            .put("segments", segments.toJsonArray { JSONObject().put("number", it.first).put("firstWords", it.second) })
+            .put("readingAloud", readingAloud)
     }
 
     companion object {
@@ -230,6 +236,8 @@ data class Debrief(
                 courseLinks = o.optJSONArray("courseLinks").strings(),
                 gradedBy = o.optString("gradedBy"),
                 listenedBy = o.optString("listenedBy"),
+                segments = o.optJSONArray("segments").objects().map { it.optInt("number") to it.optString("firstWords") },
+                readingAloud = o.optBoolean("readingAloud"),
             )
         }
     }

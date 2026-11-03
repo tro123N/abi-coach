@@ -38,6 +38,10 @@ class AbiCoachApp : Application() {
         private set
     lateinit var path: PathStore
         private set
+    lateinit var vocab: de.abicoach.practice.VocabStore
+        private set
+    lateinit var pron: de.abicoach.practice.PronStore
+        private set
 
     /** The worlds of the Abi-Weg; topic fields with the most material come first. */
     fun worlds(): List<World> = Curriculum.worlds(course.coveredTopics().map { it.first })
@@ -62,6 +66,8 @@ class AbiCoachApp : Application() {
         course = CourseContext(memory, Retriever(memory, ai), settings, profiles)
         feedback = Feedback(this, { settings.sound }, { settings.vibration })
         path = PathStore(this)
+        vocab = de.abicoach.practice.VocabStore(this)
+        pron = de.abicoach.practice.PronStore(this)
         de.abicoach.path.Reminder.createChannel(this)
         resumeReading()
     }

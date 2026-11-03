@@ -18,6 +18,8 @@ Android-App zur Vorbereitung auf die **mündliche Abiturprüfung Englisch in NRW
 - **Prüfungssimulation** wie im Abi: neuer Text mit drei Aufgaben (1. zusammenfassen, 2. analysieren, z. B. „Examine how the author perceives …“, 3. kommentieren), Vorbereitungszeit, Vortrag, Prüfungsgespräch mit Themenwechsel.
 - **Einzelne Aufgaben** üben (nur Zusammenfassen, nur Analysieren, nur Kommentieren), **Prüfungsgespräch** und **freies Gesprächstraining**.
 - Drei Rückmelde-Stufen: *Prüfung* (keine Unterbrechung), *Flüstern* (Vibration und Korrektur auf dem Bildschirm), *Coach* (der Prüfer unterbricht dich sofort und lässt dich wiederholen).
+- **Gezielt trainieren:** *Gesprächs-Sprint* (3 Minuten, so viel wie möglich sprechen), *Wortschatz* mit Wiederholung nach Plan (Redemittel, 15-Punkte-Sätze, deine Fehler und der Wortschatz aus deinem Kurs), *Aussprache-Labor* (anhören, nachsprechen, Bewertung pro Wort) und der *KI-Coach*, der dir passende Übungen als Knöpfe vorschlägt.
+- **Vortrags-Coach** in der Auswertung: Zeit pro Aufgabe gegen die Empfehlung, Tempo (Wörter pro Minute), Füllwörter, lange Pausen und eine Warnung, wenn du abliest.
 - **Auswertung** nach dem NRW-Raster (Inhalt 40 %, Darstellungsleistung 60 %): Punkte und Sterne, größte Hebel, jede Aufgabe gegen den Erwartungshorizont, Kompetenzen, Fehler mit Zitat, „So klingt es nach 15 Punkten“ zum Anhören, Aussprache, passende Inhalte aus deinem Kurs, Redemittel.
 
 ### Mein Kurs – das Gedächtnis
@@ -28,6 +30,7 @@ Android-App zur Vorbereitung auf die **mündliche Abiturprüfung Englisch in NRW
 - **Frag dein Material:** Chat mit dem KI-Coach, der mit Fundstellen aus deinem Material antwortet.
 
 ### Statistik
+- **So bewertet deine Lehrkraft:** Kommentare und häufigste Anstreichungen aus deinen Klausuren.
 - Verlauf der Prognose, alle Kompetenzen, Übungszeit pro Tag, häufigste Fehler (Übungen und Klausuren) mit „Gezielt üben“, Themenfelder (geübt und Material), alle Sitzungen.
 
 ## Welche KI was macht
@@ -62,6 +65,7 @@ Pflicht ist nur der **Gemini-Schlüssel** (aistudio.google.com/apikey). Die Schl
 - `memory/` – Import, Lesen im Hintergrund (WorkManager), Abschnitte, Vektoren, Auswertung, hybride Suche, Kurs-Kontext für alle Prompts
 - `profile/` – Lernprofil nach dem NRW-Raster, Prognose, Hebel
 - `path/` – Abi-Weg: Welten und Levels (`Curriculum`), Freischalten, Sterne und Wiederholungsplan (`PathEngine`), Erinnerung
+- `practice/` – Wortschatz-Karten mit Wiederholungsplan, Vortrags-Kennzahlen, Aussprache-Labor
 - `session/` – Prompts, Live-Gespräch, Live-Fehlerprüfung, Material und Auswertung
 - `ui/` – Oberfläche im Stil von Mental Math Plus (Farbthemen, Karten, Sterne, Töne)
 

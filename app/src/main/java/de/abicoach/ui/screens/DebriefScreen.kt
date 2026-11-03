@@ -116,6 +116,7 @@ fun DebriefScreen(vm: AppViewModel, id: String) {
             }
         }
         if (d.taskReviews.isNotEmpty()) TaskReviewCard(record, d)
+        if (record.kind.hasPart1) TalkCoachCard(record, d)
         record.task?.let { task ->
             if (task.tasks.any { it.expectations.isNotEmpty() }) {
                 ExpandableCard("Erwartungshorizont", subtitle = "Was ein 15-Punkte-Vortrag enthalten hätte", icon = R.drawable.checklist_24dp) {
@@ -168,6 +169,14 @@ fun DebriefScreen(vm: AppViewModel, id: String) {
                     }
                     Gap(8.dp)
                 }
+                ActionButton(
+                    "Im Aussprache-Labor üben",
+                    R.drawable.mic_24dp,
+                    accent,
+                    { vm.stopSpeaking(); vm.openPronunciation(d.pronunciation.first().word) },
+                    subtitle = "Nachsprechen und sofort eine Bewertung bekommen",
+                    container = MaterialTheme.colorScheme.background,
+                )
             }
         }
         if (d.contentFeedback.isNotEmpty()) {
@@ -195,6 +204,7 @@ fun DebriefScreen(vm: AppViewModel, id: String) {
                     }
                     Gap(10.dp)
                 }
+                CaptionText("Alle Redemittel stehen jetzt auch in deinem Wortschatz zum Wiederholen.")
             }
         }
         TranscriptSection(record)

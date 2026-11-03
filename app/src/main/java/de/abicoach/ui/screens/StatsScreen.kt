@@ -168,6 +168,7 @@ fun StatsScreen(vm: AppViewModel) {
                 }
             }
         }
+        item { ExaminerProfileCard(vm) }
         item {
             AbiCard {
                 CardTitle("Themenfelder", icon = R.drawable.hub_24dp)

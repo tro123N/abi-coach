@@ -218,6 +218,7 @@ class IngestPipeline(private val app: AbiCoachApp) {
             }
         val digest = parseDigest(json, doc)
         store.saveDigest(doc.id, digest)
+        app.vocab.addAll(de.abicoach.practice.PracticeFeed.fromDigest(digest))
         store.retagChunks(doc.id, digest.topics)
         store.update(doc.id) {
             it.copy(

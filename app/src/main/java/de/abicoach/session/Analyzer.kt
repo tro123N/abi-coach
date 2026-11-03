@@ -180,14 +180,72 @@ class Analyzer(private val app: AbiCoachApp) {
 
 /** "Frag dein Material": answers a question with passages from the student's own course. */
 object MaterialQuestion {
-    data class Answer(val text: String, val hits: List<Hit>, val by: String)
+    data class Answer(val text: String, val hits: List<Hit>, val by: String, val actions: List<CoachAction>)
 
     suspend fun ask(app: AbiCoachApp, question: String, history: List<Pair<String, String>> = emptyList()): Answer {
         val (passages, hits) = app.course.forQuery(question)
-        val request = Prompts.askRequest(question, passages, app.course.overview(1_200))
+        val request = Prompts.askRequest(question, passages, app.course.overview(1_200), pathNote(app))
         val turns = history.takeLast(6) + ("user" to request)
-        val (text, by) = app.ai.brainText(Prompts.ASK_SYSTEM, turns)
-        return Answer(text, hits, by)
+        val (raw, by) = app.ai.brainText(Prompts.ASK_SYSTEM, turns)
+        val (text, actions) = CoachAction.extract(raw)
+        return Answer(text, hits, by, actions)
+    }
+
+    /** What the coach knows about the student's state: forecast, levers and the levels it may suggest. */
+    private fun pathNote(app: AbiCoachApp): String {
+        val worlds = app.worlds()
+        val progress = app.path.progress.value
+        val profile = app.profiles.profile.value
+        val sb = StringBuilder("Stand des Schülers:")
+        profile.prognosis()?.let { sb.append(" Prognose ").append(it.points).append(" Punkte.") }
+        val levers = profile.levers(3)
+        if (levers.isNotEmpty()) sb.append(" Größte Hebel: ").append(levers.joinToString(", ") { it.label }).append('.')
+        val next = de.abicoach.path.PathEngine.next(worlds, progress, profile)
+        val due = de.abicoach.path.PathEngine.due(worlds, progress).take(3)
+        val ids = (listOfNotNull(next) + due).map { "${it.level.id} = ${it.level.title}" } +
+            de.abicoach.path.PathEngine.all(worlds).filter { it.world.id in setOf("w2", "w3", "w4", "w5", "w6") }.map { "${it.level.id} = ${it.level.title}" }
+        sb.append("\nLevel-IDs: ").append(ids.distinct().take(30).joinToString("; "))
+        return sb.toString()
+    }
+}
+
+/** A button under a coach answer that starts an exercise. */
+data class CoachAction(val kind: String, val arg: String = "") {
+    val label: String
+        get() =
+            when (kind) {
+                "aufgabe1" -> "Zusammenfassen üben"
+                "aufgabe2" -> "Analysieren üben"
+                "aufgabe3" -> "Kommentieren üben"
+                "vortrag" -> "Ganzen Vortrag üben"
+                "gespraech" -> "Prüfungsgespräch üben"
+                "sprint" -> "Gesprächs-Sprint"
+                "simulation" -> "Prüfungssimulation"
+                "wortschatz" -> "Wortschatz wiederholen"
+                "aussprache" -> "Aussprache-Labor"
+                "level" -> "Level: " + (de.abicoach.path.Curriculum.level(arg)?.title ?: arg)
+                else -> kind
+            }
+
+    companion object {
+        private val KINDS = setOf("aufgabe1", "aufgabe2", "aufgabe3", "vortrag", "gespraech", "sprint", "simulation", "wortschatz", "aussprache", "level")
+        private val TAG = Regex("\\[\\[\\s*([a-zA-Z0-9]+)\\s*(?::\\s*([\\w.]+))?\\s*]]")
+
+        /** Removes the action markers from the text and returns the valid actions. */
+        fun extract(raw: String): Pair<String, List<CoachAction>> {
+            val actions =
+                TAG.findAll(raw).mapNotNull { m ->
+                    val kind = m.groupValues[1].lowercase()
+                    val arg = m.groupValues[2]
+                    when {
+                        kind !in KINDS -> null
+                        kind == "level" && de.abicoach.path.Curriculum.level(arg) == null -> null
+                        else -> CoachAction(kind, arg)
+                    }
+                }.distinct().take(3).toList()
+            val text = raw.replace(TAG, "").replace(Regex("\n{3,}"), "\n\n").trim()
+            return text to actions
+        }
     }
 }
 

@@ -20,6 +20,8 @@ sealed interface Target {
 
     data object ExamDate : Target
 
+    data object Vocab : Target
+
     data class Setup(val setup: SessionSetup) : Target
 }
 
@@ -51,7 +53,18 @@ data class SessionSetup(
     /** Length of a conversation (part 2 or training) in minutes. */
     val talkMinutes: Int = if (kind == SessionKind.PART2) 10 else 8,
 ) {
+    val isSprint: Boolean get() = instruction == SPRINT_INSTRUCTION
+
     companion object {
+        const val SPRINT_INSTRUCTION =
+            "This is a 3-minute speaking sprint to build fluency. Ask one demanding open question at a time and keep your own turns to one short sentence. " +
+                "Push the student to answer at length with reasons and examples (\"Why?\", \"Can you give an example?\", \"What would critics say?\"), and move quickly to a new aspect when an answer is complete. " +
+                "Do not summarise or give feedback at the end."
+
+        /** A short, intense conversation: 3 minutes of speaking as much as possible. */
+        fun sprint(defaultFeedback: FeedbackMode): SessionSetup =
+            SessionSetup(SessionKind.TRAINING, feedback = defaultFeedback, instruction = SPRINT_INSTRUCTION, talkMinutes = 3)
+
         fun defaults(kind: SessionKind, focusTask: Int = 0, defaultFeedback: FeedbackMode): SessionSetup =
             when (kind) {
                 SessionKind.SIMULATION -> SessionSetup(kind, prepMinutes = 30, feedback = FeedbackMode.PRUEFUNG)
@@ -135,6 +148,10 @@ object Planner {
                     Target.Setup(SessionSetup.defaults(SessionKind.SIMULATION, 0, feedback)),
                 ),
             )
+        }
+        val dueCards = app.vocab.due().size
+        if (dueCards >= 5) {
+            out += Recommendation("Wortschatz wiederholen", "$dueCards Karten sind fällig – dauert etwa ${(dueCards + 5) / 6} Min.", R.drawable.note_stack_24dp, Tint.YELLOW, Target.Vocab)
         }
         if (daysUntilExam(app) == null) {
             out += Recommendation("Prüfungstermin eintragen", "Dann plant die App bis zum Tag der Prüfung.", R.drawable.event_24dp, Tint.NEUTRAL, Target.ExamDate)

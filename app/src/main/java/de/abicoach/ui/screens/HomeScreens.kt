@@ -223,6 +223,8 @@ fun TrainingScreen(vm: AppViewModel) {
     val sessions by app.store.sessions.collectAsState()
     val feedback = app.settings.defaultFeedback
     val focus = remember(sessions) { Planner.topErrorCategories(app, 2) }
+    val cards by app.vocab.cards.collectAsState()
+    val dueCards = remember(cards) { app.vocab.due().size }
 
     fun lastPoints(kind: SessionKind, task: Int = 0): String? =
         sessions.firstOrNull { it.kind == kind && it.focusTask == task && it.debrief != null }?.debrief?.let { "${it.totalPoints} P." }
@@ -352,6 +354,50 @@ fun TrainingScreen(vm: AppViewModel) {
                         container = MaterialTheme.colorScheme.background,
                     )
                 }
+            }
+        }
+        item {
+            AbiCard(modifier = Modifier.testTag("train_coach")) {
+                CardTitle("Gezielt trainieren", icon = R.drawable.target_24dp, iconTint = yellow)
+                ActionButton(
+                    "Gesprächs-Sprint",
+                    R.drawable.speed_24dp,
+                    accent,
+                    { open(SessionSetup.sprint(feedback)) },
+                    subtitle = "3 Min. so viel wie möglich sprechen – für flüssige, lange Antworten",
+                    container = MaterialTheme.colorScheme.background,
+                    modifier = Modifier.testTag("train_sprint"),
+                )
+                Gap(8.dp)
+                ActionButton(
+                    "Wortschatz wiederholen",
+                    R.drawable.note_stack_24dp,
+                    if (dueCards > 0) yellow else green,
+                    { vm.openVocab() },
+                    subtitle = if (cards.isEmpty()) "Füllt sich mit jeder Auswertung und deinem Kursmaterial" else "${cards.size} Karten · nach 1, 3, 7 … Tagen wieder",
+                    trailing = if (dueCards > 0) "$dueCards fällig" else null,
+                    container = MaterialTheme.colorScheme.background,
+                    modifier = Modifier.testTag("train_vocab"),
+                )
+                Gap(8.dp)
+                ActionButton(
+                    "Aussprache-Labor",
+                    R.drawable.graphic_eq_24dp,
+                    accent,
+                    { vm.openPronunciation() },
+                    subtitle = "Anhören, nachsprechen, Bewertung pro Wort",
+                    container = MaterialTheme.colorScheme.background,
+                    modifier = Modifier.testTag("train_pron"),
+                )
+                Gap(8.dp)
+                ActionButton(
+                    "KI-Coach fragen",
+                    R.drawable.psychology_24dp,
+                    accent,
+                    { vm.tap(); vm.nav.push(Screen.Ask) },
+                    subtitle = "Fragen zu deinem Kurs – er schlägt dir passende Übungen vor",
+                    container = MaterialTheme.colorScheme.background,
+                )
             }
         }
         val recent = sessions.take(3)

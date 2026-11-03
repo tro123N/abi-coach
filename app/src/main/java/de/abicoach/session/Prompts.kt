@@ -265,6 +265,8 @@ ${skillLines()}
 - content_feedback: was inhaltlich fehlte (Aufgabenbezug, Tiefe im Anforderungsbereich III, Beispiele, Verknüpfung von Themen).
 - course_links: bis zu 4 Inhalte aus dem eigenen Kursmaterial des Schülers, die gepasst hätten, mit Fundstelle in Klammern (leer, wenn kein Material vorliegt).
 - phrases: 5–8 nützliche englische Redemittel passend zum Thema und zu den Lücken, mit deutscher Bedeutung und einem Beispielsatz.
+- segments: nur bei einem Vortrag (Teil 1): für jede bearbeitete Aufgabe die Nummer und die ersten 4–8 Wörter, mit denen der Prüfling diese Aufgabe beginnt, wörtlich aus dem Transkript. Sonst leer.
+- reading_aloud: true, wenn der Prüfling offensichtlich abliest statt frei zu sprechen (aus Audio oder Audio-Auswertung erkennbar), sonst false.
 - student_transcript: nur ausfüllen, wenn das mitgelieferte Transkript des Prüflings leer ist und Audio vorliegt: dann das Gesagte wortgetreu aus dem Audio. Sonst leer.
         """.trimIndent()
 
@@ -321,6 +323,8 @@ ${skillLines()}
             "content_feedback" to arr(str()),
             "course_links" to arr(str()),
             "phrases" to arr(obj("phrase" to str(), "meaning_de" to str(), "example" to str())),
+            "segments" to arr(obj("number" to int(), "first_words" to str())),
+            "reading_aloud" to de.abicoach.ai.bool(),
             "student_transcript" to str(),
         )
 
@@ -401,6 +405,8 @@ Du hörst die Aufnahme eines deutschen Schülers, der für die mündliche Englis
             courseLinks = o.optJSONArray("course_links").strings(),
             gradedBy = gradedBy,
             listenedBy = listenedBy,
+            segments = o.optJSONArray("segments").objects().map { it.optInt("number") to it.optString("first_words") }.filter { it.first in 1..3 && it.second.isNotBlank() },
+            readingAloud = o.optBoolean("reading_aloud") || (listening?.optBoolean("reading_aloud") ?: false),
         )
     }
 
@@ -425,11 +431,15 @@ Du bist der KI-Coach in einer App, die einen Schüler auf die mündliche Abiturp
 Beantworte seine Frage auf Deutsch (englische Fachbegriffe und Beispielsätze auf Englisch), knapp und konkret, mit Markdown.
 Stütze dich zuerst auf die mitgelieferten Auszüge aus seinem eigenen Kursmaterial und nenne die Fundstelle als [1], [2] … Wenn das Material die Frage nicht beantwortet, sag das und antworte aus deinem Wissen (dann ohne Fundstelle).
 Wenn es zur Prüfung passt, schließe mit einem kurzen Tipp, wie er das im Vortrag oder im Gespräch nutzen kann.
+Du kannst passende Übungen der App als Knöpfe vorschlagen (höchstens zwei, nur wenn sie wirklich weiterhelfen). Schreib dafür ans Ende eine eigene Zeile mit Markierungen wie [[aufgabe2]]:
+[[aufgabe1]] Zusammenfassen üben · [[aufgabe2]] Analysieren üben · [[aufgabe3]] Kommentieren üben · [[vortrag]] ganzer Vortrag · [[gespraech]] Prüfungsgespräch · [[sprint]] 3-Minuten-Gesprächssprint · [[simulation]] ganze Prüfung · [[wortschatz]] Wortschatz wiederholen · [[aussprache]] Aussprache-Labor · [[level:ID]] ein Level des Abi-Wegs (nur IDs aus der Liste unten).
+Der Schüler führt die Übungen selbst aus – du sagst nie, dass du etwas gestartet hast.
         """.trimIndent()
 
-    fun askRequest(question: String, passages: String, overview: String): String =
+    fun askRequest(question: String, passages: String, overview: String, pathNote: String = ""): String =
         buildString {
             if (overview.isNotBlank()) append(overview).append("\n\n")
+            if (pathNote.isNotBlank()) append(pathNote).append("\n\n")
             append("Auszüge aus dem Material:\n").append(passages.ifBlank { "(keine passenden Auszüge gefunden)" })
             append("\n\nFrage: ").append(question)
         }
