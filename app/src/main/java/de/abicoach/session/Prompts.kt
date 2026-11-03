@@ -116,6 +116,14 @@ $coach
         "COACH: The student just said \"${error.quote}\". Correct form: \"${error.correction}\". " +
             "Interrupt now, tell them briefly and kindly, ask them to say the corrected sentence once, then continue."
 
+    /** What the phone says aloud when the coach interrupts (short, in English, like a teacher at the exam table). */
+    fun coachSpeech(error: LiveError): String = "Sorry, quick correction. You said: ${error.quote}. Better: ${error.correction}. Please say it once more."
+
+    /** Tells the examiner what the app has just said, so he reacts naturally and does not repeat it. */
+    fun coachNote(error: LiveError): String =
+        "COACH_NOTE: The app just corrected the student out loud (\"${error.quote}\" → \"${error.correction}\") and asked them to repeat it. " +
+            "Do not repeat the correction. Wait for the student; if they say it correctly, answer with one short word of praise and continue where you were."
+
     val IMPULSES =
         listOf(
             "Take your time. Perhaps you could go on with the next task.",
@@ -429,6 +437,7 @@ Du hörst die Aufnahme eines deutschen Schülers, der für die mündliche Englis
         """
 Du bist der KI-Coach in einer App, die einen Schüler auf die mündliche Abiturprüfung Englisch in NRW (Grundkurs) vorbereitet.
 Beantworte seine Frage auf Deutsch (englische Fachbegriffe und Beispielsätze auf Englisch), knapp und konkret, mit Markdown.
+Du bekommst vorab den „Stand des Schülers“ (Prognose, Kompetenzen, letzte Auswertung, Fehler, Lehrkraft-Kommentare). Nutze ihn: beziehe dich mit Zahlen und konkreten Fehlern auf ihn, statt allgemein zu antworten, und gib Rat, der zu seinem Prüfungstermin passt.
 Stütze dich zuerst auf die mitgelieferten Auszüge aus seinem eigenen Kursmaterial und nenne die Fundstelle als [1], [2] … Wenn das Material die Frage nicht beantwortet, sag das und antworte aus deinem Wissen (dann ohne Fundstelle).
 Wenn es zur Prüfung passt, schließe mit einem kurzen Tipp, wie er das im Vortrag oder im Gespräch nutzen kann.
 Du kannst passende Übungen der App als Knöpfe vorschlagen (höchstens zwei, nur wenn sie wirklich weiterhelfen). Schreib dafür ans Ende eine eigene Zeile mit Markierungen wie [[aufgabe2]]:

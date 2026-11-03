@@ -19,6 +19,9 @@ Android-App zur Vorbereitung auf die **mündliche Abiturprüfung Englisch in NRW
 - **Einzelne Aufgaben** üben (nur Zusammenfassen, nur Analysieren, nur Kommentieren), **Prüfungsgespräch** und **freies Gesprächstraining**.
 - Drei Rückmelde-Stufen: *Prüfung* (keine Unterbrechung), *Flüstern* (Vibration und Korrektur auf dem Bildschirm), *Coach* (der Prüfer unterbricht dich sofort und lässt dich wiederholen).
 - **Gezielt trainieren:** *Gesprächs-Sprint* (3 Minuten, so viel wie möglich sprechen), *Wortschatz* mit Wiederholung nach Plan (Redemittel, 15-Punkte-Sätze, deine Fehler und der Wortschatz aus deinem Kurs), *Aussprache-Labor* (anhören, nachsprechen, Bewertung pro Wort) und der *KI-Coach*, der dir passende Übungen als Knöpfe vorschlägt.
+- **KI-Tagesplan:** Ganz oben auf dem Abi-Weg plant der Coach (Claude Opus) jeden Tag drei Schritte aus deinem Stand: Kompetenzen, letzte Auswertung, Fehler, Lehrkraft-Kommentare, Prüfungstermin. Jeder Schritt startet mit einem Tipp.
+- **Auswertung im Hintergrund:** Sie läuft weiter, wenn du die App schließt oder das Handy sperrst, und meldet sich mit einer Benachrichtigung. Das Einlesen von Kursmaterial auch.
+- **Flüstern und Coach** prüfen jeden Satz sofort (nach etwa 2–3 Sekunden), der Coach unterbricht, sobald du eine Pause machst, und die Karte zeigt, ob die Fehlerprüfung läuft.
 - **Vortrags-Coach** in der Auswertung: Zeit pro Aufgabe gegen die Empfehlung, Tempo (Wörter pro Minute), Füllwörter, lange Pausen und eine Warnung, wenn du abliest.
 - **Auswertung** nach dem NRW-Raster (Inhalt 40 %, Darstellungsleistung 60 %): Punkte und Sterne, größte Hebel, jede Aufgabe gegen den Erwartungshorizont, Kompetenzen, Fehler mit Zitat, „So klingt es nach 15 Punkten“ zum Anhören, Aussprache, passende Inhalte aus deinem Kurs, Redemittel.
 

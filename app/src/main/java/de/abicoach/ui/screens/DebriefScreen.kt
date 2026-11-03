@@ -209,6 +209,14 @@ fun DebriefScreen(vm: AppViewModel, id: String) {
         }
         TranscriptSection(record)
         ActionButton(
+            "Mit dem KI-Coach besprechen",
+            R.drawable.psychology_24dp,
+            accent,
+            { vm.stopSpeaking(); vm.askCoach("Besprich mit mir meine letzte Auswertung (${record.kind.label}, ${d.totalPoints} Punkte): Was waren die wichtigsten Gründe für die Punkte und was soll ich als Nächstes konkret üben?") },
+            subtitle = "Er kennt die Auswertung, deine Fehler und dein Kursmaterial",
+            modifier = Modifier.testTag("debrief_coach"),
+        )
+        ActionButton(
             "Noch einmal üben",
             R.drawable.refresh_24dp,
             accent,

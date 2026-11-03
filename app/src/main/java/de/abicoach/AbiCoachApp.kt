@@ -1,6 +1,8 @@
 package de.abicoach
 
+import android.app.Activity
 import android.app.Application
+import android.os.Bundle
 import de.abicoach.ai.AiHub
 import de.abicoach.audio.Feedback
 import de.abicoach.data.SessionStore
@@ -42,6 +44,17 @@ class AbiCoachApp : Application() {
         private set
     lateinit var pron: de.abicoach.practice.PronStore
         private set
+    lateinit var briefings: de.abicoach.coach.BriefingStore
+        private set
+    val analysis = de.abicoach.session.AnalysisCenter()
+
+    /** A message from background work (e.g. "Gemini hat übernommen") that the app shows once. */
+    @Volatile var pendingNotice: String? = null
+
+    private var startedActivities = 0
+
+    /** True while an activity of the app is on screen. */
+    val isVisible: Boolean get() = startedActivities > 0
 
     /** The worlds of the Abi-Weg; topic fields with the most material come first. */
     fun worlds(): List<World> = Curriculum.worlds(course.coveredTopics().map { it.first })
@@ -68,7 +81,30 @@ class AbiCoachApp : Application() {
         path = PathStore(this)
         vocab = de.abicoach.practice.VocabStore(this)
         pron = de.abicoach.practice.PronStore(this)
+        briefings = de.abicoach.coach.BriefingStore(this)
         de.abicoach.path.Reminder.createChannel(this)
+        de.abicoach.session.Notifications.createChannels(this)
+        registerActivityLifecycleCallbacks(
+            object : Application.ActivityLifecycleCallbacks {
+                override fun onActivityStarted(activity: Activity) {
+                    startedActivities++
+                }
+
+                override fun onActivityStopped(activity: Activity) {
+                    startedActivities = (startedActivities - 1).coerceAtLeast(0)
+                }
+
+                override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) = Unit
+
+                override fun onActivityResumed(activity: Activity) = Unit
+
+                override fun onActivityPaused(activity: Activity) = Unit
+
+                override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
+
+                override fun onActivityDestroyed(activity: Activity) = Unit
+            },
+        )
         resumeReading()
     }
 

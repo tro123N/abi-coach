@@ -82,7 +82,7 @@ class ReminderWorker(context: Context, params: WorkerParameters) : CoroutineWork
         if (app.store.minutesToday() >= app.settings.dailyMinutes) return Result.success()
         if (!Reminder.canNotify(app)) return Result.success()
         val intent =
-            Intent(app, MainActivity::class.java).apply { flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP }
+            Intent(app, MainActivity::class.java).apply { flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP }
         val pending = PendingIntent.getActivity(app, 0, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val notification =
             NotificationCompat.Builder(app, Reminder.CHANNEL)

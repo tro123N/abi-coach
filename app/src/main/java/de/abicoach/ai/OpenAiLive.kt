@@ -48,6 +48,9 @@ class OpenAiLiveAgent(
     override val label: String = "GPT-Live-1"
     override val outputRate: Int = 24_000
 
+    /** "instructions.append" only changes what the model knows; it does not start a spoken answer. */
+    override val speaksOnInstruction: Boolean = false
+
     private val url = "wss://api.openai.com/v1/live/sessions"
     private val ids = AtomicInteger(0)
     private val resampler = LinearResampler(16_000, 24_000)

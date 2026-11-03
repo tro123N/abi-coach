@@ -128,8 +128,17 @@ fun SessionRow(record: SessionRecord, onClick: () -> Unit) {
 /** Fehler- und Hinweisbänder, die auf mehreren Seiten erscheinen. */
 @Composable
 fun MessageBanners(vm: AppViewModel) {
-    if (vm.errorMessage == null && vm.notice == null) return
+    if (vm.errorMessage == null && vm.notice == null && vm.readyDebrief == null) return
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        vm.readyDebrief?.let { (id, points) ->
+            Banner(
+                "Deine Auswertung ist fertig: $points Punkte. Tippe zum Ansehen.",
+                accent,
+                icon = R.drawable.task_alt_24dp,
+                onClose = { vm.readyDebrief = null },
+                modifier = Modifier.clip(RoundedCornerShape(16.dp)).clickable { vm.readyDebrief = null; vm.tap(); vm.nav.push(de.abicoach.ui.Screen.Debrief(id)) }.testTag("ready_debrief"),
+            )
+        }
         vm.errorMessage?.let { Banner(it, red, icon = R.drawable.error_24dp, onClose = { vm.errorMessage = null }) }
         vm.notice?.let { Banner(it, green, icon = R.drawable.info_24dp, onClose = { vm.notice = null }) }
     }

@@ -80,8 +80,9 @@ fun AbiWegScreen(vm: AppViewModel) {
                 text = "Die App kennt deinen Kurs, misst deinen Stand und sagt dir jeden Tag, was am meisten Punkte bringt.",
             )
         }
-        if (vm.errorMessage != null || vm.notice != null) item { MessageBanners(vm) }
+        if (vm.errorMessage != null || vm.notice != null || vm.readyDebrief != null) item { MessageBanners(vm) }
         item { OverviewCard(vm, profile) }
+        item { BriefingCard(vm) }
         item { ClimbCard(vm, worlds, progress, profile) }
         if (recommendations.isNotEmpty()) item { TodayCard(vm, recommendations) }
         worlds.forEachIndexed { index, world ->
@@ -247,7 +248,7 @@ fun TrainingScreen(vm: AppViewModel) {
                 text = "Die ganze Prüfung, ein Teil oder eine einzelne Aufgabe – jedes Mal mit Auswertung nach dem NRW-Raster.",
             )
         }
-        if (vm.errorMessage != null || vm.notice != null) item { MessageBanners(vm) }
+        if (vm.errorMessage != null || vm.notice != null || vm.readyDebrief != null) item { MessageBanners(vm) }
         item {
             AbiCard {
                 CardTitle("Ganze Prüfung", icon = R.drawable.workspace_premium_24dp, iconTint = green)

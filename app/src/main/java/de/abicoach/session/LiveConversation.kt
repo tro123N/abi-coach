@@ -46,6 +46,9 @@ data class LiveUiState(
     val hasExaminer: Boolean = false,
     val info: String? = null,
     val error: String? = null,
+    /** One line about the live error check ("Claude Haiku 5.5 · 6 Prüfungen"), or the reason it is not working. */
+    val checkInfo: String? = null,
+    val checkFailed: Boolean = false,
 )
 
 /**
@@ -101,6 +104,15 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
 
     @Volatile private var muteUntil = 0L
 
+    /** A correction the coach wants to say as soon as the student pauses. */
+    @Volatile private var pendingCoach: LiveError? = null
+
+    @Volatile private var pendingSince = 0L
+
+    @Volatile private var lastCoachAt = 0L
+
+    @Volatile private var lastBuzzAt = 0L
+
     @Volatile private var examinerSeconds = 0.0
 
     @Volatile private var finished = false
@@ -131,7 +143,7 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
         }
 
         if (config.feedback != FeedbackMode.PRUEFUNG) {
-            checker = LiveChecker(app.ai, scope, config.checkerContext, ::onLiveErrors).also { it.start() }
+            checker = LiveChecker(app.ai, scope, config.checkerContext, ::onLiveErrors, ::onCheckerStatus).also { it.start() }
         }
 
         mic = MicStreamer(::onMic).also { it.start(scope) }
@@ -154,6 +166,7 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
             muteUntil = now + 5_000
             tts.say(Prompts.IMPULSES.random())
         }
+        deliverCoach(now)
         // The examiner ends the conversation politely when the time is up.
         if (examiner != null && !timeUpSent && seconds >= config.targetSeconds + 20) {
             timeUpSent = true
@@ -195,6 +208,7 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
             is LiveEvent.UserInterim -> {
                 if (event.text.isNotBlank()) lastSpeechAt = System.currentTimeMillis()
                 _state.update { it.copy(interim = event.text) }
+                checker?.feedInterim(event.text)
             }
             is LiveEvent.UserText -> {
                 transcriberWorks = true
@@ -253,7 +267,7 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
         lastSpeechAt = System.currentTimeMillis()
         val utterance = Utterance(Speaker.STUDENT, clean, config.part, System.currentTimeMillis() - startedAt)
         _state.update { it.copy(utterances = it.utterances + utterance, interim = "") }
-        checker?.submit(clean)
+        checker?.feed(clean)
     }
 
     private fun flushExaminer(interrupted: Boolean) {
@@ -281,6 +295,17 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
         if (text.isNotEmpty()) addStudent(text)
     }
 
+    private fun onCheckerStatus(s: CheckerStatus) {
+        val ago = if (s.lastOkAt > 0) ((System.currentTimeMillis() - s.lastOkAt) / 1000).toInt() else -1
+        val text =
+            when {
+                s.failure != null -> "Fehlerprüfung gestört (${s.failure}) – die Auswertung findet die Fehler trotzdem."
+                s.checks == 0 -> "Fehlerprüfung bereit (${s.label}) – sie startet mit deinen ersten Sätzen."
+                else -> "Fehlerprüfung aktiv (${s.label}) · ${s.checks} Prüfungen" + if (ago >= 0) " · zuletzt vor ${ago.coerceAtLeast(0)} s" else ""
+            }
+        _state.update { it.copy(checkInfo = text, checkFailed = s.failure != null) }
+    }
+
     private fun onLiveErrors(errors: List<LiveError>) {
         _state.update { it.copy(liveErrors = it.liveErrors + errors) }
         if (config.feedback == FeedbackMode.PRUEFUNG || finished) return
@@ -289,15 +314,37 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
         val alert = important.firstOrNull() ?: errors.firstOrNull()?.takeIf { config.feedback == FeedbackMode.FLUESTERN }
         if (alert == null) return
         _state.update { it.copy(lastAlert = alert) }
-        app.feedback.buzz(FeedbackType.ALERT)
+        val now = System.currentTimeMillis()
+        if (now - lastBuzzAt > 3_000) {
+            lastBuzzAt = now
+            app.feedback.buzz(FeedbackType.ALERT)
+        }
         if (config.feedback == FeedbackMode.COACH && important.isNotEmpty()) {
-            val examinerAgent = examiner
-            if (examinerAgent != null) {
-                examinerAgent.sendInstruction(Prompts.coachMessage(alert))
-            } else {
-                muteUntil = System.currentTimeMillis() + 4_000
-                tts.say("Quick correction: ${alert.correction}")
-            }
+            if (pendingCoach == null) pendingSince = now
+            pendingCoach = important.first()
+        }
+    }
+
+    /**
+     * Coach mode: say the correction as soon as the student pauses (or after 6 seconds at the latest), never while
+     * the examiner is talking and at most every 15 seconds. The examiner speaks it himself when his voice model
+     * answers to app instructions (Gemini Live); otherwise the app says it with the phone's voice and tells him.
+     */
+    private fun deliverCoach(now: Long) {
+        val error = pendingCoach ?: return
+        if (finished || now - lastCoachAt < 15_000 || player.isPlaying(now) || now < muteUntil) return
+        val studentPaused = now - lastSpeechAt > 700
+        if (!studentPaused && now - pendingSince < 6_000) return
+        pendingCoach = null
+        lastCoachAt = now
+        val agent = examiner
+        if (agent != null && agent.speaksOnInstruction) {
+            agent.sendInstruction(Prompts.coachMessage(error))
+        } else {
+            val speech = Prompts.coachSpeech(error)
+            muteUntil = now + 1_500 + speech.length * 70L
+            tts.say(speech)
+            agent?.sendInstruction(Prompts.coachNote(error))
         }
     }
 

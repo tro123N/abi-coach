@@ -42,15 +42,27 @@ object IngestScheduler {
 
 /** Background job: works through the documents step by step and hands over to a new job after about 8 minutes. */
 class IngestWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
+    override suspend fun getForegroundInfo(): androidx.work.ForegroundInfo =
+        de.abicoach.session.Notifications.foreground(applicationContext, "AbiCoach liest dein Kursmaterial", "Seiten werden gelesen und gemerkt – du kannst die App verlassen.")
+
     override suspend fun doWork(): Result {
         val app = applicationContext as AbiCoachApp
         val pipeline = IngestPipeline(app)
         val started = System.currentTimeMillis()
+        var worked = 0
         while (System.currentTimeMillis() - started < 8 * 60_000L) {
             when (pipeline.step()) {
-                IngestPipeline.Step.IDLE -> return Result.success()
+                IngestPipeline.Step.IDLE -> {
+                    if (worked > 0 && !app.isVisible) {
+                        de.abicoach.session.Notifications.done(app, 4950, "Kursmaterial fertig gelesen", "Schulbuch, Klausuren und Notizen sind jetzt in deinem KI-Gedächtnis.")
+                    }
+                    return Result.success()
+                }
                 IngestPipeline.Step.OFFLINE -> return Result.retry()
-                IngestPipeline.Step.WORKED -> Unit
+                IngestPipeline.Step.WORKED -> {
+                    if (worked == 0) runCatching { setForeground(getForegroundInfo()) }
+                    worked++
+                }
             }
         }
         IngestScheduler.kick(applicationContext)

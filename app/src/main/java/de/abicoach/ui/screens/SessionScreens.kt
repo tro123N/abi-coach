@@ -62,6 +62,7 @@ import de.abicoach.ui.components.CardTitle
 import de.abicoach.ui.components.ChoiceChips
 import de.abicoach.ui.components.ExpandableCard
 import de.abicoach.ui.components.Gap
+import de.abicoach.ui.components.Tab
 import de.abicoach.ui.components.LevelBadge
 import de.abicoach.ui.components.LoadingCard
 import de.abicoach.ui.components.Pill
@@ -462,7 +463,7 @@ fun LiveScreen(vm: AppViewModel) {
             }
         }
         if (draft?.feedback != FeedbackMode.PRUEFUNG) {
-            AlertCard(state.lastAlert, state.liveErrors.size, draft?.feedback ?: FeedbackMode.FLUESTERN)
+            AlertCard(state.lastAlert, state.liveErrors.size, draft?.feedback ?: FeedbackMode.FLUESTERN, state.checkInfo, state.checkFailed)
         }
         if (state.part != 1 || vm.app.settings.showTranscript) {
             TranscriptCard(state.utterances, state.interim, state.examinerLive)
@@ -492,7 +493,7 @@ private fun MicPulse(level: Float, examinerSpeaking: Boolean) {
 }
 
 @Composable
-private fun AlertCard(alert: de.abicoach.data.LiveError?, count: Int, mode: FeedbackMode) {
+private fun AlertCard(alert: de.abicoach.data.LiveError?, count: Int, mode: FeedbackMode, checkInfo: String?, checkFailed: Boolean) {
     val dimens = AbiTheme.dimens
     AbiCard(border = if (alert != null) yellow.copy(alpha = 0.6f) else null, modifier = Modifier.testTag("live_alerts")) {
         CardTitle(if (mode == FeedbackMode.COACH) "Coach" else "Flüstern", icon = R.drawable.hearing_24dp, iconTint = yellow)
@@ -505,6 +506,10 @@ private fun AlertCard(alert: de.abicoach.data.LiveError?, count: Int, mode: Feed
             Text("→ „${alert.correction}“", fontSize = dimens.fonts.label, color = green)
             CaptionText(alert.explanation + " · " + Knowledge.categoryLabel(alert.category))
             if (count > 1) CaptionText("$count Hinweise bisher – alle kommen in die Auswertung.")
+        }
+        if (checkInfo != null) {
+            Gap(6.dp)
+            CaptionText(checkInfo, color = if (checkFailed) red else null)
         }
     }
 }
@@ -552,18 +557,35 @@ fun AnalyzingScreen(vm: AppViewModel) {
                 "Wer bei einer Frage hängt, darf nachfragen: „Could you rephrase the question, please?“",
             ).shuffled()
         }
+    val status by vm.app.analysis.status.collectAsState()
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var asked by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    val permission = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { }
+    // Android 13+: the "Auswertung fertig" notification needs a one-time permission.
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        if (!asked && !de.abicoach.session.Notifications.canNotify(context)) {
+            asked = true
+            permission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
     DetailScaffold(title = "Auswertung", onBack = { vm.tap(); vm.nav.pop() }, tag = "analyzing") {
-        val error = vm.errorMessage
+        val error = status.error ?: vm.errorMessage
         if (error != null) {
             Banner(error, red, icon = R.drawable.error_24dp)
-            vm.analyzingId?.let { id ->
+            status.id?.let { id ->
                 ActionButton("Erneut versuchen", R.drawable.refresh_24dp, accent, { vm.tap(); vm.analyze(id) }, modifier = Modifier.testTag("analyze_retry"))
             }
         } else {
             LoadingCard(
-                vm.progressText.ifBlank { "Bitte warten …" },
+                status.text.ifBlank { "Bitte warten …" },
                 detail = "Die KI hört deine Aufnahme an und bewertet nach dem NRW-Raster. Meist 30–90 Sekunden.",
             )
+            AbiCard {
+                CardTitle("Du musst nicht warten", icon = R.drawable.notifications_active_24dp, iconTint = green)
+                BodyText("Die Auswertung läuft im Hintergrund weiter, auch wenn du die App schließt oder das Handy sperrst. Sobald sie fertig ist, bekommst du eine Benachrichtigung.")
+                Gap(8.dp)
+                ActionButton("Weiter in der App stöbern", R.drawable.route_24dp, accent, { vm.tap(); vm.nav.openTab(Tab.WEG) }, container = MaterialTheme.colorScheme.background, modifier = Modifier.testTag("analyze_background"))
+            }
         }
         AbiCard {
             CardTitle("Gut zu wissen", icon = R.drawable.lightbulb_24dp, iconTint = yellow)

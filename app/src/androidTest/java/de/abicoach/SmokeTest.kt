@@ -115,6 +115,7 @@ class SmokeTest {
             app.store.deleteAll()
             app.profiles.reset()
             app.path.reset()
+            app.briefings.clear()
             app.memory.docs.value.forEach { app.memory.delete(it.id) }
             app.settings.themeMode = ThemeMode.LIGHT
             app.settings.geminiKey = ""
@@ -249,6 +250,38 @@ class SmokeTest {
         ui { vm.demoClear(); app.settings.palette = de.abicoach.ui.theme.Palette.WALD; vm.nav.openTab(Tab.WEG) }
         shot("dunkel_wald")
         ui { app.settings.palette = de.abicoach.ui.theme.Palette.STANDARD; app.settings.themeMode = ThemeMode.SYSTEM }
+    }
+
+    /** The evaluation runs as background work: it starts, shows its progress and ends in a clear error without keys. */
+    @Test
+    fun c_backgroundAnalysis() {
+        ui { Demo.seed(app) }
+        val vm = compose.activity.vm
+        val id = "demo-background"
+        ui {
+            app.store.save(
+                SessionRecord.create(SessionKind.PART2, FeedbackMode.FLUESTERN, 4, null).copy(
+                    id = id,
+                    startedAt = System.currentTimeMillis(),
+                    durationSec = 300,
+                    utterances = Demo.liveState(2).utterances,
+                ),
+            )
+            vm.openAnalysis(id)
+        }
+        shot("hintergrund_auswertung_start")
+        var seen = false
+        repeat(20) {
+            if (!seen) {
+                Thread.sleep(500)
+                val s = app.analysis.status.value
+                seen = s.id == id && (s.error != null || s.text.isNotBlank())
+            }
+        }
+        shot("hintergrund_auswertung_danach")
+        Log.i(TAG, "Hintergrund-Status: ${app.analysis.status.value}")
+        ui { vm.nav.openTab(Tab.WEG) }
+        shot("hintergrund_weiter_in_der_app")
     }
 
     companion object {
@@ -476,6 +509,21 @@ object Demo {
             )
         }
 
+        app.briefings.save(
+            de.abicoach.coach.Briefing(
+                date = LocalDate.now().toString(),
+                signature = de.abicoach.coach.BriefingMaker.signature(app),
+                headline = "Heute holst du bei der Analyse die meisten Punkte.",
+                focus = "Deine Analyse liegt bei 8 Punkten, Zusammenfassen schon bei 12. Mit Textbelegen (die dir auch deine Lehrkraft anstreicht) sind schnell 2–3 Punkte drin.",
+                steps =
+                    listOf(
+                        de.abicoach.coach.BriefingStep("Analysieren mit Belegen", "Aufgabe 2 ist dein größter Hebel: Behauptung – Zitat – Wirkung.", "aufgabe2"),
+                        de.abicoach.coach.BriefingStep("3-Minuten-Sprint", "Längere, flüssigere Antworten – dein Tempo ist gut, die Sätze noch kurz.", "sprint"),
+                        de.abicoach.coach.BriefingStep("Wortschatz wiederholen", "6 Karten sind fällig, darunter „come across as“.", "wortschatz"),
+                    ),
+                by = "Claude Opus 5.5",
+            ),
+        )
         app.vocab.reset()
         app.vocab.addAll(de.abicoach.practice.PracticeFeed.fromDebrief(debrief, 4))
         app.vocab.addAll(

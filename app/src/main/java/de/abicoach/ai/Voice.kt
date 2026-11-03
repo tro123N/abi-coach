@@ -40,6 +40,9 @@ interface VoiceAgent {
     /** 16 kHz mono PCM from the microphone, in chunks of about 100 ms. */
     fun sendAudio(pcm16k: ByteArray)
 
+    /** True if an instruction from the app makes the voice speak right away (a new turn), false if it only adds to what it knows. */
+    val speaksOnInstruction: Boolean
+
     /** An instruction from the app (start, coach correction, time is up). */
     fun sendInstruction(text: String)
 
@@ -54,6 +57,8 @@ class GeminiVoiceAgent(
     override val label: String,
 ) : VoiceAgent {
     override val outputRate: Int = 24_000
+
+    override val speaksOnInstruction: Boolean = true
 
     override fun connect() = socket.connect()
 

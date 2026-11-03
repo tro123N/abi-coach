@@ -130,8 +130,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         private set
     var progressText by mutableStateOf("")
         private set
-    var analyzingId by mutableStateOf<String?>(null)
-        private set
+
+    /** An evaluation that finished while the student was elsewhere: shown as a banner. */
+    var readyDebrief by mutableStateOf<Pair<String, Int>?>(null)
 
     /** Tasks of part 1 the student ticked off during the presentation. */
     val tasksDone = mutableStateListOf<Int>()
@@ -153,6 +154,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     private var setup: SessionSetup? = null
     private var job: Job? = null
+
+    init {
+        watchAnalysis()
+    }
 
     /** The text currently read aloud (for the "Vorlesen" buttons). */
     var speaking by mutableStateOf<String?>(null)
@@ -431,47 +436,80 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     // ---------- analysis ----------
 
-    fun analyze(id: String) {
-        val record = app.store.get(id) ?: return
-        errorMessage = null
-        analyzingId = id
-        progressText = "Bereite die Auswertung vor …"
-        job =
-            viewModelScope.launch {
-                try {
-                    val debrief = withContext(Dispatchers.Default) { Analyzer(app).analyze(record) { message -> progressText = message } }
-                    app.store.save(record.copy(debrief = debrief))
-                    app.vocab.addAll(de.abicoach.practice.PracticeFeed.fromDebrief(debrief, record.topicId))
-                    app.profiles.update { p ->
-                        val rated = p.withRatings(debrief.skills, record.kind.profileWeight, System.currentTimeMillis(), record.kind.short)
-                        if (record.kind == SessionKind.PLACEMENT) rated.copy(placementDone = true, placementAt = System.currentTimeMillis()) else rated
-                    }
-                    if (record.levelId.isNotBlank()) {
-                        de.abicoach.path.Curriculum.level(record.levelId)?.let { level ->
-                            val points = de.abicoach.path.PathEngine.pointsFor(level, debrief)
-                            app.path.update { de.abicoach.path.PathEngine.applyResult(it, level, points) }
-                        }
-                    }
-                    if (record.kind == SessionKind.PLACEMENT) {
-                        val profile = app.profiles.profile.value
-                        app.path.update { de.abicoach.path.PathEngine.applyPlacement(it, app.worlds(), profile) }
-                    }
-                    notice = app.ai.lastNotice.also { app.ai.lastNotice = null }
-                    app.feedback.play(de.abicoach.audio.Feedback.forPoints(debrief.totalPoints))
-                    if (nav.current == Screen.Analyzing) nav.replaceTop(Screen.Debrief(id)) else nav.push(Screen.Debrief(id))
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    errorMessage = "Auswertung fehlgeschlagen: ${e.message}"
-                } finally {
-                    progressText = ""
-                }
+    // ---------- AI daily plan ----------
+
+    var briefingBusy by mutableStateOf(false)
+        private set
+    var briefingError by mutableStateOf<String?>(null)
+        private set
+
+    /** Makes today's plan if there is none yet (or after a new evaluated session); [force] renews it. */
+    fun refreshBriefing(force: Boolean = false) {
+        if (briefingBusy || !de.abicoach.coach.BriefingMaker.worthIt(app)) return
+        val current = app.briefings.current.value
+        if (!force && current != null && current.signature == de.abicoach.coach.BriefingMaker.signature(app)) return
+        briefingBusy = true
+        briefingError = null
+        viewModelScope.launch {
+            try {
+                val made = withContext(Dispatchers.Default) { de.abicoach.coach.BriefingMaker.make(app) }
+                app.briefings.save(made)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                briefingError = "Der Tagesplan konnte nicht erstellt werden: ${e.message}"
+            } finally {
+                briefingBusy = false
             }
+        }
+    }
+
+    /** Opens the coach chat with a question already asked (e.g. from the debrief). */
+    fun askCoach(question: String) {
+        tap()
+        nav.push(Screen.Ask)
+        ask(question)
+    }
+
+    /** Starts the evaluation as background work: it keeps running when the app is closed. */
+    fun analyze(id: String) {
+        if (app.store.get(id) == null) return
+        errorMessage = null
+        readyDebrief = null
+        app.analysis.begin(id)
+        de.abicoach.session.AnalysisScheduler.enqueue(app, id)
     }
 
     fun openAnalysis(id: String) {
         nav.push(Screen.Analyzing)
+        val status = app.analysis.status.value
+        // Already running (e.g. opened from the notification): just show the progress.
+        if (status.id == id && status.error == null) return
         analyze(id)
+    }
+
+    /** A tap on the "Auswertung fertig" notification. */
+    fun openFromNotification(id: String) {
+        val record = app.store.get(id) ?: return
+        if (record.debrief != null) nav.push(Screen.Debrief(id)) else openAnalysis(id)
+    }
+
+    /** Reacts when the background evaluation finishes: jump to the result or show a banner. */
+    private fun watchAnalysis() {
+        viewModelScope.launch {
+            app.analysis.status.collect { s ->
+                val finished = s.finishedId ?: return@collect
+                app.analysis.consumeFinished()
+                app.pendingNotice?.let { notice = it }
+                app.pendingNotice = null
+                if (app.isVisible) app.feedback.play(de.abicoach.audio.Feedback.forPoints(s.points))
+                if (nav.current == Screen.Analyzing) {
+                    nav.replaceTop(Screen.Debrief(finished))
+                } else {
+                    readyDebrief = finished to s.points
+                }
+            }
+        }
     }
 
     // ---------- course material ----------

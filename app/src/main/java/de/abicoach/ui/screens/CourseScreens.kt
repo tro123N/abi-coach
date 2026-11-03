@@ -136,7 +136,7 @@ fun CourseScreen(vm: AppViewModel) {
                 text = "Lade das komplette Schulbuch, alle Klausuren und dein Unterrichtsmaterial hoch. Die KI liest alles und nutzt es für Prüfungstexte, Fragen und Auswertungen.",
             )
         }
-        if (vm.errorMessage != null || vm.notice != null) item { MessageBanners(vm) }
+        if (vm.errorMessage != null || vm.notice != null || vm.readyDebrief != null) item { MessageBanners(vm) }
         item {
             AbiCard(modifier = Modifier.testTag("course_add")) {
                 CardTitle("Hinzufügen", icon = R.drawable.cloud_upload_24dp)

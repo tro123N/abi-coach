@@ -439,3 +439,64 @@ fun CoachActionButtons(vm: AppViewModel, actions: List<CoachAction>) {
         }
     }
 }
+
+// ---------- AI daily plan (Abi-Weg) ----------
+
+private fun actionIcon(kind: String): Int =
+    when (kind) {
+        "aufgabe1" -> R.drawable.summarize_24dp
+        "aufgabe2" -> R.drawable.insights_24dp
+        "aufgabe3" -> R.drawable.rate_review_24dp
+        "vortrag" -> R.drawable.co_present_24dp
+        "gespraech" -> R.drawable.forum_24dp
+        "sprint" -> R.drawable.speed_24dp
+        "simulation" -> R.drawable.workspace_premium_24dp
+        "wortschatz" -> R.drawable.note_stack_24dp
+        "aussprache" -> R.drawable.graphic_eq_24dp
+        else -> R.drawable.route_24dp
+    }
+
+/** The plan the AI coach made for today from the student's profile, last sessions, errors and exam date. */
+@Composable
+fun BriefingCard(vm: AppViewModel) {
+    val briefing by vm.app.briefings.current.collectAsState()
+    val sessions by vm.app.store.sessions.collectAsState()
+    androidx.compose.runtime.LaunchedEffect(sessions.size, vm.app.settings.geminiKey) { vm.refreshBriefing(false) }
+    val b = briefing
+    if (b == null && !vm.briefingBusy && vm.briefingError == null) return
+    AbiCard(modifier = Modifier.testTag("briefing")) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            CardTitle("Dein Tagesplan vom KI-Coach", icon = R.drawable.psychology_24dp, modifier = Modifier.weight(1f))
+            if (!vm.briefingBusy && b != null) {
+                androidx.compose.material3.IconButton(onClick = { vm.tap(); vm.refreshBriefing(true) }) {
+                    androidx.compose.material3.Icon(androidx.compose.ui.res.painterResource(R.drawable.refresh_24dp), contentDescription = "Neu planen", tint = accent)
+                }
+            }
+        }
+        if (vm.briefingBusy && b == null) {
+            LoadingCard("Der Coach plant deinen Tag …", detail = "Er schaut auf deine Kompetenzen, Fehler und den Prüfungstermin.")
+        }
+        vm.briefingError?.let { Banner(it, red, icon = R.drawable.error_24dp) }
+        if (b != null) {
+            Text(b.headline, fontSize = AbiTheme.dimens.fonts.label * 1.05f, lineHeight = AbiTheme.dimens.fonts.label * 1.3f, color = MaterialTheme.colorScheme.onPrimary)
+            Gap(4.dp)
+            BodyText(b.focus)
+            Gap(10.dp)
+            b.steps.forEachIndexed { i, step ->
+                val action = step.parsed ?: return@forEachIndexed
+                if (i > 0) Gap(8.dp)
+                ActionButton(
+                    "${i + 1}. ${step.title}",
+                    actionIcon(action.kind),
+                    accent,
+                    { vm.runAction(action) },
+                    subtitle = step.why,
+                    container = MaterialTheme.colorScheme.background,
+                    modifier = Modifier.testTag("briefing_step_${i + 1}"),
+                )
+            }
+            Gap(6.dp)
+            CaptionText("Geplant von ${b.by} · erneuert sich täglich und nach jeder Auswertung")
+        }
+    }
+}

@@ -191,22 +191,7 @@ object MaterialQuestion {
         return Answer(text, hits, by, actions)
     }
 
-    /** What the coach knows about the student's state: forecast, levers and the levels it may suggest. */
-    private fun pathNote(app: AbiCoachApp): String {
-        val worlds = app.worlds()
-        val progress = app.path.progress.value
-        val profile = app.profiles.profile.value
-        val sb = StringBuilder("Stand des Schülers:")
-        profile.prognosis()?.let { sb.append(" Prognose ").append(it.points).append(" Punkte.") }
-        val levers = profile.levers(3)
-        if (levers.isNotEmpty()) sb.append(" Größte Hebel: ").append(levers.joinToString(", ") { it.label }).append('.')
-        val next = de.abicoach.path.PathEngine.next(worlds, progress, profile)
-        val due = de.abicoach.path.PathEngine.due(worlds, progress).take(3)
-        val ids = (listOfNotNull(next) + due).map { "${it.level.id} = ${it.level.title}" } +
-            de.abicoach.path.PathEngine.all(worlds).filter { it.world.id in setOf("w2", "w3", "w4", "w5", "w6") }.map { "${it.level.id} = ${it.level.title}" }
-        sb.append("\nLevel-IDs: ").append(ids.distinct().take(30).joinToString("; "))
-        return sb.toString()
-    }
+    private fun pathNote(app: AbiCoachApp): String = de.abicoach.coach.CoachContext.student(app)
 }
 
 /** A button under a coach answer that starts an exercise. */
@@ -228,6 +213,17 @@ data class CoachAction(val kind: String, val arg: String = "") {
             }
 
     companion object {
+        /** Reads "aufgabe2" or "level:w3.perceive"; null for anything unknown. */
+        fun parse(value: String): CoachAction? {
+            val kind = value.substringBefore(':').trim().lowercase()
+            val arg = value.substringAfter(':', "").trim()
+            return when {
+                kind !in KINDS -> null
+                kind == "level" && de.abicoach.path.Curriculum.level(arg) == null -> null
+                else -> CoachAction(kind, if (kind == "level") arg else "")
+            }
+        }
+
         private val KINDS = setOf("aufgabe1", "aufgabe2", "aufgabe3", "vortrag", "gespraech", "sprint", "simulation", "wortschatz", "aussprache", "level")
         private val TAG = Regex("\\[\\[\\s*([a-zA-Z0-9]+)\\s*(?::\\s*([\\w.]+))?\\s*]]")
 

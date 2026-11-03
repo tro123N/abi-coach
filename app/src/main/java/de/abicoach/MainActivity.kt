@@ -1,5 +1,6 @@
 package de.abicoach
 
+import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -17,11 +18,25 @@ import de.abicoach.ui.theme.LocalDarkTheme
 class MainActivity : ComponentActivity() {
     val vm: AppViewModel by viewModels()
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIntent(intent)
+    }
+
+    /** A tap on a "Auswertung fertig" notification opens that debrief. */
+    private fun handleIntent(intent: Intent?) {
+        val id = intent?.getStringExtra(de.abicoach.session.Notifications.EXTRA_DEBRIEF) ?: return
+        intent?.removeExtra(de.abicoach.session.Notifications.EXTRA_DEBRIEF)
+        vm.openFromNotification(id)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val app = application as AbiCoachApp
         enableEdgeToEdge()
         app.feedback.warmUp()
+        if (savedInstanceState == null) handleIntent(intent)
         setContent {
             // Reading the version redraws everything when the theme or the palette changes.
             val version = app.settings.version.collectAsState().value
