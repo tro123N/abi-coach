@@ -165,6 +165,23 @@ fun KeepScreenOn() {
 }
 
 /**
+ * Android 13+: notifications ("Dein Text ist fertig", "Auswertung fertig", "Vorbereitungszeit vorbei") need a one-time
+ * permission. Asked once while the page is shown; without it the work still runs, only the message is missing.
+ */
+@Composable
+fun AskNotificationPermission() {
+    val context = LocalContext.current
+    var asked by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        if (!asked && !de.abicoach.session.Notifications.canNotify(context)) {
+            asked = true
+            permission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+}
+
+/**
  * Returns a function that runs [action] once the microphone may be used (asks for permission if needed).
  */
 @Composable

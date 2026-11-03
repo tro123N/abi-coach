@@ -43,7 +43,8 @@ class LiveService : Service() {
                 .build()
         // Always promote first: a service started with startForegroundService must call this, even when it is about to stop.
         runCatching {
-            if (Build.VERSION.SDK_INT >= 29) {
+            // The "microphone" service type exists from Android 11 (API 30) on.
+            if (Build.VERSION.SDK_INT >= 30) {
                 startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
             } else {
                 startForeground(NOTIFICATION_ID, notification)

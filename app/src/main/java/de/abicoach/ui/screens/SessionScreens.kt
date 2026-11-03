@@ -222,6 +222,7 @@ fun SetupScreen(vm: AppViewModel, initial: SessionSetup) {
 @Composable
 fun GeneratingScreen(vm: AppViewModel) {
     BackHandler { vm.cancelGenerating() }
+    AskNotificationPermission()
     DetailScaffold(title = "Material wird erstellt", onBack = { vm.cancelGenerating() }, backIcon = R.drawable.close_24dp, tag = "generating") {
         LoadingCard(vm.progressText.ifBlank { "Einen Moment …" }, detail = "Meist 20–60 Sekunden. Die Vorbereitungszeit beginnt erst danach.")
         AbiCard {
