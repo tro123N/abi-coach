@@ -217,7 +217,7 @@ private fun VocabCardView(vm: AppViewModel, card: VocabCard) {
         Text(card.front, fontSize = dimens.fonts.label * 1.15f, lineHeight = dimens.fonts.label * 1.45f, color = MaterialTheme.colorScheme.onPrimary)
         Gap(16.dp)
         if (!vm.vocabRevealed) {
-            StartButton("Antwort zeigen", onClick = { vm.tap(); vm.vocabRevealed = true }, icon = R.drawable.visibility_24dp, iconTint = accent, modifier = Modifier.testTag("vocab_reveal"))
+            ActionButton("Antwort zeigen", R.drawable.visibility_24dp, accent, { vm.tap(); vm.vocabRevealed = true }, container = MaterialTheme.colorScheme.background, modifier = Modifier.testTag("vocab_reveal"))
         } else {
             Row(verticalAlignment = Alignment.Top) {
                 Text(card.back, fontSize = dimens.fonts.label * 1.15f, lineHeight = dimens.fonts.label * 1.45f, color = green, modifier = Modifier.weight(1f))
@@ -291,9 +291,9 @@ fun PronunciationScreen(vm: AppViewModel) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.weight(1f)) {
                     if (vm.pronRecording) {
-                        StartButton("Fertig", onClick = { vm.pronStop() }, icon = R.drawable.stop_24dp, iconTint = red, modifier = Modifier.testTag("pron_stop"))
+                        ActionButton("Fertig", R.drawable.stop_24dp, red, { vm.pronStop() }, container = MaterialTheme.colorScheme.background, modifier = Modifier.testTag("pron_stop"))
                     } else {
-                        StartButton("Aufnehmen", onClick = record, enabled = vm.pronTarget.isNotBlank() && !vm.pronBusy, icon = R.drawable.mic_24dp, modifier = Modifier.testTag("pron_record"))
+                        ActionButton("Aufnehmen", R.drawable.mic_24dp, green, record, enabled = vm.pronTarget.isNotBlank() && !vm.pronBusy, container = MaterialTheme.colorScheme.background, modifier = Modifier.testTag("pron_record"))
                     }
                 }
                 if (vm.pronTarget.isNotBlank()) SpeakButton(vm, vm.pronTarget)

@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.test.performTouchInput
@@ -202,6 +203,8 @@ class SmokeTest {
 
         ui { vm.nav.push(Screen.Debrief(Demo.SIMULATION)) }
         shot("auswertung")
+        runCatching { compose.onNodeWithTag("debrief_talk").performScrollTo() }
+        shot("auswertung_vortrags_coach")
         swipeShot("debrief", "auswertung_2", 1)
         swipeShot("debrief", "auswertung_3", 1)
         swipeShot("debrief", "auswertung_4", 2)
