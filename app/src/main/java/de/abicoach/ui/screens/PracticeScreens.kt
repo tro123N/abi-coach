@@ -74,12 +74,11 @@ import kotlin.math.abs
 
 // ---------- Vortrags-Coach (in the debrief) ----------
 
-private val taskColors = listOf(accent, green, yellow)
-
 /** How the presentation was delivered: time per task against the targets, speed, fillers, pauses, reading aloud. */
 @Composable
 fun TalkCoachCard(record: SessionRecord, d: Debrief) {
     val m = remember(record.id, d) { TalkMetrics.compute(record, d) } ?: return
+    val taskColors = listOf(accent, green, yellow)
     AbiCard(modifier = Modifier.testTag("debrief_talk")) {
         CardTitle("Vortrags-Coach", icon = R.drawable.speed_24dp)
         if (m.readingAloud) {
@@ -147,6 +146,7 @@ private fun promptFor(source: CardSource): String =
         CardSource.PHRASE, CardSource.COURSE -> "Wie heißt das auf Englisch?"
     }
 
+@Composable
 private fun sourceColor(source: CardSource): Color =
     when (source) {
         CardSource.ERROR -> red
