@@ -1,6 +1,7 @@
 package de.abicoach.ui.screens
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -36,9 +37,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import de.abicoach.R
 import de.abicoach.audio.FeedbackType
 import de.abicoach.data.FeedbackMode
@@ -47,6 +51,7 @@ import de.abicoach.data.Phrases
 import de.abicoach.data.SessionKind
 import de.abicoach.data.Speaker
 import de.abicoach.data.Utterance
+import de.abicoach.session.LiveUiState
 import de.abicoach.ui.AppViewModel
 import de.abicoach.ui.DetailScaffold
 import de.abicoach.ui.SessionSetup
@@ -204,11 +209,11 @@ fun SetupScreen(vm: AppViewModel, initial: SessionSetup) {
         }
         AbiCard {
             CardTitle("Deine KI für diese Übung", icon = R.drawable.auto_awesome_24dp)
-            if (s.kind.hasPart2 || !s.kind.hasPart1) CaptionText("Prüfer: ${app.ai.examinerLabel()}" + if (app.ai.useOpenAi) " – hört und spricht gleichzeitig" else "")
+            if (s.kind.hasPart2 || !s.kind.hasPart1) CaptionText("Prüfer: ${app.ai.examinerLabel()} – hört und spricht gleichzeitig")
             CaptionText("Mitschrift: ${de.abicoach.ai.AiHub.pretty(app.settings.transcribeModel)} (wortgetreu, mit deinen Fehlern)")
             if (s.feedback != FeedbackMode.PRUEFUNG) CaptionText("Fehlerprüfung beim Sprechen: ${app.ai.fastLabel()}")
             if (s.kind.hasPart1) CaptionText("Text und Aufgaben: ${app.ai.brainLabel()}")
-            CaptionText("Bewertung: ${app.ai.brainLabel()}" + if (app.ai.useClaude) " · Aufnahme hört ${app.ai.listenerLabel()}" else "")
+            CaptionText("Bewertung und Aufnahme anhören: ${app.ai.brainLabel()}")
         }
     }
 }
@@ -219,6 +224,12 @@ fun GeneratingScreen(vm: AppViewModel) {
     BackHandler { vm.cancelGenerating() }
     DetailScaffold(title = "Material wird erstellt", onBack = { vm.cancelGenerating() }, backIcon = R.drawable.close_24dp, tag = "generating") {
         LoadingCard(vm.progressText.ifBlank { "Einen Moment …" }, detail = "Meist 20–60 Sekunden. Die Vorbereitungszeit beginnt erst danach.")
+        AbiCard {
+            CardTitle("Du musst nicht warten", icon = R.drawable.notifications_active_24dp, iconTint = green)
+            BodyText("Der Text entsteht im Hintergrund, auch wenn du die App verlässt oder das Handy sperrst. Du bekommst eine Nachricht, sobald er fertig ist – die Vorbereitungszeit startet erst, wenn du ihn öffnest.")
+            Gap(8.dp)
+            ActionButton("Weiter in der App stöbern", R.drawable.route_24dp, accent, { vm.tap(); vm.nav.openTab(Tab.WEG) }, container = MaterialTheme.colorScheme.background, modifier = Modifier.testTag("generating_background"))
+        }
         AbiCard {
             CardTitle("Gut zu wissen", icon = R.drawable.lightbulb_24dp, iconTint = yellow)
             BulletText("Teil 1 hat immer drei Aufgaben: zusammenfassen, analysieren, kommentieren.")
@@ -250,6 +261,7 @@ fun PrepScreen(vm: AppViewModel) {
             vm.app.feedback.play(FeedbackType.SKIP)
         }
     }
+    KeepScreenOn()
     BackHandler { confirmLeave = true }
     if (confirmLeave) {
         PopUp(
@@ -290,6 +302,29 @@ fun PrepScreen(vm: AppViewModel) {
     ) {
         if (remaining <= 0) Banner("Die Vorbereitungszeit ist um – beginne jetzt deinen Vortrag.", yellow, icon = R.drawable.timer_24dp)
         MessageBanners(vm)
+        if (draft.retryOf.isNotBlank()) {
+            val (review, errors) = remember(draft.id) { vm.retryHints() }
+            AbiCard(modifier = Modifier.testTag("prep_retry")) {
+                CardTitle("Zweiter Versuch", icon = R.drawable.refresh_24dp, iconTint = accent)
+                review?.let { r ->
+                    CaptionText("Beim ersten Mal: ${r.points} Punkte für Aufgabe ${draft.focusTask}.")
+                    if (r.missing.isNotEmpty()) {
+                        Gap(6.dp)
+                        BodyText("Das hat gefehlt:")
+                        r.missing.take(4).forEach { BulletText(it) }
+                    }
+                    if (r.tip.isNotBlank()) {
+                        Gap(6.dp)
+                        CaptionText("Tipp: ${r.tip}")
+                    }
+                }
+                if (errors.isNotEmpty()) {
+                    Gap(8.dp)
+                    BodyText("Achte auf diese Fehler:")
+                    errors.forEach { BulletText("„${it.quote}“ → „${it.correction}“") }
+                }
+            }
+        }
         AbiCard(modifier = Modifier.testTag("prep_text")) {
             PillRow(listOfNotNull(Knowledge.topicShort(task.topicId), task.textType.ifBlank { null }, "${task.wordCount} Wörter"))
             Gap(10.dp)
@@ -315,7 +350,7 @@ fun PrepScreen(vm: AppViewModel) {
             CardTitle("Notizen", icon = R.drawable.edit_note_24dp)
             AbiTextField(
                 value = vm.notes,
-                onValueChange = { vm.notes = it },
+                onValueChange = { vm.updateNotes(it) },
                 label = "Stichpunkte",
                 singleLine = false,
                 minLines = 6,
@@ -323,7 +358,7 @@ fun PrepScreen(vm: AppViewModel) {
                 tag = "prep_notes",
             )
             Gap(6.dp)
-            CaptionText("Nur Stichpunkte – ganze Sätze verleiten zum Ablesen, und das kostet Punkte.")
+            CaptionText("Nur Stichpunkte – ganze Sätze verleiten zum Ablesen, und das kostet Punkte. Deine Notizen und die Zeit bleiben gespeichert, auch wenn du die App verlässt.")
         }
         val groups =
             if (draft.focusTask in 1..3) listOf(Phrases.PART1[draft.focusTask - 1], Phrases.PART1.last()) else Phrases.PART1
@@ -371,6 +406,7 @@ private fun TaskLine(number: Int, afb: String, instruction: String, active: Bool
 fun LiveScreen(vm: AppViewModel) {
     val conversation = vm.live
     var confirmCancel by remember { mutableStateOf(false) }
+    KeepScreenOn()
     BackHandler { confirmCancel = true }
     if (confirmCancel) {
         PopUp(
@@ -403,6 +439,10 @@ fun LiveScreen(vm: AppViewModel) {
         onBack = { confirmCancel = true },
         backIcon = R.drawable.close_24dp,
         tag = "live",
+        pinned = {
+            val mode = draft?.feedback ?: FeedbackMode.FLUESTERN
+            if (mode != FeedbackMode.PRUEFUNG) WhisperBar(state, mode)
+        },
         bottom = {
             Surface(color = MaterialTheme.colorScheme.background) {
                 Box(Modifier.navigationBarsPadding().padding(horizontal = 20.dp, vertical = 12.dp)) {
@@ -467,6 +507,63 @@ fun LiveScreen(vm: AppViewModel) {
         }
         if (state.part != 1 || vm.app.settings.showTranscript) {
             TranscriptCard(state.utterances, state.interim, state.examinerLive)
+        }
+    }
+}
+
+/**
+ * Pinned above the scrolling page while speaking: the newest hint in large type, readable from an arm's length away.
+ * A fresh hint lights up for a few seconds; the last one stays visible (dimmed) until the next one comes.
+ */
+@Composable
+private fun WhisperBar(state: LiveUiState, mode: FeedbackMode) {
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            now = System.currentTimeMillis()
+            delay(400)
+        }
+    }
+    val alert = state.lastAlert
+    val fresh = alert != null && now - state.alertAt < 6_000
+    val container by animateColorAsState(
+        targetValue =
+            when {
+                fresh -> yellow
+                alert != null -> yellow.copy(alpha = 0.22f)
+                else -> MaterialTheme.colorScheme.primary
+            },
+        animationSpec = tween(350),
+        label = "whisper",
+    )
+    val ink = Color(0xFF1B1B1B)
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .background(container)
+            .padding(horizontal = 20.dp, vertical = 12.dp)
+            .testTag("whisper_bar"),
+    ) {
+        if (alert == null) {
+            Text(
+                if (mode == FeedbackMode.COACH) "Coach aktiv – Hinweise erscheinen hier." else "Flüstern aktiv – Hinweise erscheinen hier.",
+                fontSize = 15.sp,
+                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.75f),
+            )
+        } else {
+            Text(
+                "„${alert.quote}“",
+                fontSize = 17.sp,
+                color = if (fresh) Color(0xFF7A1111) else red,
+                textDecoration = TextDecoration.LineThrough,
+            )
+            Text(
+                "→ „${alert.correction}“",
+                fontSize = 24.sp,
+                lineHeight = 29.sp,
+                fontWeight = FontWeight.Bold,
+                color = if (fresh) ink else green,
+            )
         }
     }
 }

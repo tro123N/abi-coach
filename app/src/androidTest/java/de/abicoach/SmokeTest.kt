@@ -18,6 +18,7 @@ import de.abicoach.data.LiveError
 import de.abicoach.data.Part2Topic
 import de.abicoach.data.Phrase
 import de.abicoach.data.PronTip
+import de.abicoach.data.Progress
 import de.abicoach.data.SessionKind
 import de.abicoach.data.SessionRecord
 import de.abicoach.data.Speaker
@@ -119,8 +120,6 @@ class SmokeTest {
             app.memory.docs.value.forEach { app.memory.delete(it.id) }
             app.settings.themeMode = ThemeMode.LIGHT
             app.settings.geminiKey = ""
-            app.settings.openAiKey = ""
-            app.settings.anthropicKey = ""
             compose.activity.vm.nav.openTab(Tab.WEG)
         }
         shot("start_abiweg")
@@ -178,7 +177,7 @@ class SmokeTest {
                     false,
                     "In deinen letzten Auswertungen fehlen bei der Analyse vor allem **Textbelege**. Geh in drei Schritten vor:\n\n1. Behauptung: *The author presents the young people as resourceful.*\n2. Beleg: Zitat mit Zeile (\"Nobody is waiting for permission anymore\", l. 3)\n3. Wirkung: *This quote gives them a confident voice.*\n\nIn eurer Klausur Q1.2 hat deine Lehrkraft genau das angemerkt [2].",
                     listOf("[1] Green Line Oberstufe NRW, S. 142", "[2] Klausur Q1.2 – Brexit, S. 2"),
-                    "Claude Opus 5.5",
+                    "Gemini 4 Argon",
                     listOf(de.abicoach.session.CoachAction("aufgabe2"), de.abicoach.session.CoachAction("level", "w3.perceive")),
                 )
             vm.nav.push(Screen.Ask)
@@ -210,6 +209,12 @@ class SmokeTest {
         swipeShot("debrief", "auswertung_3", 1)
         swipeShot("debrief", "auswertung_4", 2)
         swipeShot("debrief", "auswertung_5", 2)
+
+        ui { vm.nav.openTab(Tab.TRAINING); vm.nav.push(Screen.Corrections(Demo.SIMULATION)) }
+        shot("korrekturrunde")
+        ui { vm.sayOpen("the author describe", "the author describes", "3. Person Singular braucht -s") }
+        shot("sag_es_richtig")
+        ui { vm.sayClose(); vm.nav.openTab(Tab.TRAINING) }
 
         ui { vm.nav.openTab(Tab.TRAINING); vm.nav.push(Screen.Setup(SessionSetup.defaults(SessionKind.SIMULATION, 0, FeedbackMode.FLUESTERN))) }
         shot("einrichten_simulation")
@@ -400,10 +405,11 @@ object Demo {
             interim = if (part == 2) "Well, on the one hand the UK profits from" else "",
             liveErrors = listOf(LiveError("the author describe", "the author describes", "3. Person Singular: -s", "SVA", "major")),
             lastAlert = LiveError("in the class", "in class", "„in class“ ohne Artikel", "DET", "minor"),
+            alertAt = if (part == 2) System.currentTimeMillis() + 600_000 else 0,
             elapsedSec = if (part == 2) 214 else 95,
             micLevel = 0.45f,
             examinerSpeaking = false,
-            examinerLabel = "GPT-Live-1",
+            examinerLabel = "Gemini 3.8 Live",
         )
     }
 
@@ -415,8 +421,6 @@ object Demo {
         val s = app.settings
         s.examDate = LocalDate.now().plusDays(118).toString()
         s.geminiKey = "demo-gemini-key"
-        s.openAiKey = "demo-openai-key"
-        s.anthropicKey = "demo-anthropic-key"
         s.courseTopics = "The Hate U Give, Brexit, Purple Hibiscus, Black Mirror"
         s.themeMode = ThemeMode.LIGHT
 
@@ -478,8 +482,16 @@ object Demo {
                         TaskReview(3, 9, listOf("own position"), listOf("link to Adichie"), "Ein Beispiel aus dem Unterricht macht die Stellungnahme stark."),
                     ),
                 courseLinks = listOf("Adichie: The danger of a single story (Green Line, S. 142)", "Brain drain im NHS (Klausur Q1.2)"),
-                gradedBy = "Claude Opus 5.5",
+                gradedBy = "Gemini 4 Argon",
                 listenedBy = "Gemini 4 Argon",
+                progress =
+                    Progress(
+                        comparedTo = "demo-1",
+                        comparedLabel = "Aufgabe 2 vom 28.10.",
+                        comparedPoints = 8,
+                        fixed = listOf("Zeitform: diesmal kein Fehler dieser Art.", "Präposition: diesmal kein Fehler dieser Art."),
+                        still = listOf("Subjekt-Verb-Übereinstimmung: kam wieder vor (2×) – schon in 3 Sitzungen in Folge."),
+                    ),
             )
         app.store.deleteAll()
         app.store.save(
@@ -489,7 +501,8 @@ object Demo {
                 durationSec = 1260,
                 part1Sec = 610,
                 debrief = debrief.copy(segments = listOf(1 to "The article Lagos Rising", 2 to "Moving on to the analysis", 3 to "Now I would like to comment")),
-                examiner = "GPT-Live-1",
+                examiner = "Gemini 3.8 Live",
+                liveErrors = debrief.errors,
                 utterances = talk() + liveState(2).utterances,
             ),
         )
@@ -521,7 +534,7 @@ object Demo {
                         de.abicoach.coach.BriefingStep("3-Minuten-Sprint", "Längere, flüssigere Antworten – dein Tempo ist gut, die Sätze noch kurz.", "sprint"),
                         de.abicoach.coach.BriefingStep("Wortschatz wiederholen", "6 Karten sind fällig, darunter „come across as“.", "wortschatz"),
                     ),
-                by = "Claude Opus 5.5",
+                by = "Gemini 4 Argon",
             ),
         )
         app.vocab.reset()

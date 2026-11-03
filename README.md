@@ -17,11 +17,16 @@ Android-App zur Vorbereitung auf die **mündliche Abiturprüfung Englisch in NRW
 ### Training
 - **Prüfungssimulation** wie im Abi: neuer Text mit drei Aufgaben (1. zusammenfassen, 2. analysieren, z. B. „Examine how the author perceives …“, 3. kommentieren), Vorbereitungszeit, Vortrag, Prüfungsgespräch mit Themenwechsel.
 - **Einzelne Aufgaben** üben (nur Zusammenfassen, nur Analysieren, nur Kommentieren), **Prüfungsgespräch** und **freies Gesprächstraining**.
-- Drei Rückmelde-Stufen: *Prüfung* (keine Unterbrechung), *Flüstern* (Vibration und Korrektur auf dem Bildschirm), *Coach* (der Prüfer unterbricht dich sofort und lässt dich wiederholen).
+- Drei Rückmelde-Stufen: *Prüfung* (keine Unterbrechung), *Flüstern* (starke Vibration, die Korrektur steht groß in einer Leiste am Bildschirm, mit Kopfhörern sagt sie eine leise Stimme), *Coach* (im Gespräch korrigiert dich der Prüfer selbst mit Stimme und lässt dich den Satz wiederholen; im Vortrag flüstert der Coach nur).
 - **Gezielt trainieren:** *Gesprächs-Sprint* (3 Minuten, so viel wie möglich sprechen), *Wortschatz* mit Wiederholung nach Plan (Redemittel, 15-Punkte-Sätze, deine Fehler und der Wortschatz aus deinem Kurs), *Aussprache-Labor* (anhören, nachsprechen, Bewertung pro Wort) und der *KI-Coach*, der dir passende Übungen als Knöpfe vorschlägt.
-- **KI-Tagesplan:** Ganz oben auf dem Abi-Weg plant der Coach (Claude Opus) jeden Tag drei Schritte aus deinem Stand: Kompetenzen, letzte Auswertung, Fehler, Lehrkraft-Kommentare, Prüfungstermin. Jeder Schritt startet mit einem Tipp.
-- **Auswertung im Hintergrund:** Sie läuft weiter, wenn du die App schließt oder das Handy sperrst, und meldet sich mit einer Benachrichtigung. Das Einlesen von Kursmaterial auch.
-- **Flüstern und Coach** prüfen jeden Satz sofort (nach etwa 2–3 Sekunden), der Coach unterbricht, sobald du eine Pause machst, und die Karte zeigt, ob die Fehlerprüfung läuft.
+- **KI-Tagesplan:** Ganz oben auf dem Abi-Weg plant der Coach (Gemini 4 Argon) jeden Tag drei Schritte aus deinem Stand: Kompetenzen, letzte Auswertung, Fehler, Lehrkraft-Kommentare, Prüfungstermin. Jeder Schritt startet mit einem Tipp.
+- **Alles läuft im Hintergrund weiter:** Auswertung, Einlesen von Kursmaterial und das Schreiben des Prüfungstexts laufen weiter, wenn du die App schließt oder das Handy sperrst, und melden sich mit einer Benachrichtigung. Der nächste Prüfungstext wird auf Wunsch schon vorab erstellt, damit der Start sofort geht.
+- **Vorbereitung geht nicht verloren:** Text, Aufgaben und deine Notizen werden gespeichert; wenn die Vorbereitungszeit zu Ende ist, klingelt eine Benachrichtigung – auch bei gesperrtem Handy.
+- **Live bleibt zuverlässig:** Während des Gesprächs bleibt der Bildschirm an und ein Mikrofon-Dienst („AbiCoach hört zu“) hält die Verbindung am Leben, auch wenn du kurz in eine andere App wechselst.
+- **Flüstern und Coach** prüfen jeden Satz sofort (nach etwa 2–3 Sekunden). Beim Vortrag (Aufgabe 1–3) wirst du nie unterbrochen; danach folgt eine kurze **Korrekturrunde**: die drei wichtigsten Fehler sagst du noch einmal richtig, die KI hört zu und antwortet sofort.
+- **Sag es richtig:** Bei jedem Fehler und jedem „So klingt es nach 15 Punkten“-Satz gibt es einen Knopf – du sprichst den Satz nach und bekommst gleich Rückmeldung.
+- **Zweiter Versuch:** Nach der Auswertung kannst du die schwächste Aufgabe mit demselben Text noch einmal machen (2 Min. Vorbereitung). Die Auswertung zeigt vorher/nachher; die Bewertung selbst kennt frühere Punkte nicht und bleibt fair.
+- **Fortschritt:** Die Auswertung vergleicht mit der letzten Sitzung: „behoben ✓“ und „noch 3× aufgetreten“.
 - **Vortrags-Coach** in der Auswertung: Zeit pro Aufgabe gegen die Empfehlung, Tempo (Wörter pro Minute), Füllwörter, lange Pausen und eine Warnung, wenn du abliest.
 - **Auswertung** nach dem NRW-Raster (Inhalt 40 %, Darstellungsleistung 60 %): Punkte und Sterne, größte Hebel, jede Aufgabe gegen den Erwartungshorizont, Kompetenzen, Fehler mit Zitat, „So klingt es nach 15 Punkten“ zum Anhören, Aussprache, passende Inhalte aus deinem Kurs, Redemittel.
 
@@ -38,38 +43,41 @@ Android-App zur Vorbereitung auf die **mündliche Abiturprüfung Englisch in NRW
 
 ## Welche KI was macht
 
-| Aufgabe | KI | Ohne eigenen Schlüssel |
-|---|---|---|
-| Prüfer im Gespräch | OpenAI **GPT-Live-1** (hört und spricht gleichzeitig) | Gemini 3.8 Live |
-| Wortgetreue Mitschrift | **Gemini 3.5 Transcribe Live** (Modus VERBATIM) | – (Pflicht) |
-| Bewertung, Aufgaben, Coach | **Claude Opus 5.5** | Gemini 4 Argon → Gemini 3.8 Flash |
-| Fehlerprüfung beim Sprechen | **Claude Haiku 5.5** | Gemini 3.8 Flash |
-| Material lesen, Suche | **Gemini 3.8 Flash**, **Gemini Embedding 2** | – (Pflicht) |
-| Aufnahme anhören | **Gemini 4 Argon** | Gemini 3.8 Flash |
-| Vorlesen | **Gemini 3.8 Flash TTS** | Android-Stimme |
+Alles kommt von **einem Anbieter: Google**. Du brauchst nur einen Schlüssel.
 
-Pflicht ist nur der **Gemini-Schlüssel** (aistudio.google.com/apikey). Die Schlüssel für OpenAI und Anthropic sind optional; fehlt einer oder hat er kein Guthaben, übernimmt Gemini automatisch. Unter Einstellungen → KI gibt es außerdem den Modus **Sparsam** (nur Gemini).
+| Aufgabe | Modell |
+|---|---|
+| Prüfer im Gespräch (hört und spricht gleichzeitig) | **Gemini 3.8 Live** |
+| Wortgetreue Mitschrift | **Gemini 3.5 Transcribe Live** (Modus VERBATIM) |
+| Bewertung, Aufgaben, Coach | **Gemini 4 Argon** (mit Denkstufe) → Ausweichmodell Gemini 3.8 Flash |
+| Fehlerprüfung beim Sprechen, Sag-es-richtig | **Gemini 3.8 Flash** (niedrige Denkstufe, schnell) |
+| Material lesen | **Gemini 3.8 Flash** |
+| Suche im Material | **Gemini Embedding 2** |
+| Aufnahme anhören | **Gemini 4 Argon** → Gemini 3.8 Flash |
+| Vorlesen | **Gemini 3.8 Flash TTS** → Android-Stimme |
+
+Den Schlüssel gibt es kostenlos zu erstellen unter aistudio.google.com/apikey. Unter Einstellungen → KI wählst du **Beste Qualität** oder **Sparsam** (Gemini 3.8 Flash für alles). Mit **System prüfen → Alles testen** prüft die App Schlüssel, alle Modelle, Prüfer-Stimme und Coach-Anweisung einmal durch.
 
 ## Installation
 
 1. Unter **Releases → latest** die Datei `AbiCoach.apk` auf dem Handy öffnen und installieren.
-2. In der App: Einstellungen → KI → Schlüssel einfügen → „Prüfen“.
+2. In der App: Einstellungen → KI → Google-Schlüssel einfügen → „Prüfen“, dann **System prüfen → Alles testen**.
 3. Unter **Mein Kurs** dein Material hochladen, dann die **Einstufung** machen.
 4. Tipp: Mit Kopfhörern üben – dann kannst du den Prüfer auch unterbrechen.
 
 ## Kosten und Datenschutz
 
-- GPT-Live-1 kostet etwa 5 ct pro Gesprächsminute, Claude Opus etwa 10–20 ct pro Auswertung, Gemini wenige Cent. Ein ganzes Schulbuch einlesen: unter 1 $.
-- Sitzungen, Lernprofil und Material liegen nur auf dem Handy; die Schlüssel verschlüsselt im Android Keystore. Zum Lesen und Bewerten gehen Seiten, Mitschrift und Aufnahme an die jeweiligen Anbieter. Im kostenlosen Gemini-Tarif darf Google die Daten zur Verbesserung nutzen.
+- Nur Google-Kosten: das Live-Gespräch mit dem Prüfer ist der größte Posten (je nach Tarif einige Cent pro Gesprächsminute), eine Auswertung kostet wenige Cent, ein ganzes Schulbuch einlesen unter 1 $. Mit **Sparsam** wird es noch günstiger.
+- Sitzungen, Lernprofil und Material liegen nur auf dem Handy; der Schlüssel liegt verschlüsselt im Android Keystore. Zum Lesen und Bewerten gehen Seiten, Mitschrift und Aufnahme an Google. Im kostenlosen Gemini-Tarif darf Google die Daten zur Verbesserung nutzen.
 
 ## Aufbau
 
-- `ai/` – Gemini (REST, Live, Einbettungen, Vorlesen), Claude (strukturierte Antworten), GPT-Live-1 (Live-WebSocket), `AiHub` verteilt die Aufgaben mit Ausweichmodellen
+- `ai/` – Gemini (REST mit Denkstufen, Live-WebSocket, Einbettungen, Vorlesen); `AiHub` verteilt die Aufgaben auf die Modelle und springt bei Ausfall auf das Ausweichmodell
 - `memory/` – Import, Lesen im Hintergrund (WorkManager), Abschnitte, Vektoren, Auswertung, hybride Suche, Kurs-Kontext für alle Prompts
 - `profile/` – Lernprofil nach dem NRW-Raster, Prognose, Hebel
 - `path/` – Abi-Weg: Welten und Levels (`Curriculum`), Freischalten, Sterne und Wiederholungsplan (`PathEngine`), Erinnerung
-- `practice/` – Wortschatz-Karten mit Wiederholungsplan, Vortrags-Kennzahlen, Aussprache-Labor
-- `session/` – Prompts, Live-Gespräch, Live-Fehlerprüfung, Material und Auswertung
+- `practice/` – Wortschatz-Karten mit Wiederholungsplan, Vortrags-Kennzahlen, Aussprache-Labor, „Sag es richtig“
+- `session/` – Prompts, Live-Gespräch (mit Mikrofon-Dienst), Live-Fehlerprüfung, Material im Hintergrund, gespeicherte Vorbereitung und Alarm, Auswertung und Fortschritt, Systemprüfung
 - `ui/` – Oberfläche im Stil von Mental Math Plus (Farbthemen, Karten, Sterne, Töne)
 
 Jeder Push auf `main` baut automatisch eine neue APK. Mit `[smoke]` in der Commit-Nachricht läuft zusätzlich ein Test auf einem virtuellen Handy; die Bildschirmfotos liegen danach auf dem Branch `ci-smoke`.

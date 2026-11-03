@@ -19,17 +19,14 @@ sealed interface LiveEvent {
 
     data object Interrupted : LiveEvent
 
-    /** Billed seconds of the live session so far (OpenAI reports them). */
-    data class Usage(val seconds: Double) : LiveEvent
-
     data class Info(val message: String) : LiveEvent
 
     data class Failed(val message: String) : LiveEvent
 }
 
-/** A spoken conversation partner: the examiner. Implemented by Gemini Live and OpenAI GPT-Live. */
+/** A spoken conversation partner: the examiner (Gemini Live). */
 interface VoiceAgent {
-    /** Shown in the app, e.g. "GPT-Live-1". */
+    /** Shown in the app, e.g. "Gemini 3.8 Live". */
     val label: String
 
     /** Sample rate of the audio this agent sends back. */
@@ -40,11 +37,8 @@ interface VoiceAgent {
     /** 16 kHz mono PCM from the microphone, in chunks of about 100 ms. */
     fun sendAudio(pcm16k: ByteArray)
 
-    /** True if an instruction from the app makes the voice speak right away (a new turn), false if it only adds to what it knows. */
-    val speaksOnInstruction: Boolean
-
-    /** An instruction from the app (start, coach correction, time is up). */
-    fun sendInstruction(text: String)
+    /** An instruction from the app (start, coach correction, time is up). The examiner answers it with his voice at once. */
+    fun sendInstruction(text: String): Boolean
 
     fun sendStreamEnd()
 
@@ -58,13 +52,11 @@ class GeminiVoiceAgent(
 ) : VoiceAgent {
     override val outputRate: Int = 24_000
 
-    override val speaksOnInstruction: Boolean = true
-
     override fun connect() = socket.connect()
 
     override fun sendAudio(pcm16k: ByteArray) = socket.sendAudio(pcm16k)
 
-    override fun sendInstruction(text: String) = socket.sendUserTurn(text)
+    override fun sendInstruction(text: String): Boolean = socket.sendUserTurn(text)
 
     override fun sendStreamEnd() = socket.sendStreamEnd()
 

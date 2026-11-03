@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -83,6 +84,7 @@ fun AppRoot(vm: AppViewModel) {
                 is Screen.Level -> de.abicoach.ui.screens.LevelScreen(vm, screen.id)
                 Screen.Vocab -> de.abicoach.ui.screens.VocabScreen(vm)
                 Screen.Pronunciation -> de.abicoach.ui.screens.PronunciationScreen(vm)
+                is Screen.Corrections -> de.abicoach.ui.screens.CorrectionsScreen(vm, screen.id)
             }
         }
     }
@@ -127,6 +129,8 @@ fun DetailScaffold(
     backIcon: Int = de.abicoach.R.drawable.arrow_back_24dp,
     actions: @Composable RowScope.() -> Unit = {},
     bottom: @Composable () -> Unit = {},
+    /** Stays in place above the scrolling content (e.g. the whisper bar while speaking). */
+    pinned: @Composable () -> Unit = {},
     tag: String = "detail",
     content: @Composable ColumnScope.() -> Unit,
 ) {
@@ -135,13 +139,16 @@ fun DetailScaffold(
         bottomBar = bottom,
         containerColor = MaterialTheme.colorScheme.background,
     ) { padding ->
-        Column(
-            modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).testTag(tag).padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            content = {
-                content()
-                Spacer(Modifier.height(24.dp))
-            },
-        )
+        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+            pinned()
+            Column(
+                modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).testTag(tag).padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                content = {
+                    content()
+                    Spacer(Modifier.height(24.dp))
+                },
+            )
+        }
     }
 }

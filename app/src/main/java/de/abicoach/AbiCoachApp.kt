@@ -48,6 +48,15 @@ class AbiCoachApp : Application() {
         private set
     val analysis = de.abicoach.session.AnalysisCenter()
 
+    /** Progress of the exam material that is written in the background. */
+    val material = de.abicoach.session.MaterialCenter()
+    lateinit var drafts: de.abicoach.session.DraftStore
+        private set
+    lateinit var shelf: de.abicoach.session.MaterialShelf
+        private set
+    lateinit var pendingMaterial: de.abicoach.session.PendingMaterialStore
+        private set
+
     /** A message from background work (e.g. "Gemini hat übernommen") that the app shows once. */
     @Volatile var pendingNotice: String? = null
 
@@ -82,6 +91,9 @@ class AbiCoachApp : Application() {
         vocab = de.abicoach.practice.VocabStore(this)
         pron = de.abicoach.practice.PronStore(this)
         briefings = de.abicoach.coach.BriefingStore(this)
+        drafts = de.abicoach.session.DraftStore(this)
+        shelf = de.abicoach.session.MaterialShelf(this).also { it.tidy() }
+        pendingMaterial = de.abicoach.session.PendingMaterialStore(this)
         de.abicoach.path.Reminder.createChannel(this)
         de.abicoach.session.Notifications.createChannels(this)
         registerActivityLifecycleCallbacks(

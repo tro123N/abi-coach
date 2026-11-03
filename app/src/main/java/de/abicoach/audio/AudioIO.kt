@@ -12,6 +12,7 @@ import android.media.MediaRecorder
 import android.media.audiofx.AcousticEchoCanceler
 import android.media.audiofx.NoiseSuppressor
 import android.os.Build
+import android.os.Bundle
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
@@ -59,42 +60,6 @@ object AudioUtil {
         } else {
             context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
         }
-}
-
-/**
- * Converts 16-bit mono PCM between sample rates by linear interpolation, chunk by chunk without gaps
- * (used to turn the 16 kHz microphone into the 24 kHz that GPT-Live expects).
- */
-class LinearResampler(private val inRate: Int, private val outRate: Int) {
-    private var pos = 0.0
-    private var prev: Short = 0
-
-    @Synchronized
-    fun process(pcm: ByteArray): ByteArray {
-        val n = pcm.size / 2
-        if (n == 0) return ByteArray(0)
-        val input = ShortArray(n) { i -> ((pcm[2 * i + 1].toInt() shl 8) or (pcm[2 * i].toInt() and 0xff)).toShort() }
-        val step = inRate.toDouble() / outRate
-        val out = ShortArray((n * outRate.toLong() / inRate + 4).toInt())
-        var count = 0
-        while (pos < n - 1 && count < out.size) {
-            val i = kotlin.math.floor(pos).toInt()
-            val frac = pos - i
-            val a = if (i < 0) prev.toInt() else input[i].toInt()
-            val b = input[i + 1].toInt()
-            out[count++] = (a + (b - a) * frac).toInt().coerceIn(-32768, 32767).toShort()
-            pos += step
-        }
-        pos -= n
-        prev = input[n - 1]
-        val bytes = ByteArray(count * 2)
-        for (k in 0 until count) {
-            val s = out[k].toInt()
-            bytes[2 * k] = (s and 0xff).toByte()
-            bytes[2 * k + 1] = ((s shr 8) and 0xff).toByte()
-        }
-        return bytes
-    }
 }
 
 /** Records the microphone at 16 kHz mono in 100 ms chunks, with echo cancellation where the phone supports it. */
@@ -335,18 +300,47 @@ class AudioRouting(context: Context) {
         }
 }
 
-/** Android's own text-to-speech in British English, for short prompts and "read aloud" buttons. */
-class Tts(context: Context) {
+/**
+ * Android's own text-to-speech in British English, for short prompts, soft whispers and "read aloud" buttons.
+ * With [call] true the voice plays like a phone call, through the same route as the examiner's voice.
+ */
+class Tts(context: Context, private val call: Boolean = false) {
     @Volatile private var ready = false
     private val engine: TextToSpeech =
         TextToSpeech(context.applicationContext) { status ->
             ready = status == TextToSpeech.SUCCESS
         }
 
+    private fun prepare(rate: Float, pitch: Float) {
+        engine.setLanguage(Locale.UK)
+        engine.setSpeechRate(rate)
+        engine.setPitch(pitch)
+        if (call) {
+            engine.setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build(),
+            )
+        }
+    }
+
     fun say(text: String) {
         if (!ready) return
-        engine.setLanguage(Locale.UK)
-        engine.speak(text, TextToSpeech.QUEUE_FLUSH, null, "abicoach-${System.nanoTime()}")
+        runCatching {
+            prepare(1f, 1f)
+            engine.speak(text, TextToSpeech.QUEUE_FLUSH, null, "abicoach-${System.nanoTime()}")
+        }
+    }
+
+    /** A very soft, slightly lower voice for a hint while the student is speaking (used with headphones). */
+    fun whisper(text: String) {
+        if (!ready) return
+        runCatching {
+            prepare(0.95f, 0.85f)
+            val params = Bundle().apply { putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 0.3f) }
+            engine.speak(text, TextToSpeech.QUEUE_FLUSH, params, "abicoach-${System.nanoTime()}")
+        }
     }
 
     fun stop() {

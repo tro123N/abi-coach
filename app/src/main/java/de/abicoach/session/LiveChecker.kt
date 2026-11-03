@@ -21,7 +21,7 @@ data class CheckerStatus(
 
 /**
  * The "second ear": checks what the student says while the conversation goes on
- * (Claude Haiku when its key is set, otherwise Gemini Flash).
+ * (Gemini Flash with low thinking, fast enough for a hint within a few seconds).
  *
  * It works sentence by sentence and does not wait for the end of a turn: a sentence is checked as soon as it is
  * complete, or when the interim transcript has not changed for a moment. Up to two checks run in parallel, so a

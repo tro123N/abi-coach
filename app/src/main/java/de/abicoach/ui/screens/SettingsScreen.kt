@@ -84,7 +84,7 @@ fun SettingsScreen(vm: AppViewModel) {
         if (version < 0) return@DetailScaffold
         MessageBanners(vm)
         AbiCard(modifier = Modifier.testTag("settings_ai")) {
-            CardTitle("KI", icon = R.drawable.auto_awesome_24dp)
+            CardTitle("KI von Google", icon = R.drawable.auto_awesome_24dp)
             ChoiceChips(Quality.entries, settings.quality, { it.label }, { vm.tap(); settings.quality = it }, tagPrefix = "quality")
             Gap(6.dp)
             CaptionText(settings.quality.description)
@@ -93,34 +93,18 @@ fun SettingsScreen(vm: AppViewModel) {
                 vm = vm,
                 provider = "gemini",
                 title = "Google Gemini",
-                role = "Pflicht · Mitschrift, Gedächtnis, Aussprache, Vorlesen",
+                role = "Der einzige Schlüssel, den die App braucht",
                 current = settings.geminiKey,
                 url = "https://aistudio.google.com/apikey",
                 onSave = { settings.geminiKey = it },
             )
-            Gap(14.dp)
-            KeyBlock(
-                vm = vm,
-                provider = "openai",
-                title = "OpenAI",
-                role = "Optional · Prüfer GPT-Live-1 – hört und spricht gleichzeitig (ca. 5 ct pro Minute)",
-                current = settings.openAiKey,
-                url = "https://platform.openai.com/api-keys",
-                onSave = { settings.openAiKey = it },
-            )
-            Gap(14.dp)
-            KeyBlock(
-                vm = vm,
-                provider = "anthropic",
-                title = "Anthropic Claude",
-                role = "Optional · Bewertung, Prüfungsaufgaben und Coach mit Claude Opus 5.5",
-                current = settings.anthropicKey,
-                url = "https://console.anthropic.com/settings/keys",
-                onSave = { settings.anthropicKey = it },
-            )
             Gap(10.dp)
-            CaptionText("Die Schlüssel bleiben verschlüsselt auf deinem Handy und gehen nur an den jeweiligen Anbieter.")
+            CaptionText(
+                "Alles kommt von Google: Prüfer, Mitschrift, Bewertung, Coach, Kursgedächtnis und Vorlesen. " +
+                    "Der Schlüssel bleibt verschlüsselt auf deinem Handy und geht nur an Google.",
+            )
         }
+        SystemCheckCard(vm)
         AbiCard {
             CardTitle("Wer macht was", icon = R.drawable.hub_24dp)
             RoleRow("Prüfer im Gespräch", app.ai.examinerLabel())
@@ -132,7 +116,7 @@ fun SettingsScreen(vm: AppViewModel) {
             RoleRow("Suche im Material", AiHub.pretty(settings.embeddingModel))
             RoleRow("Vorlesen", AiHub.pretty(settings.ttsModel))
             Gap(4.dp)
-            CaptionText("Fällt ein Anbieter aus (kein Guthaben, kein Zugang), springt automatisch Gemini ein.")
+            CaptionText("Fällt ein Modell aus (kein Zugang, Limit erreicht), springt automatisch ${AiHub.pretty(settings.geminiTextModel)} ein.")
         }
         AbiCard {
             CardTitle("Prüfung", icon = R.drawable.event_24dp)
@@ -173,15 +157,9 @@ fun SettingsScreen(vm: AppViewModel) {
         ReminderCard(vm)
         AbiCard {
             CardTitle("Stimmen", icon = R.drawable.record_voice_over_24dp)
-            if (app.ai.useOpenAi) {
-                BodyText("Prüfer (GPT-Live-1)")
-                Gap(6.dp)
-                ChoiceChips(Settings.OPENAI_VOICES, settings.openAiVoice, { it.replaceFirstChar { c -> c.uppercase() } }, { vm.tap(); settings.openAiVoice = it }, tagPrefix = "oaivoice")
-            } else {
-                BodyText("Prüfer (Gemini Live)")
-                Gap(6.dp)
-                ChoiceChips(Settings.GEMINI_VOICES, settings.geminiVoice, { it }, { vm.tap(); settings.geminiVoice = it }, tagPrefix = "gvoice")
-            }
+            BodyText("Prüfer (Gemini Live)")
+            Gap(6.dp)
+            ChoiceChips(Settings.GEMINI_VOICES, settings.geminiVoice, { it }, { vm.tap(); settings.geminiVoice = it }, tagPrefix = "gvoice")
             Gap(12.dp)
             BodyText("Vorlesen von Musterantworten")
             Gap(6.dp)
@@ -204,6 +182,18 @@ fun SettingsScreen(vm: AppViewModel) {
                 { settings.uploadAudio = it },
             )
             SwitchRow("Mitschrift beim Vortrag zeigen", "Im Gespräch wird sie immer gezeigt.", settings.showTranscript, { settings.showTranscript = it })
+            SwitchRow(
+                "Flüstern auch hörbar",
+                "Mit Kopfhörern sagt eine leise Stimme den Hinweis. Über den Lautsprecher bleibt es bei Anzeige und Vibration.",
+                settings.whisperAudio,
+                { settings.whisperAudio = it },
+            )
+            SwitchRow(
+                "Nächsten Text vorab erstellen",
+                "Die App bereitet im Hintergrund einen Prüfungstext vor, damit der Start sofort geht.",
+                settings.prefetchMaterial,
+                { settings.prefetchMaterial = it },
+            )
         }
         AbiCard(modifier = Modifier.testTag("settings_design")) {
             CardTitle("Design", icon = R.drawable.palette_24dp)
@@ -238,14 +228,12 @@ fun SettingsScreen(vm: AppViewModel) {
             SwitchRow("Töne", null, settings.sound, { settings.sound = it })
             SwitchRow("Vibration", "Auch für Hinweise beim Sprechen (Flüstern)", settings.vibration, { settings.vibration = it })
         }
-        ExpandableCard("Erweitert: Modelle", subtitle = "Nur ändern, wenn ein Anbieter ein Modell umbenennt", icon = R.drawable.tune_24dp) {
-            ModelField("Claude – Bewertung", settings.claudeBrainModel) { settings.claudeBrainModel = it }
-            ModelField("Claude – schnelle Prüfung", settings.claudeFastModel) { settings.claudeFastModel = it }
-            ModelField("OpenAI – Prüfer", settings.openAiLiveModel) { settings.openAiLiveModel = it }
-            ModelField("Gemini – Prüfer (ohne OpenAI)", settings.geminiLiveModel) { settings.geminiLiveModel = it }
+        ExpandableCard("Erweitert: Modelle", subtitle = "Nur ändern, wenn Google ein Modell umbenennt", icon = R.drawable.tune_24dp) {
+            ModelField("Prüfer (Live-Stimme)", settings.geminiLiveModel) { settings.geminiLiveModel = it }
             ModelField("Gemini – Mitschrift", settings.transcribeModel) { settings.transcribeModel = it }
             ModelField("Gemini – stärkstes Modell", settings.geminiBestModel) { settings.geminiBestModel = it }
             ModelField("Gemini – schnelles Modell", settings.geminiTextModel) { settings.geminiTextModel = it }
+            ModelField("Gemini – Fehlerprüfung beim Sprechen", settings.geminiFastModel) { settings.geminiFastModel = it }
             ModelField("Gemini – Material lesen", settings.geminiReaderModel) { settings.geminiReaderModel = it }
             ModelField("Gemini – Suche (Vektoren)", settings.embeddingModel) { settings.embeddingModel = it }
             ModelField("Gemini – Vorlesen", settings.ttsModel) { settings.ttsModel = it }
@@ -363,6 +351,50 @@ private fun KeyBlock(vm: AppViewModel, provider: String, title: String, role: St
             ProgressLine(null)
         } else if (checked) {
             CaptionText(check ?: "Schlüssel funktioniert.", color = if (check == null) green else red)
+        }
+    }
+}
+
+@Composable
+private fun SystemCheckCard(vm: AppViewModel) {
+    AbiCard(modifier = Modifier.testTag("settings_check")) {
+        CardTitle("System prüfen", icon = R.drawable.verified_24dp)
+        CaptionText(
+            "Testet alles wirklich durch: Schlüssel, Bewertung, Mitschrift – und ob der Prüfer einen Coach-Hinweis mitten im Gespräch ausspricht. " +
+                "Dauert etwa eine Minute und kostet nur ein paar Cent.",
+        )
+        Gap(8.dp)
+        ActionButton(
+            if (vm.systemChecking) "Prüfe …" else "Alles testen",
+            R.drawable.verified_24dp,
+            accent,
+            { vm.tap(); vm.runSystemCheck() },
+            enabled = !vm.systemChecking && vm.app.ai.hasGemini,
+            container = MaterialTheme.colorScheme.background,
+            modifier = Modifier.testTag("check_all"),
+        )
+        vm.systemCheck.forEach { line ->
+            Gap(6.dp)
+            CheckRow(line)
+        }
+    }
+}
+
+@Composable
+private fun CheckRow(line: de.abicoach.session.CheckLine) {
+    val (symbol, color) =
+        when (line.state) {
+            de.abicoach.session.CheckState.OK -> "✓" to green
+            de.abicoach.session.CheckState.FAIL -> "✗" to red
+            de.abicoach.session.CheckState.WARN -> "!" to yellow
+            de.abicoach.session.CheckState.RUN -> "…" to accent
+            de.abicoach.session.CheckState.WAIT -> "·" to MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.5f)
+        }
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+        Text(symbol, color = color, fontSize = AbiTheme.dimens.fonts.body, modifier = Modifier.width(22.dp))
+        Column(Modifier.weight(1f)) {
+            BodyText(line.title)
+            if (line.detail.isNotBlank()) CaptionText(line.detail, color = if (line.state == de.abicoach.session.CheckState.FAIL) red else MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f))
         }
     }
 }

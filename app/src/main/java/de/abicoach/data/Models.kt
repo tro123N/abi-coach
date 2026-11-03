@@ -35,11 +35,11 @@ enum class FeedbackMode(val label: String, val description: String) {
     ),
     FLUESTERN(
         "Flüstern",
-        "Bei Fehlern vibriert das Handy und die Korrektur erscheint auf dem Bildschirm. Der Prüfer redet nicht dazwischen.",
+        "Bei Fehlern vibriert das Handy und die Korrektur erscheint groß auf dem Bildschirm (mit Kopfhörern auch leise hörbar). Der Prüfer redet nicht dazwischen.",
     ),
     COACH(
         "Coach",
-        "Bei wichtigen Fehlern unterbricht dich der Prüfer sofort, korrigiert dich und lässt dich den Satz wiederholen.",
+        "Im Gespräch unterbricht dich der Prüfer bei wichtigen Fehlern, korrigiert dich und lässt dich den Satz wiederholen. Im Vortrag flüstert der Coach nur – danach übst du die wichtigsten Fehler in einer Korrekturrunde.",
     ),
 }
 
@@ -153,6 +153,41 @@ data class TaskReview(val number: Int, val points: Int, val covered: List<String
     }
 }
 
+/** What changed since an earlier session: points, mistake types that did not come back and those that did. */
+data class Progress(
+    val comparedTo: String,
+    /** e.g. "Vortrag vom 02.11." */
+    val comparedLabel: String,
+    val comparedPoints: Int,
+    /** Lines like "Zeitform: diesmal kein Fehler dieser Art." */
+    val fixed: List<String>,
+    /** Lines like "Präposition: kam wieder vor (2×) – schon in 3 Sitzungen in Folge." */
+    val still: List<String>,
+    /** For a second attempt: the repeated task and its points before and after (-1 = unknown). */
+    val taskNumber: Int = 0,
+    val taskBefore: Int = -1,
+    val taskAfter: Int = -1,
+) {
+    fun toJson(): JSONObject =
+        JSONObject().put("comparedTo", comparedTo).put("comparedLabel", comparedLabel).put("comparedPoints", comparedPoints)
+            .put("fixed", fixed.toJsonArray()).put("still", still.toJsonArray())
+            .put("taskNumber", taskNumber).put("taskBefore", taskBefore).put("taskAfter", taskAfter)
+
+    companion object {
+        fun fromJson(o: JSONObject) =
+            Progress(
+                comparedTo = o.optString("comparedTo"),
+                comparedLabel = o.optString("comparedLabel"),
+                comparedPoints = o.optInt("comparedPoints"),
+                fixed = o.optJSONArray("fixed").strings(),
+                still = o.optJSONArray("still").strings(),
+                taskNumber = o.optInt("taskNumber"),
+                taskBefore = o.optInt("taskBefore", -1),
+                taskAfter = o.optInt("taskAfter", -1),
+            )
+    }
+}
+
 /** The full feedback after a session. Points follow the NRW weighting: content 40 %, language 60 %. */
 data class Debrief(
     val inhaltPoints: Int,
@@ -173,13 +208,15 @@ data class Debrief(
     val taskReviews: List<TaskReview> = emptyList(),
     /** What from the student's own course would have fitted. */
     val courseLinks: List<String> = emptyList(),
-    /** Which AI graded (e.g. "Claude Opus 5.5") and which one listened to the recording. */
+    /** Which AI graded (e.g. "Gemini 4 Argon") and which one listened to the recording. */
     val gradedBy: String = "",
     val listenedBy: String = "",
     /** Where each task of the presentation begins: task number and the first words said for it. */
     val segments: List<Pair<Int, String>> = emptyList(),
     /** The recording suggests that the student read out the notes. */
     val readingAloud: Boolean = false,
+    /** Comparison with the last session (or with the first attempt, for a second attempt). */
+    val progress: Progress? = null,
 ) {
     val stars: Int get() = when {
         totalPoints >= 13 -> 3
@@ -210,6 +247,7 @@ data class Debrief(
             .put("listenedBy", listenedBy)
             .put("segments", segments.toJsonArray { JSONObject().put("number", it.first).put("firstWords", it.second) })
             .put("readingAloud", readingAloud)
+            .put("progress", progress?.toJson() ?: JSONObject.NULL)
     }
 
     companion object {
@@ -238,6 +276,7 @@ data class Debrief(
                 listenedBy = o.optString("listenedBy"),
                 segments = o.optJSONArray("segments").objects().map { it.optInt("number") to it.optString("firstWords") },
                 readingAloud = o.optBoolean("readingAloud"),
+                progress = o.optJSONObject("progress")?.let { Progress.fromJson(it) },
             )
         }
     }
@@ -261,20 +300,25 @@ data class SessionRecord(
     /** Error categories the training focused on. */
     val focusCategories: List<String> = emptyList(),
     val examiner: String = "",
-    /** Billed seconds of the live examiner session (GPT-Live). */
+    /** Seconds the live examiner was connected. */
     val examinerSeconds: Double = 0.0,
     /** The Abi-Weg level this session was played for (empty = free practice). */
     val levelId: String = "",
+    /** Id of the session whose text and task are repeated here ("Zweiter Versuch"); empty for a normal session. */
+    val retryOf: String = "",
 ) {
     val studentText: String
         get() = utterances.filter { it.speaker == Speaker.STUDENT }.joinToString(" ") { it.text }
 
     val title: String
-        get() =
-            when {
-                kind == SessionKind.PART1 && focusTask in 1..3 -> "Aufgabe $focusTask: " + (Knowledge.TASK_PATTERNS.getOrNull(focusTask - 1)?.germanName ?: "")
-                else -> kind.short
-            }
+        get() {
+            val base =
+                when {
+                    kind == SessionKind.PART1 && focusTask in 1..3 -> "Aufgabe $focusTask: " + (Knowledge.TASK_PATTERNS.getOrNull(focusTask - 1)?.germanName ?: "")
+                    else -> kind.short
+                }
+            return if (retryOf.isNotBlank()) "Zweiter Versuch – $base" else base
+        }
 
     fun toJson(): JSONObject =
         JSONObject()
@@ -289,6 +333,7 @@ data class SessionRecord(
             .put("examiner", examiner)
             .put("examinerSeconds", examinerSeconds)
             .put("levelId", levelId)
+            .put("retryOf", retryOf)
 
     companion object {
         fun create(kind: SessionKind, feedback: FeedbackMode, topicId: Int, task: ExamTask?, focusTask: Int = 0, focusCategories: List<String> = emptyList()) =
@@ -328,6 +373,7 @@ data class SessionRecord(
                 examiner = o.optString("examiner"),
                 examinerSeconds = o.optDouble("examinerSeconds", 0.0),
                 levelId = o.optString("levelId"),
+                retryOf = o.optString("retryOf"),
             )
     }
 }

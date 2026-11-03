@@ -258,6 +258,7 @@ Arbeitsweise:
 - Das Transkript ist wortgetreu. Füllwörter, Wiederholungen und Selbstkorrekturen sind normal; zähle sie nicht als Grammatikfehler, berücksichtige sie aber bei der Flüssigkeit.
 - Wenn eine Audiodatei des Prüflings beiliegt, höre sie an: Bewerte Aussprache, Intonation und Flüssigkeit daraus und prüfe damit das Transkript. Liegt stattdessen eine Audio-Auswertung als Text bei, übernimm deren Befunde.
 - Bewerte ehrlich und streng wie im echten Abitur, nicht freundlicher. Vergib Punkte (0–15) getrennt für die inhaltliche Leistung und die Darstellungsleistung; die App rechnet sie 40:60 zusammen.
+- Bewerte nur das, was in DIESER Sitzung zu hören und zu lesen ist. Frühere Ergebnisse kennst du nicht und brauchst du nicht: Vergib die Punkte unabhängig davon, ohne dich an einer früheren Zahl zu orientieren – wer besser spricht, bekommt mehr Punkte, wer schlechter spricht, weniger.
 - Nutze den Erwartungshorizont der Aufgaben und das Kursmaterial des Schülers: Was davon hat er genutzt, was hätte gepasst?
 - Eine kurze Sitzung bewertest du nach dem, was da ist, und sagst das in der Begründung.
 Ausgabe (Begründungen und Erklärungen auf Deutsch, verbesserte Sätze auf Englisch):
@@ -336,7 +337,7 @@ ${skillLines()}
             "student_transcript" to str(),
         )
 
-    // ---------- Listening to the recording (Gemini, before Claude grades) ----------
+    // ---------- Listening to the recording (before the grading) ----------
 
     val LISTEN_SYSTEM =
         """

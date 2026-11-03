@@ -182,7 +182,7 @@ Wenn die Aufnahme still ist oder etwas ganz anderes gesagt wird, score 0 und das
                 GeminiRest.textPart("Zielwort oder -satz: \"$target\". Die Aufnahme folgt."),
                 GeminiRest.inlinePart("audio/wav", wav),
             )
-        val answer = app.ai.listenJson(SYSTEM, parts, schema)
+        val answer = app.ai.quickListenJson(SYSTEM, parts, schema)
         val o = answer.json
         return Result(o.optInt("score").coerceIn(0, 100), o.optString("heard"), o.optJSONArray("issues").strings(), o.optString("tip"), answer.by)
     }

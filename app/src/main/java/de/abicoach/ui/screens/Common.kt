@@ -20,6 +20,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -29,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -128,8 +130,16 @@ fun SessionRow(record: SessionRecord, onClick: () -> Unit) {
 /** Fehler- und Hinweisbänder, die auf mehreren Seiten erscheinen. */
 @Composable
 fun MessageBanners(vm: AppViewModel) {
-    if (vm.errorMessage == null && vm.notice == null && vm.readyDebrief == null) return
+    if (vm.errorMessage == null && vm.notice == null && vm.readyDebrief == null && vm.readyMaterialMinutes == 0) return
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (vm.readyMaterialMinutes > 0) {
+            Banner(
+                "Dein Prüfungstext ist fertig. Tippe hier, um die Vorbereitung zu starten – die ${vm.readyMaterialMinutes} Minuten laufen erst dann.",
+                accent,
+                icon = R.drawable.article_24dp,
+                modifier = Modifier.clip(RoundedCornerShape(16.dp)).clickable { vm.openPrep() }.testTag("ready_material"),
+            )
+        }
         vm.readyDebrief?.let { (id, points) ->
             Banner(
                 "Deine Auswertung ist fertig: $points Punkte. Tippe zum Ansehen.",
@@ -141,6 +151,16 @@ fun MessageBanners(vm: AppViewModel) {
         }
         vm.errorMessage?.let { Banner(it, red, icon = R.drawable.error_24dp, onClose = { vm.errorMessage = null }) }
         vm.notice?.let { Banner(it, green, icon = R.drawable.info_24dp, onClose = { vm.notice = null }) }
+    }
+}
+
+/** Keeps the screen on while this composable is shown (preparation, live conversation). */
+@Composable
+fun KeepScreenOn() {
+    val view = LocalView.current
+    DisposableEffect(view) {
+        view.keepScreenOn = true
+        onDispose { view.keepScreenOn = false }
     }
 }
 

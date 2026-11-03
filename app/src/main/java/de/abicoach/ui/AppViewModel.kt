@@ -3,6 +3,7 @@ package de.abicoach.ui
 import android.app.Application
 import android.net.Uri
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -10,11 +11,11 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import de.abicoach.AbiCoachApp
-import de.abicoach.ai.OpenAiKeyCheck
 import de.abicoach.audio.FeedbackType
 import de.abicoach.data.ExamTask
 import de.abicoach.data.FeedbackMode
 import de.abicoach.data.Knowledge
+import de.abicoach.data.LiveError
 import de.abicoach.data.SessionKind
 import de.abicoach.data.SessionRecord
 import de.abicoach.data.Speaker
@@ -22,17 +23,26 @@ import de.abicoach.memory.DocKind
 import de.abicoach.memory.DocStatus
 import de.abicoach.memory.Importer
 import de.abicoach.memory.IngestScheduler
-import de.abicoach.session.Analyzer
+import de.abicoach.practice.SayItCheck
+import de.abicoach.practice.SayTarget
+import de.abicoach.session.CheckLine
 import de.abicoach.session.LiveConversation
 import de.abicoach.session.MaterialGenerator
+import de.abicoach.session.MaterialPrefetch
 import de.abicoach.session.MaterialQuestion
+import de.abicoach.session.MaterialScheduler
+import de.abicoach.session.PendingMaterialStore
+import de.abicoach.session.PrepAlarm
 import de.abicoach.session.Prompts
+import de.abicoach.session.SystemCheck
 import de.abicoach.ui.components.Tab
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.UUID
 
 sealed interface Screen {
     data class Root(val tab: Tab) : Screen
@@ -64,6 +74,9 @@ sealed interface Screen {
     data object Vocab : Screen
 
     data object Pronunciation : Screen
+
+    /** The short round after a presentation: say the most important mistakes correctly. */
+    data class Corrections(val id: String) : Screen
 }
 
 /** A tiny back stack; the Abi-Weg always stays at the bottom, like the Kletterweg in Mental Math Plus. */
@@ -152,12 +165,33 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     var keyChecking by mutableStateOf<String?>(null)
         private set
 
-    private var setup: SessionSetup? = null
-    private var job: Job? = null
+    /** The test of all Google parts (Settings → System prüfen). */
+    var systemCheck by mutableStateOf<List<CheckLine>>(emptyList())
+        private set
+    var systemChecking by mutableStateOf(false)
+        private set
 
-    init {
-        watchAnalysis()
-    }
+    /** Exam material is ready, but the preparation time has not been started yet (the minutes it will have). */
+    var readyMaterialMinutes by mutableIntStateOf(0)
+        private set
+
+    // "Sag es richtig": the student says a corrected sentence and the AI listens.
+    var sayTarget by mutableStateOf<SayTarget?>(null)
+        private set
+    var sayRecording by mutableStateOf(false)
+        private set
+    var sayBusy by mutableStateOf(false)
+        private set
+    var sayResult by mutableStateOf<SayItCheck.Result?>(null)
+        private set
+
+    /** Corrected sentences the student has said right since the app was started. */
+    val sayDone = mutableStateListOf<String>()
+    private var sayRecorder: de.abicoach.practice.ShortRecorder? = null
+
+    private var pendingKey: String? = null
+    private var prepMinutes = 10
+    private var saveJob: Job? = null
 
     /** The text currently read aloud (for the "Vorlesen" buttons). */
     var speaking by mutableStateOf<String?>(null)
@@ -182,8 +216,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun back(): Boolean {
-        return when (nav.current) {
+        return when (val current = nav.current) {
             Screen.Live, Screen.Generating -> false
+            is Screen.Corrections -> {
+                finishCorrections(current.id)
+                true
+            }
             is Screen.Root -> {
                 if ((nav.current as Screen.Root).tab != Tab.WEG) {
                     nav.openTab(Tab.WEG)
@@ -214,56 +252,182 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun start(s: SessionSetup) {
         if (busy != null) return
         if (!app.ai.hasGemini) {
-            errorMessage = "Bitte trage zuerst deinen Gemini-Schlüssel ein (Einstellungen → KI)."
+            errorMessage = "Bitte trage zuerst deinen Google-Schlüssel ein (Einstellungen → KI)."
             nav.push(Screen.Settings)
             return
         }
         errorMessage = null
         notice = null
-        setup = s
         app.feedback.play(FeedbackType.START)
-        val topicId = resolveTopic(s.topicChoice)
         if (s.kind.hasPart1) {
-            progressText = "Bereite das Material vor …"
-            nav.push(Screen.Generating)
-            job =
-                viewModelScope.launch {
-                    try {
-                        val request =
-                            MaterialGenerator.Request(
-                                topicId = topicId,
-                                textType = s.textType,
-                                source = if (s.fixedDocId != null) Knowledge.Source.MATERIAL else s.source,
-                                short = s.kind == SessionKind.PLACEMENT,
-                                instruction = s.instruction,
-                            )
-                        val (generated, note) =
-                            withContext(Dispatchers.Default) {
-                                MaterialGenerator.generate(app, request, fixedDocId = s.fixedDocId, fixedPage = s.fixedPage) { progressText = it }
-                            }
-                        task = generated
-                        notes = ""
-                        tasksDone.clear()
-                        notice = note ?: app.ai.lastNotice.also { app.ai.lastNotice = null }
-                        prepEndsAt = System.currentTimeMillis() + s.prepMinutes * 60_000L
-                        draft = SessionRecord.create(s.kind, s.feedback, topicId, generated, s.focusTask, s.focusCategories).copy(levelId = s.levelId.orEmpty())
-                        app.feedback.play(FeedbackType.ENABLE)
-                        if (nav.current == Screen.Generating) nav.replaceTop(Screen.Prep)
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        errorMessage = "Material konnte nicht erstellt werden: ${e.message}"
-                        if (nav.current == Screen.Generating) nav.pop()
-                    }
-                }
+            startMaterial(s)
         } else {
-            startConversation(s, topicId)
+            startConversation(s, resolveTopic(s.topicChoice))
+        }
+    }
+
+    private fun pendingFor(key: String, s: SessionSetup, topicId: Int) =
+        PendingMaterialStore.Pending(key, s.kind, s.feedback, topicId, s.focusTask, s.focusCategories, s.levelId.orEmpty(), s.prepMinutes, System.currentTimeMillis())
+
+    /** The exam text is written by a background job: it keeps going when the student leaves the app. */
+    private fun startMaterial(s: SessionSetup) {
+        // A text that was prepared in advance: the preparation starts at once.
+        MaterialPrefetch.takeFor(app, s)?.let { ready ->
+            adoptMaterial(pendingFor("", s, ready.task.topicId), ready.task, ready.note, openNow = true)
+            viewModelScope.launch(Dispatchers.Default) { MaterialPrefetch.maybeStart(app) }
+            return
+        }
+        val topicId = resolveTopic(s.topicChoice)
+        val key = UUID.randomUUID().toString()
+        app.pendingMaterial.save(pendingFor(key, s, topicId))
+        pendingKey = key
+        progressText = "Bereite das Material vor …"
+        app.material.reset()
+        nav.push(Screen.Generating)
+        val request =
+            MaterialGenerator.Request(
+                topicId = topicId,
+                textType = s.textType,
+                source = if (s.fixedDocId != null) Knowledge.Source.MATERIAL else s.source,
+                short = s.kind == SessionKind.PLACEMENT,
+                instruction = s.instruction,
+            )
+        MaterialScheduler.enqueue(app, key, request, s.fixedDocId, s.fixedPage, prefetch = false)
+    }
+
+    /** Material is ready: show the preparation page, or (if the student is elsewhere) a banner. */
+    private fun adoptMaterial(p: PendingMaterialStore.Pending, generated: ExamTask, note: String?, openNow: Boolean) {
+        task = generated
+        notes = ""
+        tasksDone.clear()
+        notice = note
+        draft = SessionRecord.create(p.kind, p.feedback, p.topicId, generated, p.focusTask, p.focusCategories).copy(levelId = p.levelId)
+        prepMinutes = p.prepMinutes
+        prepEndsAt = 0L
+        if (openNow) {
+            openPrep()
+        } else {
+            readyMaterialMinutes = p.prepMinutes
+            persistDraft()
+            app.feedback.play(FeedbackType.ENABLE)
+        }
+    }
+
+    /** Starts the preparation time (it begins now, not when the text was written) and shows the preparation page. */
+    fun openPrep() {
+        if (task == null || draft == null) return
+        readyMaterialMinutes = 0
+        prepEndsAt = System.currentTimeMillis() + prepMinutes * 60_000L
+        persistDraft()
+        PrepAlarm.schedule(app, prepEndsAt)
+        app.feedback.play(FeedbackType.ENABLE)
+        if (nav.current == Screen.Generating) nav.replaceTop(Screen.Prep) else nav.push(Screen.Prep)
+    }
+
+    /** Keeps the preparation (text, notes, timer) on disk, so nothing is lost if Android closes the app. */
+    private fun persistDraft() {
+        val record = draft ?: return
+        val end = prepEndsAt
+        val minutes = prepMinutes
+        val text = notes
+        viewModelScope.launch(Dispatchers.IO) { app.drafts.save(record.copy(notes = text), end, minutes) }
+    }
+
+    fun updateNotes(text: String) {
+        notes = text
+        saveJob?.cancel()
+        saveJob =
+            viewModelScope.launch {
+                delay(700)
+                persistDraft()
+            }
+    }
+
+    private fun finishMaterial(key: String) {
+        val pending = app.pendingMaterial.load() ?: return
+        if (pending.key != key) return
+        val entry = app.shelf.take(key) ?: return
+        app.pendingMaterial.clear()
+        pendingKey = null
+        adoptMaterial(pending, entry.task, entry.note, openNow = nav.current == Screen.Generating)
+    }
+
+    /** Follows the background job that writes the material: progress, result and errors. */
+    private fun watchMaterial() {
+        viewModelScope.launch {
+            app.material.status.collect { st ->
+                val key = pendingKey
+                if (key != null && st.key == key && st.text.isNotBlank()) progressText = st.text
+                st.readyKey?.let { ready ->
+                    app.material.consume()
+                    finishMaterial(ready)
+                }
+                val failed = st.key
+                if (st.error != null && failed != null && failed == key) {
+                    app.material.consume()
+                    app.pendingMaterial.clear()
+                    pendingKey = null
+                    errorMessage = st.error
+                    if (nav.current == Screen.Generating) nav.pop()
+                }
+            }
+        }
+    }
+
+    /** After the app was closed: bring back a running preparation or material that was finished in the meantime. */
+    private fun restoreWork() {
+        val now = System.currentTimeMillis()
+        val saved = app.drafts.load()
+        if (saved != null) {
+            if (now - saved.savedAt > 6 * 3_600_000L) {
+                app.drafts.clear()
+            } else {
+                task = saved.record.task
+                notes = saved.record.notes
+                draft = saved.record
+                prepMinutes = saved.prepMinutes
+                tasksDone.clear()
+                if (saved.prepEndsAt > 0L) {
+                    prepEndsAt = saved.prepEndsAt
+                    nav.push(Screen.Prep)
+                    notice = "Deine Vorbereitung ist wieder da – die Zeit ist weitergelaufen."
+                } else {
+                    readyMaterialMinutes = saved.prepMinutes
+                }
+                return
+            }
+        }
+        val pending = app.pendingMaterial.load() ?: return
+        if (now - pending.startedAt > 30 * 60_000L) {
+            app.pendingMaterial.clear()
+            return
+        }
+        pendingKey = pending.key
+        if (app.shelf.has(pending.key)) {
+            finishMaterial(pending.key)
+            return
+        }
+        // Still being written in the background?
+        viewModelScope.launch {
+            val infos =
+                withContext(Dispatchers.IO) {
+                    runCatching { androidx.work.WorkManager.getInstance(app).getWorkInfosForUniqueWork(MaterialScheduler.workName(pending.key)).get() }.getOrNull()
+                }
+            if (infos != null && infos.any { !it.state.isFinished }) {
+                progressText = "Das Material wird noch geschrieben …"
+                if (nav.current is Screen.Root) nav.push(Screen.Generating)
+            } else {
+                app.pendingMaterial.clear()
+                pendingKey = null
+            }
         }
     }
 
     fun cancelGenerating() {
-        job?.cancel()
-        job = null
+        pendingKey?.let { MaterialScheduler.cancel(app, it) }
+        pendingKey = null
+        app.pendingMaterial.clear()
+        app.material.reset()
         if (nav.current == Screen.Generating) nav.pop()
     }
 
@@ -311,6 +475,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         val current = draft ?: return
         val t = task ?: return
         draft = current.copy(notes = notes)
+        app.drafts.clear()
+        PrepAlarm.cancel(app)
         val target =
             when {
                 current.kind == SessionKind.PLACEMENT -> 240
@@ -414,9 +580,67 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     examinerSeconds = previous.examinerSeconds + result.examinerSeconds,
                 )
             app.store.save(record)
-            nav.resetTo(Screen.Analyzing)
+            // The evaluation starts in the background right away, whatever the student does next.
             analyze(record.id)
+            val practice = record.feedback != FeedbackMode.PRUEFUNG && record.kind != SessionKind.SIMULATION && record.kind != SessionKind.PLACEMENT
+            if (practice && correctionTargets(record).isNotEmpty()) {
+                nav.resetTo(Screen.Corrections(record.id))
+            } else {
+                nav.resetTo(Screen.Analyzing)
+            }
+            // The next exam text is prepared while the student reads the result.
+            launch(Dispatchers.Default) { MaterialPrefetch.maybeStart(app) }
         }
+    }
+
+    /** The most important language mistakes of a session for the correction round: serious or recurring ones, no duplicates, at most three. */
+    fun correctionTargets(record: SessionRecord): List<LiveError> {
+        val counts = app.store.categoryCounts()
+        val rank = mapOf("major" to 0, "minor" to 1)
+        return record.liveErrors
+            .filter { it.quote.isNotBlank() && it.correction.isNotBlank() && it.severity != "content" && it.category != "CONTENT" }
+            .filter { it.severity == "major" || (counts[it.category] ?: 0) >= 3 }
+            .sortedBy { rank[it.severity] ?: 2 }
+            .distinctBy { e -> e.correction.lowercase().filter { c -> c.isLetterOrDigit() } }
+            .take(3)
+    }
+
+    /** Leaves the correction round: to the result if it is ready, otherwise to the waiting page. */
+    fun finishCorrections(id: String) {
+        sayClose()
+        if (app.store.get(id)?.debrief != null) {
+            readyDebrief = null
+            nav.replaceTop(Screen.Debrief(id))
+        } else {
+            nav.replaceTop(Screen.Analyzing)
+        }
+    }
+
+    /** "Zweiter Versuch": the same text, only the weakest task, a short preparation. */
+    fun startRetry(recordId: String, taskNumber: Int) {
+        val original = app.store.get(recordId) ?: return
+        val originalTask = original.task ?: return
+        if (busy != null) return
+        errorMessage = null
+        val feedback = if (original.feedback == FeedbackMode.PRUEFUNG) FeedbackMode.FLUESTERN else original.feedback
+        task = originalTask
+        notes = original.notes
+        tasksDone.clear()
+        draft = SessionRecord.create(SessionKind.PART1, feedback, original.topicId, originalTask, taskNumber).copy(retryOf = recordId)
+        prepMinutes = 2
+        notice = "Zweiter Versuch: derselbe Text, nur Aufgabe $taskNumber. Du hast 2 Minuten – dann sprichst du es besser."
+        app.feedback.play(FeedbackType.START)
+        openPrep()
+    }
+
+    /** What went wrong with the repeated task the first time (for the preparation page of a second attempt). */
+    fun retryHints(): Pair<de.abicoach.data.TaskReview?, List<LiveError>> {
+        val current = draft ?: return null to emptyList()
+        if (current.retryOf.isBlank()) return null to emptyList()
+        val original = app.store.get(current.retryOf) ?: return null to emptyList()
+        val review = original.debrief?.taskReviews?.firstOrNull { it.number == current.focusTask }
+        val errors = original.debrief?.errors.orEmpty().filter { it.severity != "content" }.take(3)
+        return review to errors
     }
 
     fun cancelLive() {
@@ -429,8 +653,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun cancelPrep() {
+        app.drafts.clear()
+        PrepAlarm.cancel(app)
         draft = null
         task = null
+        readyMaterialMinutes = 0
         nav.pop()
     }
 
@@ -563,8 +790,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun ask(question: String) {
         val q = question.trim()
         if (q.isEmpty() || askBusy) return
-        if (!app.ai.hasGemini && !app.ai.useClaude) {
-            errorMessage = "Für den KI-Coach brauchst du einen Schlüssel (Einstellungen → KI)."
+        if (!app.ai.hasGemini) {
+            errorMessage = "Für den KI-Coach brauchst du den Google-Schlüssel (Einstellungen → KI)."
             return
         }
         val history = askMessages.map { (if (it.fromUser) "user" else "assistant") to it.text }
@@ -709,17 +936,96 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun pronWords(): List<de.abicoach.data.PronTip> =
         app.store.sessions.value.mapNotNull { it.debrief }.flatMap { it.pronunciation }.distinctBy { it.word.lowercase().trim() }.filter { it.word.isNotBlank() }.take(20)
 
+    // ---------- "Sag es richtig" ----------
+
+    fun sayOpen(wrong: String, right: String, why: String = "") {
+        tap()
+        sayRecorder?.release()
+        sayRecorder = null
+        sayRecording = false
+        sayResult = null
+        sayTarget = SayTarget(wrong, right, why)
+    }
+
+    fun sayClose() {
+        sayRecorder?.release()
+        sayRecorder = null
+        sayRecording = false
+        sayTarget = null
+        sayResult = null
+        stopSpeaking()
+    }
+
+    fun sayStart() {
+        if (sayBusy || sayRecording || sayTarget == null) return
+        stopSpeaking()
+        sayRecorder?.release()
+        sayRecorder = de.abicoach.practice.ShortRecorder().also { it.start() }
+        sayRecording = true
+        sayResult = null
+        app.feedback.play(FeedbackType.START)
+    }
+
+    fun sayStop() {
+        val recorder = sayRecorder ?: return
+        val wav = recorder.stop()
+        recorder.release()
+        sayRecorder = null
+        sayRecording = false
+        app.feedback.play(FeedbackType.STOP)
+        val target = sayTarget ?: return
+        if (wav.size < 44 + 16_000) {
+            sayResult = SayItCheck.Result(false, "", "Die Aufnahme war zu kurz. Tippe auf „Aufnehmen“, sag den Satz und tippe dann auf „Fertig“.", "")
+            return
+        }
+        sayBusy = true
+        viewModelScope.launch {
+            try {
+                val result = withContext(Dispatchers.Default) { SayItCheck.check(app, target, wav) }
+                if (sayTarget == target) {
+                    sayResult = result
+                    if (result.ok) {
+                        if (target.right !in sayDone) sayDone.add(target.right)
+                        app.feedback.play(FeedbackType.CORRECT)
+                    } else {
+                        app.feedback.play(FeedbackType.WRONG)
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (sayTarget == target) sayResult = SayItCheck.Result(false, "", "Das hat nicht geklappt: ${e.message}", "")
+            } finally {
+                sayBusy = false
+            }
+        }
+    }
+
+    // ---------- system check ----------
+
+    fun runSystemCheck() {
+        if (systemChecking) return
+        systemChecking = true
+        systemCheck = emptyList()
+        viewModelScope.launch {
+            try {
+                withContext(Dispatchers.Default) { SystemCheck(app).runAll { systemCheck = it } }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                errorMessage = "Der Systemtest wurde abgebrochen: ${e.message}"
+            } finally {
+                systemChecking = false
+            }
+        }
+    }
+
     // ---------- keys ----------
 
     fun checkKey(provider: String) {
         keyChecking = provider
         viewModelScope.launch {
-            val result =
-                when (provider) {
-                    "gemini" -> app.ai.gemini.checkKey()
-                    "anthropic" -> app.ai.claude.checkKey()
-                    else -> OpenAiKeyCheck.check(app.http, app.settings.openAiKey)
-                }
+            val result = app.ai.gemini.checkKey()
             keyChecks = keyChecks + (provider to result)
             keyChecking = null
             if (provider == "gemini" && result == null) app.resumeReading()
@@ -861,10 +1167,18 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     override fun onCleared() {
         recorder?.release()
+        sayRecorder?.release()
         live?.abort()
         stopSpeaking()
         androidTts.shutdown()
         super.onCleared()
+    }
+
+    init {
+        // Last, so that everything above is ready.
+        watchAnalysis()
+        watchMaterial()
+        restoreWork()
     }
 
     companion object {

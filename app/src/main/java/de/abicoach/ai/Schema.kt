@@ -4,10 +4,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * A tiny description of the JSON the app expects back from a model. It is written once and rendered
- * in the dialect of each provider: Gemini's OpenAPI subset ("STRING", "OBJECT", …) or the JSON Schema
- * that Claude's structured outputs require (lower-case types, additionalProperties = false).
- * Every property is required, which keeps both providers strict and avoids Claude's limit on optional fields.
+ * A tiny description of the JSON the app expects back from a model, rendered as Gemini's `responseSchema`
+ * (OpenAPI subset: "STRING", "OBJECT", …). Every property is required, which keeps the answers strict.
  */
 sealed class Sch {
     abstract val description: String?
@@ -41,29 +39,6 @@ sealed class Sch {
                 props.forEach { (k, v) -> properties.put(k, v.gemini()) }
                 val names = JSONArray(props.map { it.first })
                 o.put("type", "OBJECT").put("properties", properties).put("required", names).put("propertyOrdering", JSONArray(props.map { it.first }))
-            }
-        }
-        description?.let { o.put("description", it) }
-        return o
-    }
-
-    /** JSON Schema for Claude's `output_config.format`. */
-    fun jsonSchema(): JSONObject {
-        val o = JSONObject()
-        when (this) {
-            is Str -> {
-                o.put("type", "string")
-                enum?.let { o.put("enum", JSONArray(it)) }
-            }
-            is Integer -> o.put("type", "integer")
-            is Num -> o.put("type", "number")
-            is Bool -> o.put("type", "boolean")
-            is Arr -> o.put("type", "array").put("items", items.jsonSchema())
-            is Obj -> {
-                val properties = JSONObject()
-                props.forEach { (k, v) -> properties.put(k, v.jsonSchema()) }
-                o.put("type", "object").put("properties", properties).put("required", JSONArray(props.map { it.first }))
-                    .put("additionalProperties", false)
             }
         }
         description?.let { o.put("description", it) }

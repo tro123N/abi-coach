@@ -14,7 +14,6 @@ import de.abicoach.data.strings
 import de.abicoach.memory.Hit
 import de.abicoach.profile.Skill
 import org.json.JSONObject
-import kotlin.math.roundToInt
 
 /** Creates new, unknown exam material for part 1 (like the examiner's "Prüfungsvorlage"), from the student's course. */
 object MaterialGenerator {
@@ -77,7 +76,7 @@ object MaterialGenerator {
             if (request.short) "\nIMPORTANT: This is a short placement test. The text must have only 170 to 220 words; keep the three tasks simple." else ""
         val levelLine = if (request.instruction.isNotBlank()) "\nIMPORTANT – requirement of this exercise: ${request.instruction}" else ""
         onProgress("${app.ai.brainLabel()} schreibt Text und Aufgaben …")
-        val answer = app.ai.brainJson(Prompts.MATERIAL_SYSTEM, finalPrompt + shortLine + levelLine, Prompts.materialSchema, maxTokens = 12_000, thinking = true)
+        val answer = app.ai.brainJson(Prompts.MATERIAL_SYSTEM, finalPrompt + shortLine + levelLine, Prompts.materialSchema)
         val task = parse(app, answer.json, request.topicId, source.name.lowercase())
         return task to note
     }
@@ -114,8 +113,9 @@ object MaterialGenerator {
 }
 
 /**
- * The full debrief after a session. With a Claude key: Gemini listens to the recording, Claude grades.
- * Without: Gemini does both in one call (it hears the audio itself).
+ * The full debrief after a session, all by Gemini: first the recording is listened to (pronunciation, intonation,
+ * fluency), then the strongest model grades the transcript with the NRW scheme and that listening result.
+ * The grader never sees earlier points, so every session is judged on its own.
  */
 class Analyzer(private val app: AbiCoachApp) {
     suspend fun analyze(record: SessionRecord, onProgress: (String) -> Unit): Debrief {
@@ -141,40 +141,37 @@ class Analyzer(private val app: AbiCoachApp) {
                 }
             }
         }
-        val audio = audioParts.isNotEmpty()
 
-        if (hub.useClaude) {
-            var listening: JSONObject? = null
-            var listenedBy = ""
-            if (audio) {
-                onProgress("${hub.listenerLabel()} hört deine Aufnahme an …")
-                runCatching {
-                    val intro =
-                        if (record.studentText.isBlank()) "Es liegt kein Transkript vor – schreibe das Gesagte in transcript mit." else "Ein Transkript liegt bereits vor; transcript bleibt leer."
-                    hub.listenJson(Prompts.LISTEN_SYSTEM, listOf(GeminiRest.textPart(intro)) + audioParts, Prompts.listenSchema)
-                }.onSuccess {
-                    listening = it.json
-                    listenedBy = it.by
-                }.onFailure { onProgress("Aufnahme konnte nicht angehört werden: ${it.message}") }
-            }
-            onProgress("${hub.brainLabel()} bewertet deine Leistung …")
-            val context = Prompts.analysisContext(record, courseContext, teacherNotes, listening?.let { Prompts.listeningSummary(it) }, profileNote)
-            val answer = hub.brainJson(Prompts.ANALYSIS_SYSTEM, context, Prompts.analysisSchema, maxTokens = 20_000, thinking = true)
-            return Prompts.parseDebrief(answer.json, record.studentText, listening != null, listening, answer.by, listenedBy)
+        var listening: JSONObject? = null
+        var listenedBy = ""
+        if (audioParts.isNotEmpty()) {
+            onProgress("${hub.listenerLabel()} hört deine Aufnahme an …")
+            runCatching {
+                val intro =
+                    if (record.studentText.isBlank()) "Es liegt kein Transkript vor – schreibe das Gesagte in transcript mit." else "Ein Transkript liegt bereits vor; transcript bleibt leer."
+                hub.listenJson(Prompts.LISTEN_SYSTEM, listOf(GeminiRest.textPart(intro)) + audioParts, Prompts.listenSchema)
+            }.onSuccess {
+                listening = it.json
+                listenedBy = it.by
+            }.onFailure { onProgress("Aufnahme konnte nicht angehört werden: ${it.message}") }
         }
-
-        onProgress("${hub.brainLabel()} hört zu und bewertet deine Leistung …")
-        val context = Prompts.analysisContext(record, courseContext, teacherNotes, null, profileNote)
-        val answer = hub.listenJson(Prompts.ANALYSIS_SYSTEM, listOf(GeminiRest.textPart(context)) + audioParts, Prompts.analysisSchema)
-        return Prompts.parseDebrief(answer.json, record.studentText, audio, null, answer.by, if (audio) answer.by else "")
+        onProgress("${hub.brainLabel()} bewertet deine Leistung …")
+        val context = Prompts.analysisContext(record, courseContext, teacherNotes, listening?.let { Prompts.listeningSummary(it) }, profileNote)
+        val answer = hub.brainJson(Prompts.ANALYSIS_SYSTEM, context, Prompts.analysisSchema)
+        return Prompts.parseDebrief(answer.json, record.studentText, listening != null, listening, answer.by, listenedBy)
     }
 
+    /**
+     * What the grader may know about the student: only the weak areas (to make the tips personal), never scores.
+     * Earlier points would anchor the new grade; the progress is compared afterwards, outside the grading.
+     */
     private fun profileNote(): String {
         val profile = app.profiles.profile.value
         if (profile.skills.isEmpty()) return ""
-        val weak = profile.levers(3).joinToString(", ") { s -> "${s.label} (${profile.skills[s]?.score?.roundToInt() ?: "?"} P.)" }
+        val weak = profile.levers(3).joinToString(", ") { it.label }
         val strong = profile.strengths(2).joinToString(", ") { it.label }
-        return "Größte Hebel bisher: $weak" + if (strong.isNotBlank()) ". Stärken: $strong." else "."
+        return "Aus früheren Sitzungen bekannte Schwerpunkte (nur für Hebel und Tipps nutzen, nie für die Punkte): Schwächer: $weak" +
+            if (strong.isNotBlank()) ". Stärker: $strong." else "."
     }
 }
 

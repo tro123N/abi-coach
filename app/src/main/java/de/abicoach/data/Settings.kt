@@ -49,16 +49,22 @@ internal class KeyCipher {
         }.getOrNull()
 }
 
-/** "Beste Qualität" uses the best model per function when its key is there; "Sparsam" uses only Gemini. */
+/** All AI comes from Google. "Beste Qualität" lets the strongest Gemini model grade and write; "Sparsam" uses the cheaper Flash model. */
 enum class Quality(val label: String, val description: String) {
-    BEST("Beste Qualität", "Für jede Aufgabe die stärkste KI, für die ein Schlüssel eingetragen ist."),
-    SPARSAM("Sparsam", "Nur Gemini – günstig oder im Gratis-Tarif kostenlos."),
+    BEST("Beste Qualität", "Gemini 4 Argon bewertet, schreibt die Aufgaben und coacht – am genauesten."),
+    SPARSAM("Sparsam", "Gemini 3.8 Flash für alles – schneller und deutlich günstiger."),
 }
 
 /** All user settings. API keys are stored encrypted; everything else is plain preferences. */
 class Settings(context: Context) {
     private val prefs = context.getSharedPreferences("abicoach", Context.MODE_PRIVATE)
     private val cipher = KeyCipher()
+
+    init {
+        // The app uses Google only: keys and settings of the former OpenAI and Anthropic support are removed.
+        val old = listOf("openai_key_enc", "anthropic_key_enc", "claude_brain_model", "claude_fast_model", "openai_live_model", "openai_voice")
+        if (old.any { prefs.contains(it) }) prefs.edit().apply { old.forEach { remove(it) } }.apply()
+    }
 
     /** Bumped on every change so the screens can recompose. */
     private val _version = MutableStateFlow(0)
@@ -73,14 +79,6 @@ class Settings(context: Context) {
     var geminiKey: String
         get() = secret(KEY_GEMINI)
         set(value) = putSecret(KEY_GEMINI, value)
-
-    var openAiKey: String
-        get() = secret(KEY_OPENAI)
-        set(value) = putSecret(KEY_OPENAI, value)
-
-    var anthropicKey: String
-        get() = secret(KEY_ANTHROPIC)
-        set(value) = putSecret(KEY_ANTHROPIC, value)
 
     private val cache = java.util.concurrent.ConcurrentHashMap<String, String>()
 
@@ -100,15 +98,15 @@ class Settings(context: Context) {
 
     // ---------- Models (editable under "Erweitert") ----------
 
-    var claudeBrainModel by StringPref("claude_brain_model", "claude-opus-5-5")
-    var claudeFastModel by StringPref("claude_fast_model", "claude-haiku-5-5")
-    var openAiLiveModel by StringPref("openai_live_model", "gpt-live-1")
-    var openAiVoice by StringPref("openai_voice", "marin")
     var geminiLiveModel by StringPref("live_model", "gemini-3.8-live")
     var geminiVoice by StringPref("voice", "Charon")
     var transcribeModel by StringPref("transcribe_model", "gemini-3.5-transcribe-live")
     var geminiTextModel by StringPref("analysis_model", "gemini-3.8-flash")
-    /** The strongest Gemini model: grades when no Claude key is there and listens to the recordings. */
+
+    /** The model of the live error check while the student speaks: must answer in a second or two. */
+    var geminiFastModel by StringPref("fast_model", "gemini-3.8-flash")
+
+    /** The strongest Gemini model: grades, writes the exam material, coaches and listens to the recordings. */
     var geminiBestModel by StringPref("best_model", "gemini-4-argon")
     var geminiReaderModel by StringPref("reader_model", "gemini-3.8-flash")
     var embeddingModel by StringPref("embedding_model", "gemini-embedding-2")
@@ -139,6 +137,12 @@ class Settings(context: Context) {
 
     var uploadAudio by BoolPref("upload_audio", true)
     var showTranscript by BoolPref("show_transcript", false)
+
+    /** With headphones the whisper hint is also spoken very softly. */
+    var whisperAudio by BoolPref("whisper_audio", true)
+
+    /** Prepares the next exam text in the background so that "Los geht's" starts at once. */
+    var prefetchMaterial by BoolPref("prefetch_material", true)
 
     // ---------- Look and feel ----------
 
@@ -196,9 +200,6 @@ class Settings(context: Context) {
 
     companion object {
         private const val KEY_GEMINI = "gemini_key_enc"
-        private const val KEY_OPENAI = "openai_key_enc"
-        private const val KEY_ANTHROPIC = "anthropic_key_enc"
         val GEMINI_VOICES = listOf("Charon", "Kore", "Puck", "Fenrir", "Aoede", "Leda", "Orus", "Zephyr")
-        val OPENAI_VOICES = listOf("marin", "quartz", "willow")
     }
 }

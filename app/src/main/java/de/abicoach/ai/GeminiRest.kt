@@ -39,22 +39,43 @@ class GeminiRest(private val http: OkHttpClient, private val apiKey: () -> Strin
         parts: List<JSONObject>,
         schema: Sch,
         retries: Int = 1,
+        thinking: String? = null,
     ): JSONObject {
         val config = JSONObject().put("responseMimeType", "application/json").put("responseSchema", schema.gemini())
-        val text = generate(model, system, listOf(JSONObject().put("role", "user").put("parts", JSONArray(parts))), config, retries)
+        val text = generate(model, system, listOf(JSONObject().put("role", "user").put("parts", JSONArray(parts))), config, retries, thinking)
         return parseJsonLoose(text)
     }
 
     /** A chat turn: [turns] are (role, text) pairs with role "user" or "model". */
-    suspend fun generateText(model: String, system: String, turns: List<Pair<String, String>>, retries: Int = 1): String {
+    suspend fun generateText(model: String, system: String, turns: List<Pair<String, String>>, retries: Int = 1, thinking: String? = null): String {
         val contents =
             turns.map { (role, text) ->
                 JSONObject().put("role", if (role == "assistant") "model" else role).put("parts", JSONArray().put(textPart(text)))
             }
-        return generate(model, system, contents, JSONObject(), retries)
+        return generate(model, system, contents, JSONObject(), retries, thinking)
     }
 
-    private suspend fun generate(model: String, system: String, contents: List<JSONObject>, config: JSONObject, retries: Int): String =
+    /** Models that rejected a thinking setting: it is left out for them from now on. */
+    private val noThinkingConfig = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
+    /**
+     * [thinking] is a thinking level ("low", "medium", "high") for jobs that must be quick; null leaves the model's own default.
+     * If a model does not accept the setting, the request is repeated without it.
+     */
+    private suspend fun generate(model: String, system: String, contents: List<JSONObject>, config: JSONObject, retries: Int, thinking: String?): String {
+        if (thinking != null && model !in noThinkingConfig) {
+            val withThinking = JSONObject(config.toString()).put("thinkingConfig", JSONObject().put("thinkingLevel", thinking))
+            try {
+                return generateOnce(model, system, contents, withThinking, retries)
+            } catch (e: GeminiException) {
+                if (e.code != 400 || !(e.message ?: "").contains("think", ignoreCase = true)) throw e
+                noThinkingConfig += model
+            }
+        }
+        return generateOnce(model, system, contents, config, retries)
+    }
+
+    private suspend fun generateOnce(model: String, system: String, contents: List<JSONObject>, config: JSONObject, retries: Int): String =
         withRetry(retries) {
             withContext(Dispatchers.IO) {
                 val body = JSONObject().put("contents", JSONArray(contents))

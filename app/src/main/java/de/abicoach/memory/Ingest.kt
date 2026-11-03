@@ -224,7 +224,7 @@ class IngestPipeline(private val app: AbiCoachApp) {
         val user = "Dokument: \"${doc.title}\" (${doc.kind.label}, Halbjahr: ${doc.halbjahr}, ${doc.pageCount} Seiten)\n\n$text"
         val json =
             if (doc.kind == DocKind.KLAUSUR) {
-                app.ai.brainJson(DIGEST_SYSTEM, user, digestSchema, maxTokens = 12_000, thinking = false).json
+                app.ai.brainJson(DIGEST_SYSTEM, user, digestSchema, thinking = false).json
             } else {
                 app.ai.cheapJson(DIGEST_SYSTEM, user, digestSchema)
             }

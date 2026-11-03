@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import de.abicoach.R
 import de.abicoach.data.Debrief
 import de.abicoach.data.Knowledge
+import de.abicoach.data.Progress
 import de.abicoach.data.SessionRecord
 import de.abicoach.data.Speaker
 import de.abicoach.profile.Skill
@@ -75,6 +76,7 @@ fun DebriefScreen(vm: AppViewModel, id: String) {
             confirmColor = red,
         )
     }
+    SayItDialog(vm)
     DetailScaffold(
         title = "Auswertung",
         onBack = { vm.tap(); vm.stopSpeaking(); vm.nav.pop() },
@@ -98,6 +100,7 @@ fun DebriefScreen(vm: AppViewModel, id: String) {
             return@DetailScaffold
         }
         SummaryCard(record, d)
+        d.progress?.let { ProgressCard(it, d) }
         if (record.levelId.isNotBlank()) {
             de.abicoach.path.Curriculum.level(record.levelId)?.let { level ->
                 LevelResultCard(vm, record.levelId, de.abicoach.path.PathEngine.pointsFor(level, d))
@@ -116,6 +119,19 @@ fun DebriefScreen(vm: AppViewModel, id: String) {
             }
         }
         if (d.taskReviews.isNotEmpty()) TaskReviewCard(record, d)
+        if (record.task != null && record.kind.hasPart1 && d.taskReviews.isNotEmpty()) {
+            val weakest = d.taskReviews.minByOrNull { it.points }
+            if (weakest != null && weakest.points < 15) {
+                ActionButton(
+                    "Zweiter Versuch: Aufgabe ${weakest.number}",
+                    R.drawable.refresh_24dp,
+                    accent,
+                    { vm.stopSpeaking(); vm.startRetry(record.id, weakest.number) },
+                    subtitle = "Derselbe Text, nur diese Aufgabe (${weakest.points} P.) – 2 Minuten Vorbereitung. Danach siehst du Vorher und Nachher.",
+                    modifier = Modifier.testTag("debrief_retry"),
+                )
+            }
+        }
         if (record.kind.hasPart1) TalkCoachCard(record, d)
         record.task?.let { task ->
             if (task.tasks.any { it.expectations.isNotEmpty() }) {
@@ -140,7 +156,7 @@ fun DebriefScreen(vm: AppViewModel, id: String) {
                 }
             }
         }
-        if (d.errors.isNotEmpty()) ErrorsCard(d)
+        if (d.errors.isNotEmpty()) ErrorsCard(vm, d)
         if (d.upgrades.isNotEmpty()) {
             AbiCard(modifier = Modifier.testTag("debrief_upgrades")) {
                 CardTitle("So klingt es nach 15 Punkten", icon = R.drawable.auto_awesome_24dp)
@@ -150,6 +166,7 @@ fun DebriefScreen(vm: AppViewModel, id: String) {
                     Row(verticalAlignment = Alignment.Top) {
                         BodyText("„${u.upgraded}“", color = green, modifier = Modifier.weight(1f))
                         SpeakButton(vm, u.upgraded)
+                        SayItIcon(vm, u.original, u.upgraded, u.why)
                     }
                     CaptionText(u.why)
                 }
@@ -270,6 +287,38 @@ private fun SummaryCard(record: SessionRecord, d: Debrief) {
     }
 }
 
+/** What changed since the last session (or since the first attempt): points, mistake types that are gone and those that came back. */
+@Composable
+private fun ProgressCard(p: Progress, d: Debrief) {
+    val dimens = AbiTheme.dimens
+    val delta = d.totalPoints - p.comparedPoints
+    AbiCard(modifier = Modifier.testTag("debrief_progress")) {
+        CardTitle(if (p.taskNumber in 1..3) "Vorher und nachher" else "Dein Fortschritt", icon = R.drawable.insights_24dp, iconTint = green)
+        CaptionText("Verglichen mit: ${p.comparedLabel}")
+        Gap(4.dp)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("${p.comparedPoints} P.", fontSize = dimens.fonts.label, color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f))
+            Text("  →  ", fontSize = dimens.fonts.label, color = MaterialTheme.colorScheme.onPrimary)
+            Text("${d.totalPoints} P.", fontSize = dimens.fonts.label, color = pointsColor(d.totalPoints.toDouble()))
+            Spacer(Modifier.width(10.dp))
+            Text(
+                if (delta > 0) "+$delta" else if (delta < 0) "$delta" else "±0",
+                fontSize = dimens.fonts.label,
+                color = if (delta > 0) green else if (delta < 0) red else MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f),
+            )
+        }
+        if (p.taskNumber in 1..3 && p.taskBefore >= 0 && p.taskAfter >= 0) {
+            Gap(6.dp)
+            BodyText("Aufgabe ${p.taskNumber}: ${p.taskBefore} → ${p.taskAfter} Punkte")
+        }
+        if (p.fixed.isNotEmpty() || p.still.isNotEmpty()) Gap(6.dp)
+        p.fixed.forEach { GoalRow(ok = true, text = it) }
+        p.still.forEach { GoalRow(ok = false, text = it) }
+        Gap(4.dp)
+        CaptionText("Diese Sitzung wurde für sich bewertet – den Vergleich zeigt die App erst danach.")
+    }
+}
+
 @Composable
 private fun TaskReviewCard(record: SessionRecord, d: Debrief) {
     val dimens = AbiTheme.dimens
@@ -294,7 +343,7 @@ private fun TaskReviewCard(record: SessionRecord, d: Debrief) {
 }
 
 @Composable
-private fun ErrorsCard(d: Debrief) {
+private fun ErrorsCard(vm: AppViewModel, d: Debrief) {
     val dimens = AbiTheme.dimens
     val grouped = d.errors.groupBy { it.category }.entries.sortedByDescending { it.value.size }
     ExpandableCard(
@@ -307,14 +356,18 @@ private fun ErrorsCard(d: Debrief) {
         grouped.forEach { (category, errors) ->
             Text(Knowledge.categoryLabel(category), fontSize = dimens.fonts.body, color = accent)
             errors.forEach { e ->
-                Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                    Text("„${e.quote}“", fontSize = dimens.fonts.body, color = red, textDecoration = TextDecoration.LineThrough)
-                    Text("→ „${e.correction}“", fontSize = dimens.fonts.body, color = green)
-                    if (e.explanation.isNotBlank()) CaptionText(e.explanation)
+                Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.Top) {
+                    Column(Modifier.weight(1f)) {
+                        Text("„${e.quote}“", fontSize = dimens.fonts.body, color = red, textDecoration = TextDecoration.LineThrough)
+                        Text("→ „${e.correction}“", fontSize = dimens.fonts.body, color = green)
+                        if (e.explanation.isNotBlank()) CaptionText(e.explanation)
+                    }
+                    SayItIcon(vm, e.quote, e.correction, e.explanation)
                 }
             }
             Gap(8.dp)
         }
+        CaptionText("Tippe auf das Mikrofon, um den Satz richtig nachzusprechen – die KI hört zu und sagt dir sofort, ob es stimmt.")
         if (d.droppedUnverified > 0) CaptionText("${d.droppedUnverified} Korrekturen weggelassen, weil das Zitat so nicht in deiner Mitschrift stand.")
     }
 }

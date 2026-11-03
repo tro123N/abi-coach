@@ -28,7 +28,7 @@ object GeminiSetup {
         return JSONObject().put("setup", setup)
     }
 
-    /** The examiner when no OpenAI key is set: Gemini Live with a voice. */
+    /** The examiner: Gemini Live with a voice. */
     fun examiner(model: String, voice: String, system: String, handle: String?, minimal: Boolean): JSONObject {
         val generation =
             JSONObject()
@@ -97,20 +97,34 @@ class LiveSocket(
         socket = http.newWebSocket(Request.Builder().url(url).build(), Listener())
     }
 
+    /** Audio that arrived while the connection was (re)opening, at most about three seconds: nothing the student says gets lost. */
+    private val backlog = java.util.ArrayDeque<ByteArray>()
+
     fun sendAudio(pcm: ByteArray) {
-        if (!ready) return
-        val message =
-            JSONObject().put(
-                "realtimeInput",
-                JSONObject().put(
-                    "audio",
-                    JSONObject()
-                        .put("data", Base64.encodeToString(pcm, Base64.NO_WRAP))
-                        .put("mimeType", "audio/pcm;rate=16000"),
-                ),
-            )
-        socket?.send(message.toString())
+        val current = socket
+        if (!ready || current == null) {
+            synchronized(backlog) {
+                backlog.addLast(pcm)
+                while (backlog.size > 30) backlog.removeFirst()
+            }
+            return
+        }
+        synchronized(backlog) {
+            while (backlog.isNotEmpty()) current.send(audioMessage(backlog.removeFirst()))
+        }
+        current.send(audioMessage(pcm))
     }
+
+    private fun audioMessage(pcm: ByteArray): String =
+        JSONObject().put(
+            "realtimeInput",
+            JSONObject().put(
+                "audio",
+                JSONObject()
+                    .put("data", Base64.encodeToString(pcm, Base64.NO_WRAP))
+                    .put("mimeType", "audio/pcm;rate=16000"),
+            ),
+        ).toString()
 
     /** Tells the server that the microphone stopped, so the last utterance gets finalised. */
     fun sendStreamEnd() {
@@ -118,12 +132,25 @@ class LiveSocket(
         socket?.send(JSONObject().put("realtimeInput", JSONObject().put("audioStreamEnd", true)).toString())
     }
 
-    /** Sends a text turn (used to start the examiner and for coach instructions). */
-    fun sendUserTurn(text: String) {
-        if (!ready) return
+    /**
+     * Sends a text turn (used to start the examiner and for coach instructions). With Gemini 3.8 Live a finished
+     * client turn is answered at once, even in the middle of the conversation. Returns false if the connection is not ready.
+     */
+    fun sendUserTurn(text: String): Boolean {
+        val current = socket
+        if (!ready || current == null) return false
         val turn = JSONObject().put("role", "user").put("parts", JSONArray().put(JSONObject().put("text", text)))
         val message = JSONObject().put("clientContent", JSONObject().put("turns", JSONArray().put(turn)).put("turnComplete", true))
-        socket?.send(message.toString())
+        return current.send(message.toString())
+    }
+
+    /** Replaces a connection that seems dead by a fresh one; the old one is closed once the new one is started. */
+    fun reconnectNow() {
+        if (closedByUser) return
+        val old = socket
+        onEvent(LiveEvent.Info("$name: verbinde neu …"))
+        connect()
+        old?.close(1000, "refresh")
     }
 
     fun close() {

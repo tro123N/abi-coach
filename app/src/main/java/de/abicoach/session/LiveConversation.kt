@@ -38,6 +38,9 @@ data class LiveUiState(
     val examinerLive: String = "",
     val liveErrors: List<LiveError> = emptyList(),
     val lastAlert: LiveError? = null,
+    /** Counts the hints, so the screen can tell a new hint from the old one. */
+    val alertSeq: Int = 0,
+    val alertAt: Long = 0,
     val elapsedSec: Int = 0,
     val targetSec: Int = 600,
     val micLevel: Float = 0f,
@@ -46,14 +49,15 @@ data class LiveUiState(
     val hasExaminer: Boolean = false,
     val info: String? = null,
     val error: String? = null,
-    /** One line about the live error check ("Claude Haiku 5.5 · 6 Prüfungen"), or the reason it is not working. */
+    /** One line about the live error check ("Gemini 3.8 Flash · 6 Prüfungen"), or the reason it is not working. */
     val checkInfo: String? = null,
     val checkFailed: Boolean = false,
 )
 
 /**
- * One live part of a session: the examiner (GPT-Live-1 or Gemini Live, optional), the verbatim transcriber
+ * One live part of a session: the examiner (Gemini Live, optional), the verbatim transcriber
  * running in parallel, the live error check and the recording for the later pronunciation analysis.
+ * While it runs, a foreground service keeps the microphone alive when the screen goes off.
  */
 class LiveConversation(private val app: AbiCoachApp, private val config: Config) {
     data class Config(
@@ -79,7 +83,7 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val routing = AudioRouting(app)
     private val player = PcmPlayer(24_000)
-    private val tts = Tts(app)
+    private val tts = Tts(app, call = true)
     private var mic: MicStreamer? = null
     private var wav: WavWriter? = null
 
@@ -113,7 +117,29 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
 
     @Volatile private var lastBuzzAt = 0L
 
-    @Volatile private var examinerSeconds = 0.0
+    /** The correction that was sent to the examiner; cleared as soon as he answers with his voice. */
+    @Volatile private var coachSent: LiveError? = null
+
+    @Volatile private var coachSentAt = 0L
+
+    /** The examiner did not answer an app instruction: from now on the coach speaks with the phone's voice. */
+    @Volatile private var coachViaPhone = false
+
+    @Volatile private var lastWhisperAt = 0L
+
+    @Volatile private var kickoffAt = 0L
+
+    @Volatile private var kickoffRetried = false
+
+    @Volatile private var examinerHeard = false
+
+    /** Milliseconds of student speech that the transcriber has not answered with any text. */
+    @Volatile private var voicedMs = 0L
+
+    @Volatile private var lastRefreshAt = 0L
+
+    /** When the transient message was set (0 = none or permanent); it fades after a few seconds. */
+    @Volatile private var infoAt = 0L
 
     @Volatile private var finished = false
     private val startedAt = System.currentTimeMillis()
@@ -126,9 +152,10 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
 
     fun start() {
         if (!app.ai.hasGemini) {
-            _state.update { it.copy(error = "Kein Gemini-Schlüssel eingetragen (Einstellungen).") }
+            _state.update { it.copy(error = "Kein Google-Schlüssel eingetragen (Einstellungen).") }
             return
         }
+        LiveService.start(app)
         routing.enter()
         player.start()
         config.wavFile?.let { wav = WavWriter(it, 16_000) }
@@ -156,15 +183,37 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
         }
     }
 
+    /** A short message above the transcript; it fades after a few seconds. */
+    private fun info(text: String) {
+        infoAt = System.currentTimeMillis()
+        _state.update { it.copy(info = text) }
+    }
+
     private fun tick() {
         val now = System.currentTimeMillis()
         val seconds = ((now - startedAt) / 1000).toInt()
         _state.update { it.copy(elapsedSec = seconds, status = statusText(it)) }
+        if (infoAt > 0 && now - infoAt > 12_000) {
+            infoAt = 0
+            _state.update { it.copy(info = null) }
+        }
         // Part 1: like a real examiner, give a short impulse if the student has been silent for a while.
         if (config.part == 1 && seconds > 20 && now - lastSpeechAt > 25_000 && now - lastImpulseAt > 60_000) {
             lastImpulseAt = now
             muteUntil = now + 5_000
             tts.say(Prompts.IMPULSES.random())
+        }
+        // The transcriber heard speech for a long time but wrote nothing: its connection is probably dead.
+        val ear = transcriber
+        if (voicedMs > 12_000 && ear != null && ear.ready && !finished && now - lastRefreshAt > 60_000) {
+            voicedMs = 0
+            lastRefreshAt = now
+            ear.reconnectNow()
+        }
+        // The examiner stayed silent after the start instruction: ask once more.
+        if (kickoffSent && !examinerHeard && !kickoffRetried && now - kickoffAt > 8_000) {
+            kickoffRetried = true
+            config.kickoff?.let { examiner?.sendInstruction(it) }
         }
         deliverCoach(now)
         // The examiner ends the conversation politely when the time is up.
@@ -197,7 +246,10 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
         if (!examinerAudible || headset) {
             transcriber?.sendAudio(pcm)
             wav?.write(pcm)
-            if (level > 0.06f) lastSpeechAt = now
+            if (level > 0.06f) {
+                lastSpeechAt = now
+                voicedMs += 100
+            }
         }
         _state.update { it.copy(micLevel = level, examinerSpeaking = examinerAudible) }
     }
@@ -206,16 +258,21 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
         when (event) {
             is LiveEvent.Ready -> _state.update { it.copy(transcriberReady = true) }
             is LiveEvent.UserInterim -> {
-                if (event.text.isNotBlank()) lastSpeechAt = System.currentTimeMillis()
+                if (event.text.isNotBlank()) {
+                    lastSpeechAt = System.currentTimeMillis()
+                    voicedMs = 0
+                }
                 _state.update { it.copy(interim = event.text) }
                 checker?.feedInterim(event.text)
             }
             is LiveEvent.UserText -> {
                 transcriberWorks = true
+                voicedMs = 0
                 addStudent(event.text)
             }
             is LiveEvent.Failed -> {
                 transcriber = null
+                infoAt = 0
                 _state.update {
                     it.copy(
                         transcriberReady = false,
@@ -223,7 +280,7 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
                     )
                 }
             }
-            is LiveEvent.Info -> _state.update { it.copy(info = event.message) }
+            is LiveEvent.Info -> info(event.message)
             else -> Unit
         }
     }
@@ -234,14 +291,18 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
                 _state.update { it.copy(examinerReady = true) }
                 if (!kickoffSent) {
                     kickoffSent = true
+                    kickoffAt = System.currentTimeMillis()
                     config.kickoff?.let { examiner?.sendInstruction(it) }
                 }
             }
             is LiveEvent.Audio -> {
+                examinerHeard = true
+                coachSent = null
                 flushFallbackStudent()
                 player.enqueue(event.pcm)
             }
             is LiveEvent.ModelText -> {
+                examinerHeard = true
                 flushFallbackStudent()
                 val text = synchronized(lock) { examinerTurn.append(event.text).toString() }
                 _state.update { it.copy(examinerLive = text) }
@@ -254,9 +315,8 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
                 player.flush()
                 flushExaminer(interrupted = true)
             }
-            is LiveEvent.Usage -> examinerSeconds = event.seconds
             is LiveEvent.Failed -> _state.update { it.copy(error = event.message) }
-            is LiveEvent.Info -> _state.update { it.copy(info = event.message) }
+            is LiveEvent.Info -> info(event.message)
             else -> Unit
         }
     }
@@ -313,24 +373,42 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
         val important = errors.filter { it.severity == "major" || it.severity == "content" || (counts[it.category] ?: 0) >= 3 }
         val alert = important.firstOrNull() ?: errors.firstOrNull()?.takeIf { config.feedback == FeedbackMode.FLUESTERN }
         if (alert == null) return
-        _state.update { it.copy(lastAlert = alert) }
         val now = System.currentTimeMillis()
+        _state.update { it.copy(lastAlert = alert, alertSeq = it.alertSeq + 1, alertAt = now) }
         if (now - lastBuzzAt > 3_000) {
             lastBuzzAt = now
             app.feedback.buzz(FeedbackType.ALERT)
         }
-        if (config.feedback == FeedbackMode.COACH && important.isNotEmpty()) {
+        whisperAloud(alert, now)
+        // Only the conversation with an examiner is interrupted. In the presentation the coach only whispers;
+        // the important mistakes are practised right after the talk.
+        if (config.feedback == FeedbackMode.COACH && important.isNotEmpty() && config.examinerPrompt != null) {
             if (pendingCoach == null) pendingSince = now
             pendingCoach = important.first()
         }
     }
 
+    /** With headphones the hint is also spoken very softly; on the loudspeaker it would disturb the microphone. */
+    private fun whisperAloud(error: LiveError, now: Long) {
+        if (!app.settings.whisperAudio || !routing.usingHeadset) return
+        if (player.isPlaying(now) || now - lastWhisperAt < 5_000) return
+        lastWhisperAt = now
+        tts.whisper(error.correction)
+    }
+
     /**
-     * Coach mode: say the correction as soon as the student pauses (or after 6 seconds at the latest), never while
-     * the examiner is talking and at most every 15 seconds. The examiner speaks it himself when his voice model
-     * answers to app instructions (Gemini Live); otherwise the app says it with the phone's voice and tells him.
+     * Coach mode in a conversation: the examiner says the correction himself as soon as the student pauses (or after
+     * 6 seconds at the latest), never while he is talking and at most every 15 seconds. If he does not answer the
+     * instruction within 6 seconds, the phone's voice says it and keeps doing so for this conversation.
      */
     private fun deliverCoach(now: Long) {
+        val sent = coachSent
+        if (sent != null && now - coachSentAt > 6_000) {
+            coachSent = null
+            coachViaPhone = true
+            info("Der Prüfer hat nicht auf den Coach-Hinweis geantwortet – der Coach spricht jetzt mit der Handy-Stimme.")
+            speakOnPhone(sent, now)
+        }
         val error = pendingCoach ?: return
         if (finished || now - lastCoachAt < 15_000 || player.isPlaying(now) || now < muteUntil) return
         val studentPaused = now - lastSpeechAt > 700
@@ -338,14 +416,24 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
         pendingCoach = null
         lastCoachAt = now
         val agent = examiner
-        if (agent != null && agent.speaksOnInstruction) {
-            agent.sendInstruction(Prompts.coachMessage(error))
+        if (agent != null && !coachViaPhone) {
+            if (agent.sendInstruction(Prompts.coachMessage(error))) {
+                coachSent = error
+                coachSentAt = now
+            } else {
+                // The connection is just being renewed: try again in a second.
+                pendingCoach = error
+                lastCoachAt = 0
+            }
         } else {
-            val speech = Prompts.coachSpeech(error)
-            muteUntil = now + 1_500 + speech.length * 70L
-            tts.say(speech)
-            agent?.sendInstruction(Prompts.coachNote(error))
+            speakOnPhone(error, now)
         }
+    }
+
+    private fun speakOnPhone(error: LiveError, now: Long) {
+        val speech = Prompts.coachSpeech(error)
+        muteUntil = now + 1_500 + speech.length * 70L
+        tts.say(speech)
     }
 
     /** Ends the part, waits briefly for the last transcript and returns everything that was said. */
@@ -382,14 +470,17 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
         wav?.close()
         routing.exit()
         scope.cancel()
+        LiveService.stop(app)
     }
 
-    private fun result(): Result =
-        Result(
+    private fun result(): Result {
+        val seconds = ((System.currentTimeMillis() - startedAt) / 1000).toInt()
+        return Result(
             utterances = _state.value.utterances,
             liveErrors = _state.value.liveErrors,
-            seconds = ((System.currentTimeMillis() - startedAt) / 1000).toInt(),
-            examinerSeconds = examinerSeconds,
+            seconds = seconds,
+            examinerSeconds = if (config.examinerPrompt != null) seconds.toDouble() else 0.0,
             examinerLabel = _state.value.examinerLabel,
         )
+    }
 }

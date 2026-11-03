@@ -82,7 +82,8 @@ class Feedback(context: Context, private val soundOn: () -> Boolean, private val
                 FeedbackType.RESULT_GOOD, FeedbackType.RESULT_PERFECT, FeedbackType.CORRECT ->
                     VibrationEffect.createWaveform(longArrayOf(0, 30, 20, 60), intArrayOf(0, 60, 0, 140), -1)
                 FeedbackType.RESULT_BAD, FeedbackType.WRONG -> VibrationEffect.createWaveform(longArrayOf(0, 180), intArrayOf(0, 120), -1)
-                FeedbackType.ALERT -> VibrationEffect.createWaveform(longArrayOf(0, 60, 60, 60), intArrayOf(0, 160, 0, 160), -1)
+                // Strong and long enough to feel through a phone lying on the desk: three beats, the last one longest.
+                FeedbackType.ALERT -> VibrationEffect.createWaveform(longArrayOf(0, 200, 80, 200, 80, 360), intArrayOf(0, 255, 0, 255, 0, 255), -1)
                 else -> VibrationEffect.createOneShot(20, 80)
             }
         runCatching { v.vibrate(effect) }

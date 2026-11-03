@@ -41,6 +41,7 @@ import java.util.concurrent.TimeUnit
 object Notifications {
     const val CH_WORK = "work"
     const val CH_DONE = "done"
+    const val CH_TIMER = "timer"
     const val EXTRA_DEBRIEF = "open_debrief"
     private const val FOREGROUND_ID = 4801
 
@@ -54,7 +55,12 @@ object Notifications {
         )
         manager.createNotificationChannel(
             NotificationChannel(CH_DONE, "Ergebnisse", NotificationManager.IMPORTANCE_DEFAULT).apply {
-                description = "Meldet, wenn eine Auswertung oder das Einlesen fertig ist"
+                description = "Meldet, wenn eine Auswertung, ein Prüfungstext oder das Einlesen fertig ist"
+            },
+        )
+        manager.createNotificationChannel(
+            NotificationChannel(CH_TIMER, "Vorbereitungszeit", NotificationManager.IMPORTANCE_HIGH).apply {
+                description = "Meldet, wenn die Vorbereitungszeit vor dem Vortrag um ist"
             },
         )
     }
@@ -72,7 +78,7 @@ object Notifications {
     }
 
     /** The ongoing notification that keeps the work alive while the app is in the background. */
-    fun foreground(context: Context, title: String, text: String, progress: Boolean = true): ForegroundInfo {
+    fun foreground(context: Context, title: String, text: String, progress: Boolean = true, id: Int = FOREGROUND_ID): ForegroundInfo {
         val notification =
             NotificationCompat.Builder(context, CH_WORK)
                 .setSmallIcon(R.drawable.ic_launcher_monochrome)
@@ -85,9 +91,9 @@ object Notifications {
                 .setProgress(0, 0, progress)
                 .build()
         return if (Build.VERSION.SDK_INT >= 29) {
-            ForegroundInfo(FOREGROUND_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+            ForegroundInfo(id, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
         } else {
-            ForegroundInfo(FOREGROUND_ID, notification)
+            ForegroundInfo(id, notification)
         }
     }
 
@@ -101,6 +107,23 @@ object Notifications {
                 .setContentText(text)
                 .setStyle(NotificationCompat.BigTextStyle().bigText(text))
                 .setContentIntent(open(context, debriefId))
+                .setAutoCancel(true)
+                .build()
+        runCatching { NotificationManagerCompat.from(context).notify(key, notification) }
+    }
+
+    /** A loud reminder (the preparation time is over). Tapping it brings the app back. */
+    fun timer(context: Context, key: Int, title: String, text: String) {
+        if (!canNotify(context)) return
+        val notification =
+            NotificationCompat.Builder(context, CH_TIMER)
+                .setSmallIcon(R.drawable.ic_launcher_monochrome)
+                .setContentTitle(title)
+                .setContentText(text)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+                .setContentIntent(open(context, null))
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setCategory(NotificationCompat.CATEGORY_REMINDER)
                 .setAutoCancel(true)
                 .build()
         runCatching { NotificationManagerCompat.from(context).notify(key, notification) }
@@ -145,11 +168,15 @@ class AnalysisCenter {
 /** Evaluates a session and folds the result into the profile, the Abi-Weg and the vocabulary. */
 object AnalysisRunner {
     suspend fun run(app: AbiCoachApp, record: SessionRecord, onProgress: (String) -> Unit): Debrief {
-        val debrief = Analyzer(app).analyze(record, onProgress)
+        val graded = Analyzer(app).analyze(record, onProgress)
+        // The comparison with earlier sessions is made afterwards: the grader itself never sees earlier points.
+        val debrief = graded.copy(progress = runCatching { ProgressMaker.make(app, record, graded) }.getOrNull())
         app.store.save(record.copy(debrief = debrief))
         app.vocab.addAll(de.abicoach.practice.PracticeFeed.fromDebrief(debrief, record.topicId))
+        // A second attempt at the same text counts less for the profile, so it does not inflate the forecast.
+        val weight = record.kind.profileWeight * (if (record.retryOf.isNotBlank()) 0.4 else 1.0)
         app.profiles.update { p ->
-            val rated = p.withRatings(debrief.skills, record.kind.profileWeight, System.currentTimeMillis(), record.kind.short)
+            val rated = p.withRatings(debrief.skills, weight, System.currentTimeMillis(), record.kind.short)
             if (record.kind == SessionKind.PLACEMENT) rated.copy(placementDone = true, placementAt = System.currentTimeMillis()) else rated
         }
         if (record.levelId.isNotBlank()) {

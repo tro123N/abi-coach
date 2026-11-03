@@ -44,6 +44,7 @@ object CoachContext {
         }
         val errors = app.store.categoryCounts().entries.sortedByDescending { it.value }.take(4)
         if (errors.isNotEmpty()) sb.append("\nHäufigste Fehler: ").append(errors.joinToString(", ") { "${Knowledge.categoryLabel(it.key)} (${it.value}×)" })
+        de.abicoach.session.ProgressMaker.note(app).takeIf { it.isNotBlank() }?.let { sb.append("\nFortschritt seit der Sitzung davor:\n").append(it) }
         if (profile.teacherNotes.isNotEmpty()) sb.append("\nKommentare der Lehrkraft: ").append(profile.teacherNotes.takeLast(3).joinToString(" | ").take(300))
         val due = app.vocab.due().size
         if (due > 0) sb.append("\nWortschatz: $due Karten fällig.")
@@ -122,12 +123,12 @@ Regeln:
         "${LocalDate.now()}|${app.store.sessions.value.count { it.debrief != null }}|${app.profiles.profile.value.placementDone}"
 
     fun worthIt(app: AbiCoachApp): Boolean =
-        (app.ai.hasGemini || app.ai.useClaude) && (app.profiles.profile.value.placementDone || app.store.sessions.value.any { it.debrief != null })
+        app.ai.hasGemini && (app.profiles.profile.value.placementDone || app.store.sessions.value.any { it.debrief != null })
 
     /** Asks the brain for today's plan. Invalid steps are dropped; fewer than two valid steps count as failure. */
     suspend fun make(app: AbiCoachApp): Briefing {
         val context = CoachContext.student(app) + "\nAktuelle Uhrzeit: " + java.time.LocalTime.now().withSecond(0).withNano(0)
-        val answer = app.ai.brainJson(SYSTEM, context, schema, maxTokens = 2_000, thinking = false)
+        val answer = app.ai.brainJson(SYSTEM, context, schema, thinking = false)
         val o = answer.json
         val steps =
             o.optJSONArray("steps").objects().mapNotNull { s ->
