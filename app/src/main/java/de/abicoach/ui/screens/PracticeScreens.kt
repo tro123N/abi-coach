@@ -87,9 +87,9 @@ fun TalkCoachCard(record: SessionRecord, d: Debrief) {
         }
         Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             StatTile(mmss(m.seconds), "Dauer", Modifier.weight(1f).fillMaxHeight())
-            StatTile("${m.wordsPerMinute}", "Wörter/Min.", Modifier.weight(1f).fillMaxHeight(), color = if (m.wordsPerMinute in 100..170) green else yellow)
-            StatTile("${m.fillers}", "Füllwörter", Modifier.weight(1f).fillMaxHeight(), color = if (m.fillers * 60 <= m.seconds * 3) green else yellow)
-            StatTile("${m.longPauses}", "Lange Pausen", Modifier.weight(1f).fillMaxHeight(), color = if (m.longPauses == 0) green else yellow)
+            StatTile("${m.wordsPerMinute}", "Wörter/Min", Modifier.weight(1f).fillMaxHeight(), color = if (m.wordsPerMinute in 100..170) green else yellow)
+            StatTile("${m.fillers}", "Füller", Modifier.weight(1f).fillMaxHeight(), color = if (m.fillers * 60 <= m.seconds * 3) green else yellow)
+            StatTile("${m.longPauses}", "Pausen", Modifier.weight(1f).fillMaxHeight(), color = if (m.longPauses == 0) green else yellow)
         }
         val targets = if (record.focusTask in 1..3) mapOf(record.focusTask to (TalkMetrics.TARGET[record.focusTask] ?: 180)) else TalkMetrics.TARGET
         if (record.focusTask == 0 && m.perTask.size >= 2) {
