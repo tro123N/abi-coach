@@ -57,6 +57,14 @@ class AbiCoachApp : Application() {
     lateinit var pendingMaterial: de.abicoach.session.PendingMaterialStore
         private set
 
+    /** Every kind of mistake the student makes, followed across sessions and Klausuren. */
+    lateinit var errorMemory: de.abicoach.learn.ErrorMemoryStore
+        private set
+
+    /** The condensed knowledge per topic field (the long-term memory of the course). */
+    lateinit var dossiers: de.abicoach.memory.DossierStore
+        private set
+
     /** A message from background work (e.g. "Gemini hat übernommen") that the app shows once. */
     @Volatile var pendingNotice: String? = null
 
@@ -85,7 +93,9 @@ class AbiCoachApp : Application() {
         memory = MemoryStore(this)
         importer = Importer(this, memory)
         ai = AiHub(http, settings)
-        course = CourseContext(memory, Retriever(memory, ai), settings, profiles)
+        dossiers = de.abicoach.memory.DossierStore(this)
+        errorMemory = de.abicoach.learn.ErrorMemoryStore(this)
+        course = CourseContext(memory, Retriever(memory, ai), settings, profiles, dossiers)
         feedback = Feedback(this, { settings.sound }, { settings.vibration })
         path = PathStore(this)
         vocab = de.abicoach.practice.VocabStore(this)
@@ -118,6 +128,8 @@ class AbiCoachApp : Application() {
             },
         )
         resumeReading()
+        // Renews dossiers whose material changed (the job checks this itself and is cheap when nothing changed).
+        if (settings.geminiKey.isNotBlank()) de.abicoach.memory.DossierScheduler.kick(this)
     }
 
     /** Continues reading material that is not finished yet (e.g. after a restart or a new key). */

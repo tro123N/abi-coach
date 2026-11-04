@@ -23,8 +23,15 @@ import de.abicoach.memory.DocKind
 import de.abicoach.memory.DocStatus
 import de.abicoach.memory.Importer
 import de.abicoach.memory.IngestScheduler
+import de.abicoach.learn.Drill
+import de.abicoach.learn.DrillCheck
+import de.abicoach.learn.DrillMaker
+import de.abicoach.learn.DrillOutcome
+import de.abicoach.memory.DossierMaker
+import de.abicoach.memory.DossierScheduler
 import de.abicoach.practice.SayItCheck
 import de.abicoach.practice.SayTarget
+import de.abicoach.session.MicTest
 import de.abicoach.session.CheckLine
 import de.abicoach.session.LiveConversation
 import de.abicoach.session.MaterialGenerator
@@ -77,6 +84,18 @@ sealed interface Screen {
 
     /** The short round after a presentation: say the most important mistakes correctly. */
     data class Corrections(val id: String) : Screen
+
+    /** Speaking training of the student's own error patterns. */
+    data object Drills : Screen
+
+    /** The error memory: every kind of mistake with its state. */
+    data object Errors : Screen
+
+    /** The learning dossier of one topic field. */
+    data class Dossier(val topic: Int) : Screen
+
+    /** The original exam tasks found in the uploaded Abitur material. */
+    data object RealTasks : Screen
 }
 
 /** A tiny back stack; the Abi-Weg always stays at the bottom, like the Kletterweg in Mental Math Plus. */
@@ -212,6 +231,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             Target.Placement -> nav.push(Screen.PlacementIntro)
             Target.Vocab -> openVocab()
             is Target.Setup -> nav.push(Screen.Setup(target.setup))
+            Target.Drills -> openDrills()
+            is Target.Dossier -> openDossier(target.topic)
         }
     }
 
@@ -291,6 +312,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 source = if (s.fixedDocId != null) Knowledge.Source.MATERIAL else s.source,
                 short = s.kind == SessionKind.PLACEMENT,
                 instruction = s.instruction,
+                unitId = s.unitId,
             )
         MaterialScheduler.enqueue(app, key, request, s.fixedDocId, s.fixedPage, prefetch = false)
     }
@@ -448,6 +470,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     teacherNotes = app.course.teacherNotes(6),
                     part2Style = s.kind == SessionKind.PART2,
                     extra = s.instruction,
+                    patterns = patternBlockFor(s.feedback),
                 )
             val conversation =
                 LiveConversation(
@@ -522,6 +545,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         liveErrors = current.liveErrors + result.liveErrors,
                         part1Sec = result.seconds,
                         durationSec = result.seconds,
+                        tech = joinTech(current.tech, result.tech),
                     )
                 draft = updated
                 app.store.save(updated)
@@ -538,7 +562,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         app,
                         LiveConversation.Config(
                             part = 2,
-                            examinerPrompt = Prompts.part2Examiner(t, excerpt, app.course.overview(1_200), topicContext, app.course.teacherNotes(6), minutes),
+                            examinerPrompt = Prompts.part2Examiner(t, excerpt, app.course.overview(1_200), topicContext, app.course.teacherNotes(6), minutes, patternBlockFor(updated.feedback)),
                             kickoff = Prompts.KICKOFF_PART2,
                             feedback = updated.feedback,
                             vocabulary = vocabulary(),
@@ -578,6 +602,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     part1Sec = if (previous.kind == SessionKind.PART1) result.seconds else previous.part1Sec,
                     examiner = result.examinerLabel.ifBlank { previous.examiner },
                     examinerSeconds = previous.examinerSeconds + result.examinerSeconds,
+                    tech = joinTech(previous.tech, result.tech),
                 )
             app.store.save(record)
             // The evaluation starts in the background right away, whatever the student does next.
@@ -826,6 +851,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             "sprint" -> nav.push(Screen.Setup(SessionSetup.sprint(f)))
             "simulation" -> nav.push(Screen.Setup(SessionSetup.defaults(SessionKind.SIMULATION, 0, f)))
             "level" -> nav.push(Screen.Level(action.arg))
+            "training" -> openDrills()
+            "dossier" -> action.arg.toIntOrNull()?.let { openDossier(it) }
+            "echt" -> openRealTasks()
         }
     }
 
@@ -1080,6 +1108,232 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // ---------- learning system: error memory, speaking training, dossiers, real exam tasks ----------
+
+    /** The student's error patterns for the examiner of a practice conversation (never in an exam simulation). */
+    private fun patternBlockFor(feedback: FeedbackMode): String =
+        if (feedback == FeedbackMode.PRUEFUNG) "" else Prompts.patternBlock(app.errorMemory.examinerLines(5), feedback == FeedbackMode.COACH)
+
+    private fun joinTech(a: String, b: String): String = listOf(a, b).filter { it.isNotBlank() }.joinToString("\n\n")
+
+    /** The exercises of the current speaking training. */
+    val drills = mutableStateListOf<Drill>()
+    var drillIndex by mutableIntStateOf(0)
+        private set
+    var drillLoading by mutableStateOf(false)
+        private set
+    var drillRecording by mutableStateOf(false)
+        private set
+    var drillBusy by mutableStateOf(false)
+        private set
+    var drillResult by mutableStateOf<DrillCheck.Result?>(null)
+        private set
+
+    /** First answers of this round (they count for the error memory). */
+    val drillOutcomes = mutableStateListOf<DrillOutcome>()
+
+    /** The error patterns this round trains. */
+    var drillFocus by mutableStateOf<List<String>>(emptyList())
+        private set
+    private var drillRecorder: de.abicoach.practice.ShortRecorder? = null
+    private var drillJob: Job? = null
+    private val drillRetried = HashSet<String>()
+
+    val drillDone: Boolean get() = drills.isNotEmpty() && drillIndex >= drills.size
+
+    /** Opens the speaking training: the given patterns, or the ones that are due (else the most important ones). */
+    fun openDrills(patternKeys: List<String> = emptyList()) {
+        tap()
+        stopSpeaking()
+        nav.push(Screen.Drills)
+        startDrills(patternKeys)
+    }
+
+    fun startDrills(patternKeys: List<String> = emptyList()) {
+        drillJob?.cancel()
+        drillRecorder?.release()
+        drillRecorder = null
+        drills.clear()
+        drillOutcomes.clear()
+        drillRetried.clear()
+        drillIndex = 0
+        drillResult = null
+        drillRecording = false
+        drillBusy = false
+        val now = System.currentTimeMillis()
+        val chosen =
+            if (patternKeys.isNotEmpty()) {
+                patternKeys.mapNotNull { app.errorMemory.get(it) }
+            } else {
+                app.errorMemory.due(now).take(4).ifEmpty { app.errorMemory.top(4, now) }
+            }
+        drillFocus = chosen.map { it.key }
+        if (chosen.isEmpty()) return
+        drillLoading = true
+        drillJob =
+            viewModelScope.launch {
+                try {
+                    val made = withContext(Dispatchers.Default) { DrillMaker.make(app, chosen, count = if (chosen.size == 1) 5 else 8) }
+                    drills.addAll(made)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    drills.addAll(DrillMaker.local(chosen, 6))
+                    notice = "Die KI konnte keine neuen Übungen schreiben (${e.message}) – du übst mit deinen eigenen Sätzen."
+                } finally {
+                    drillLoading = false
+                }
+            }
+    }
+
+    fun drillStart() {
+        if (drillBusy || drillRecording || drillDone || drills.isEmpty()) return
+        if (!app.ai.hasGemini) {
+            errorMessage = "Für das Sprech-Training brauchst du den Google-Schlüssel (Einstellungen → KI)."
+            return
+        }
+        stopSpeaking()
+        drillRecorder?.release()
+        drillRecorder = de.abicoach.practice.ShortRecorder().also { it.start() }
+        drillRecording = true
+        drillResult = null
+        app.feedback.play(FeedbackType.START)
+    }
+
+    fun drillStop() {
+        val recorder = drillRecorder ?: return
+        val wav = recorder.stop()
+        recorder.release()
+        drillRecorder = null
+        drillRecording = false
+        app.feedback.play(FeedbackType.STOP)
+        val drill = drills.getOrNull(drillIndex) ?: return
+        if (wav.size < 44 + 16_000) {
+            drillResult = DrillCheck.Result(false, "", "Die Aufnahme war zu kurz. Tippe auf „Sprechen“, sag den Satz und tippe dann auf „Fertig“.", "")
+            return
+        }
+        drillBusy = true
+        viewModelScope.launch {
+            try {
+                val result = withContext(Dispatchers.Default) { DrillCheck.check(app, drill, wav) }
+                if (drills.getOrNull(drillIndex)?.id == drill.id) {
+                    drillResult = result
+                    if (drillOutcomes.none { it.drill.id == drill.id }) drillOutcomes += DrillOutcome(drill, result.ok, result.heard, result.tip)
+                    app.feedback.play(if (result.ok) FeedbackType.CORRECT else FeedbackType.WRONG)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                drillResult = DrillCheck.Result(false, "", "Das hat nicht geklappt: ${e.message}", "")
+            } finally {
+                drillBusy = false
+            }
+        }
+    }
+
+    /** Next exercise; a wrong one comes back once at the end of the round. */
+    fun drillNext() {
+        val drill = drills.getOrNull(drillIndex) ?: return
+        val result = drillResult
+        if (result != null && !result.ok && drill.id !in drillRetried && !drill.id.endsWith("-again")) {
+            drillRetried += drill.id
+            drills.add(drill.copy(id = drill.id + "-again"))
+        }
+        drillResult = null
+        drillIndex++
+        if (drillDone) finishDrills()
+    }
+
+    fun drillSkip() {
+        drillResult = null
+        drillIndex++
+        if (drillDone) finishDrills()
+    }
+
+    /** The first answers go into the error memory: a pattern counts as right if all its first answers were right. */
+    private fun finishDrills() {
+        app.feedback.play(FeedbackType.RESULT_GOOD)
+        val now = System.currentTimeMillis()
+        drillOutcomes.filter { !it.drill.id.endsWith("-again") }.groupBy { it.drill.patternKey }.forEach { (key, list) ->
+            app.errorMemory.reviewDrill(key, list.all { it.ok }, now)
+        }
+    }
+
+    fun closeDrills() {
+        drillJob?.cancel()
+        drillRecorder?.release()
+        drillRecorder = null
+        drillRecording = false
+        stopSpeaking()
+        nav.pop()
+    }
+
+    /** The end-to-end microphone test (Settings → System prüfen). */
+    var micTest by mutableStateOf<MicTest?>(null)
+        private set
+
+    fun openMicTest() {
+        micTest?.stop()
+        micTest = MicTest(app).also { it.start() }
+    }
+
+    fun closeMicTest() {
+        micTest?.stop()
+        micTest = null
+    }
+
+    var dossierBusy by mutableStateOf<Int?>(null)
+        private set
+
+    fun openDossier(topic: Int) {
+        tap()
+        nav.push(Screen.Dossier(topic))
+    }
+
+    /** Builds or renews the dossier of one topic field now. */
+    fun makeDossier(topic: Int) {
+        if (dossierBusy != null) return
+        if (!app.ai.hasGemini) {
+            errorMessage = "Für die Dossiers brauchst du den Google-Schlüssel (Einstellungen → KI)."
+            return
+        }
+        dossierBusy = topic
+        viewModelScope.launch {
+            try {
+                withContext(Dispatchers.Default) { DossierMaker.make(app, topic) }
+                app.feedback.play(FeedbackType.ENABLE)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                errorMessage = "Das Dossier konnte nicht erstellt werden: ${e.message}"
+            } finally {
+                dossierBusy = null
+            }
+        }
+    }
+
+    fun refreshDossiers() {
+        DossierScheduler.kick(app)
+        notice = "Die Dossiers werden im Hintergrund erstellt und aktualisiert – das dauert pro Themenfeld etwa eine halbe Minute."
+    }
+
+    fun openRealTasks() {
+        tap()
+        nav.push(Screen.RealTasks)
+    }
+
+    /** One original exam task: as a presentation (part 1) or as a whole exam. */
+    fun startRealTask(unitId: String, whole: Boolean) {
+        tap()
+        val setup =
+            if (whole) {
+                SessionSetup.defaults(SessionKind.SIMULATION, 0, app.settings.defaultFeedback).copy(source = Knowledge.Source.REAL, unitId = unitId)
+            } else {
+                SessionSetup.defaults(SessionKind.PART1, 0, app.settings.defaultFeedback).copy(source = Knowledge.Source.REAL, unitId = unitId, prepMinutes = 20)
+            }
+        nav.push(Screen.Setup(setup))
+    }
+
     // ---------- demo hooks for the emulator test (screenshots without network) ----------
 
     fun demoPrep(demoTask: ExamTask, kind: SessionKind, focusTask: Int = 0, minutes: Int = 30) {
@@ -1112,6 +1366,17 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun demoPronResult(result: de.abicoach.practice.PronunciationCheck.Result) {
         pronResult = result
+    }
+
+    fun demoDrills(list: List<Drill>, index: Int = 0, result: DrillCheck.Result? = null) {
+        drillJob?.cancel()
+        drills.clear()
+        drills.addAll(list)
+        drillIndex = index
+        drillResult = result
+        drillLoading = false
+        drillFocus = list.map { it.patternKey }.distinct()
+        nav.push(Screen.Drills)
     }
 
     fun demoClear() {
@@ -1168,6 +1433,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     override fun onCleared() {
         recorder?.release()
         sayRecorder?.release()
+        drillRecorder?.release()
+        micTest?.stop()
         live?.abort()
         stopSpeaking()
         androidTts.shutdown()

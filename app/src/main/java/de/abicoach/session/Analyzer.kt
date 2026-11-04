@@ -24,6 +24,8 @@ object MaterialGenerator {
         val short: Boolean = false,
         /** Requirement of an Abi-Weg level, e.g. "Task 2 must be 'Examine how the author perceives …'". */
         val instruction: String = "",
+        /** A specific original exam task (Source.REAL); empty = pick one. */
+        val unitId: String = "",
     )
 
     /** Returns the material and, if the wished source was not possible, a note for the student. */
@@ -37,6 +39,23 @@ object MaterialGenerator {
         val course = app.course
         var note: String? = null
         var source = request.source
+        // An original exam task from the student's Abitur material: its own text, tasks and Erwartungshorizont.
+        if (source == Knowledge.Source.REAL) {
+            val unit = de.abicoach.memory.ExamUnits.pick(app, request.topicId, request.unitId.ifBlank { null })
+            if (unit != null) {
+                onProgress("Hole die Original-Aufgabe „${unit.title}“ …")
+                try {
+                    return de.abicoach.memory.ExamUnits.toTask(app, unit, onProgress) to null
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    note = "Die Original-Aufgabe ließ sich nicht lesen (${e.message}) – hier ein neuer Text im gleichen Stil."
+                }
+            } else {
+                note = "Noch keine echten Prüfungsaufgaben im Gedächtnis – lade dein Abi-Material unter „Mein Kurs“ hoch. Hier ein neuer Text im Prüfungsstil."
+            }
+            source = Knowledge.Source.COURSE
+        }
         val overview = course.overview(1_500)
         val prompt: String
         if (source == Knowledge.Source.MATERIAL) {
@@ -70,7 +89,14 @@ object MaterialGenerator {
                 }
                 onProgress(if (anchored) "Lese nach, was ihr dazu im Unterricht hattet …" else "Schreibe einen neuen Text …")
                 val context = if (anchored) course.forTopic(request.topicId, maxChars = 5_000) else ""
-                Prompts.materialRequest(request.topicId, request.textType, if (anchored) "" else overview, context, anchored)
+                Prompts.materialRequest(
+                    request.topicId,
+                    request.textType,
+                    if (anchored) "" else overview,
+                    context,
+                    anchored,
+                    de.abicoach.memory.ExamUnits.styleExamples(app, request.topicId),
+                )
             }
         val shortLine =
             if (request.short) "\nIMPORTANT: This is a short placement test. The text must have only 170 to 220 words; keep the three tasks simple." else ""
@@ -205,6 +231,9 @@ data class CoachAction(val kind: String, val arg: String = "") {
                 "simulation" -> "Prüfungssimulation"
                 "wortschatz" -> "Wortschatz wiederholen"
                 "aussprache" -> "Aussprache-Labor"
+                "training" -> "Sprech-Training (deine Fehler)"
+                "dossier" -> "Dossier: " + (arg.toIntOrNull()?.let { Knowledge.topicShort(it) } ?: arg)
+                "echt" -> "Echte Prüfungsaufgabe"
                 "level" -> "Level: " + (de.abicoach.path.Curriculum.level(arg)?.title ?: arg)
                 else -> kind
             }
@@ -217,11 +246,12 @@ data class CoachAction(val kind: String, val arg: String = "") {
             return when {
                 kind !in KINDS -> null
                 kind == "level" && de.abicoach.path.Curriculum.level(arg) == null -> null
-                else -> CoachAction(kind, if (kind == "level") arg else "")
+                kind == "dossier" && (arg.toIntOrNull() ?: -1) !in 0..13 -> null
+                else -> CoachAction(kind, if (kind == "level" || kind == "dossier") arg else "")
             }
         }
 
-        private val KINDS = setOf("aufgabe1", "aufgabe2", "aufgabe3", "vortrag", "gespraech", "sprint", "simulation", "wortschatz", "aussprache", "level")
+        private val KINDS = setOf("aufgabe1", "aufgabe2", "aufgabe3", "vortrag", "gespraech", "sprint", "simulation", "wortschatz", "aussprache", "training", "dossier", "echt", "level")
         private val TAG = Regex("\\[\\[\\s*([a-zA-Z0-9]+)\\s*(?::\\s*([\\w.]+))?\\s*]]")
 
         /** Removes the action markers from the text and returns the valid actions. */
@@ -233,6 +263,7 @@ data class CoachAction(val kind: String, val arg: String = "") {
                     when {
                         kind !in KINDS -> null
                         kind == "level" && de.abicoach.path.Curriculum.level(arg) == null -> null
+                        kind == "dossier" && (arg.toIntOrNull() ?: -1) !in 0..13 -> null
                         else -> CoachAction(kind, arg)
                     }
                 }.distinct().take(3).toList()

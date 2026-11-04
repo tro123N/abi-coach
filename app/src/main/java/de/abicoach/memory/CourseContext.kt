@@ -72,6 +72,7 @@ class CourseContext(
     val retriever: Retriever,
     private val settings: Settings,
     private val profiles: ProfileStore,
+    private val dossiers: DossierStore,
 ) {
     fun hasMaterial(): Boolean = store.docs.value.any { it.chunked }
 
@@ -112,15 +113,21 @@ class CourseContext(
         return sb.toString().take(maxChars)
     }
 
-    /** Facts from the digests and the best passages for one topic field. */
+    /**
+     * What the course knows about one topic field: the condensed dossier (if there is one), facts from the digests
+     * and the best passages.
+     */
     suspend fun forTopic(topicId: Int, focus: String? = null, maxChars: Int = 6_000): String {
         val topic = Knowledge.topic(topicId) ?: return ""
+        val dossier = dossiers.get(topicId)?.compact((maxChars * 0.5).toInt()).orEmpty()
         val facts =
             store.allDigests().flatMap { (doc, digest) -> digest.facts.filter { it.topic == topicId }.map { doc to it.fact } }
-        val hits = retriever.search(listOfNotNull(topic.english, focus).joinToString(" "), setOf(topicId), k = 8)
-        if (facts.isEmpty() && hits.isEmpty()) return ""
-        val sb = StringBuilder("From the student's own course on \"${topic.english}\":\n")
-        facts.take(25).forEach { (doc, fact) -> sb.append("- ").append(fact).append(" [").append(doc.title).append("]\n") }
+        val hits = retriever.search(listOfNotNull(topic.english, focus).joinToString(" "), setOf(topicId), k = if (dossier.isNotBlank()) 5 else 8)
+        if (dossier.isBlank() && facts.isEmpty() && hits.isEmpty()) return ""
+        val sb = StringBuilder()
+        if (dossier.isNotBlank()) sb.append(dossier).append('\n')
+        sb.append("From the student's own course on \"${topic.english}\":\n")
+        facts.take(if (dossier.isNotBlank()) 10 else 25).forEach { (doc, fact) -> sb.append("- ").append(fact).append(" [").append(doc.title).append("]\n") }
         if (hits.isNotEmpty()) {
             sb.append("Passages from the material:\n")
             hits.forEach { h -> sb.append("[").append(h.citation).append("] ").append(h.chunk.text.replace('\n', ' ').take(700)).append('\n') }

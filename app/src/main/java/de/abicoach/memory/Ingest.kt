@@ -228,7 +228,14 @@ class IngestPipeline(private val app: AbiCoachApp) {
             } else {
                 app.ai.cheapJson(DIGEST_SYSTEM, user, digestSchema)
             }
-        val digest = parseDigest(json, doc)
+        var digest = parseDigest(json, doc)
+        // Real Abitur material: find the original exam tasks with their Erwartungshorizont.
+        if (doc.kind == DocKind.PRUEFUNG || doc.kind == DocKind.ABI_BUCH) {
+            store.update(doc.id) { it.copy(error = "Suche die Original-Prüfungsaufgaben …") }
+            val units = runCatching { ExamUnits.extract(app, doc, text) }.getOrElse { e -> if (e is CancellationException) throw e else emptyList() }
+            digest = digest.copy(examUnits = units)
+            store.update(doc.id) { it.copy(error = null) }
+        }
         store.saveDigest(doc.id, digest)
         app.vocab.addAll(de.abicoach.practice.PracticeFeed.fromDigest(digest))
         store.retagChunks(doc.id, digest.topics)
@@ -241,7 +248,13 @@ class IngestPipeline(private val app: AbiCoachApp) {
                 status = DocStatus.DONE,
             )
         }
-        digest.klausur?.let { k -> app.profiles.update { p -> ProfileFromKlausur.apply(p, k) } }
+        digest.klausur?.let { k ->
+            app.profiles.update { p -> ProfileFromKlausur.apply(p, k) }
+            // The teacher's corrections go into the error memory, like mistakes from practice sessions.
+            app.errorMemory.ingest(k.errors, "klausur:${doc.id}", de.abicoach.learn.ErrorMemoryStore.SOURCE_KLAUSUR, doc.addedAt, 0)
+        }
+        // New knowledge on these topic fields: renew their dossiers in the background.
+        DossierScheduler.kick(app)
     }
 
     private fun parseDigest(o: JSONObject, doc: CourseDoc): Digest {
@@ -266,7 +279,7 @@ class IngestPipeline(private val app: AbiCoachApp) {
                         teacherComments = k.optJSONArray("teacher_comments").strings(),
                         errors =
                             k.optJSONArray("errors").objects().map {
-                                LiveError(it.optString("quote"), it.optString("correction"), it.optString("explanation"), it.optString("category", "OTHER"), "major")
+                                LiveError(it.optString("quote"), it.optString("correction"), it.optString("explanation"), it.optString("category", "OTHER"), "major", it.optString("rule"))
                             }.filter { it.quote.isNotBlank() },
                         strengths = k.optJSONArray("strengths").strings(),
                         weaknesses = k.optJSONArray("weaknesses").strings(),
@@ -327,7 +340,7 @@ Liefere:
 - facts: bis zu 40 wichtige Inhalte als kurze englische Sätze, die ein Prüfling im Gespräch nutzen könnte (Fakten, Positionen, Beispiele, Werke, Figuren, Begriffe), jeweils mit dem passenden Themenfeld (topic, -1 wenn keins).
 - vocabulary: bis zu 60 wichtige englische Wörter und Wendungen aus dem Dokument mit deutscher Bedeutung und Themenfeld.
 - exam_texts: Texte im Dokument (Sachtexte oder literarische Auszüge von etwa 150–450 Wörtern), die sich als Material für Teil 1 der mündlichen Prüfung eignen, mit Titel, Start- und Endseite (Seitenangaben wie im Dokument, „S. n“), Themenfeld, literary (true bei Literatur) und why (kurz auf Deutsch). Leer, wenn es keine gibt.
-- klausur: is_klausur = true, wenn es eine Klausur oder eine korrigierte Schülerarbeit ist. Dann: grade (Note oder Punkte, falls erkennbar, sonst leer), teacher_comments (Kommentare der Lehrkraft wörtlich oder sinngemäß), errors (bis zu 40 von der Lehrkraft markierte oder klar erkennbare sprachliche Fehler des Schülers: quote = die fehlerhaften Wörter, correction, category aus ${Knowledge.ERROR_CATEGORIES.keys.joinToString(", ")}, explanation kurz auf Deutsch), strengths und weaknesses (je bis zu 5, auf Deutsch). Sonst is_klausur = false und leere Listen.
+- klausur: is_klausur = true, wenn es eine Klausur oder eine korrigierte Schülerarbeit ist. Dann: grade (Note oder Punkte, falls erkennbar, sonst leer), teacher_comments (Kommentare der Lehrkraft wörtlich oder sinngemäß), errors (bis zu 40 von der Lehrkraft markierte oder klar erkennbare sprachliche Fehler des Schülers: quote = die fehlerhaften Wörter, correction, category aus ${Knowledge.ERROR_CATEGORIES.keys.joinToString(", ")}, explanation kurz auf Deutsch, ${de.abicoach.session.Prompts.RULE_HINT}), strengths und weaknesses (je bis zu 5, auf Deutsch). Sonst is_klausur = false und leere Listen.
             """.trimIndent()
 
         private val digestSchema: Sch =
@@ -350,6 +363,7 @@ Liefere:
                                     "correction" to str(),
                                     "category" to enumOf(Knowledge.ERROR_CATEGORIES.keys.toList()),
                                     "explanation" to str(),
+                                    "rule" to str(),
                                 ),
                             ),
                         "strengths" to arr(str()),

@@ -175,10 +175,21 @@ object AnalysisRunner {
         app.vocab.addAll(de.abicoach.practice.PracticeFeed.fromDebrief(debrief, record.topicId))
         // A second attempt at the same text counts less for the profile, so it does not inflate the forecast.
         val weight = record.kind.profileWeight * (if (record.retryOf.isNotBlank()) 0.4 else 1.0)
+        val now = System.currentTimeMillis()
+        // Content knowledge counts for the topic field of the session (and, in a simulation, for the part-2 topics).
+        val topicPoints = debrief.skills[de.abicoach.profile.Skill.SACHWISSEN] ?: debrief.inhaltPoints
         app.profiles.update { p ->
-            val rated = p.withRatings(debrief.skills, weight, System.currentTimeMillis(), record.kind.short)
-            if (record.kind == SessionKind.PLACEMENT) rated.copy(placementDone = true, placementAt = System.currentTimeMillis()) else rated
+            var rated = p.withRatings(debrief.skills, weight, now, record.kind.short)
+            rated = rated.withTopic(record.topicId, topicPoints, weight, now)
+            if (record.kind.hasPart2) record.task?.part2?.forEach { t -> rated = rated.withTopic(t.topicId, topicPoints, weight * 0.4, now) }
+            if (record.kind == SessionKind.PLACEMENT) rated.copy(placementDone = true, placementAt = now) else rated
         }
+        // The error memory: every mistake of this session, grouped by its rule, followed over time.
+        val words = record.studentText.split(Regex("\\s+")).count { it.isNotBlank() }
+        val mistakes = (debrief.errors + record.liveErrors).distinctBy { Prompts.normalize(it.quote) + "|" + Prompts.normalize(it.correction) }
+        runCatching { app.errorMemory.ingest(mistakes, record.id, de.abicoach.learn.ErrorMemoryStore.SOURCE_SESSION, record.startedAt, words) }
+        // The student's good ideas on this topic go into its dossier the next time it is renewed.
+        if (record.topicId in 0..13 && app.dossiers.get(record.topicId) == null) de.abicoach.memory.DossierScheduler.kick(app)
         if (record.levelId.isNotBlank()) {
             de.abicoach.path.Curriculum.level(record.levelId)?.let { level ->
                 val points = de.abicoach.path.PathEngine.pointsFor(level, debrief)

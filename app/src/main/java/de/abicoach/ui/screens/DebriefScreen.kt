@@ -225,6 +225,7 @@ fun DebriefScreen(vm: AppViewModel, id: String) {
             }
         }
         TranscriptSection(record)
+        TechCard(record)
         ActionButton(
             "Mit dem KI-Coach besprechen",
             R.drawable.psychology_24dp,
@@ -361,6 +362,9 @@ private fun ErrorsCard(vm: AppViewModel, d: Debrief) {
                         Text("„${e.quote}“", fontSize = dimens.fonts.body, color = red, textDecoration = TextDecoration.LineThrough)
                         Text("→ „${e.correction}“", fontSize = dimens.fonts.body, color = green)
                         if (e.explanation.isNotBlank()) CaptionText(e.explanation)
+                        vm.app.errorMemory.matching(e)?.takeIf { it.total >= 2 }?.let { p ->
+                            CaptionText("${p.title}: schon ${p.total}× · ${p.state.label}", color = if (p.total >= 3) red else yellow)
+                        }
                     }
                     SayItIcon(vm, e.quote, e.correction, e.explanation)
                 }
@@ -369,6 +373,19 @@ private fun ErrorsCard(vm: AppViewModel, d: Debrief) {
         }
         CaptionText("Tippe auf das Mikrofon, um den Satz richtig nachzusprechen – die KI hört zu und sagt dir sofort, ob es stimmt.")
         if (d.droppedUnverified > 0) CaptionText("${d.droppedUnverified} Korrekturen weggelassen, weil das Zitat so nicht in deiner Mitschrift stand.")
+        val keys = d.errors.mapNotNull { vm.app.errorMemory.matching(it)?.key }.distinct().take(4)
+        if (keys.isNotEmpty()) {
+            Gap(8.dp)
+            ActionButton(
+                "Diese Fehler im Sprech-Training üben",
+                R.drawable.spellcheck_24dp,
+                yellow,
+                { vm.stopSpeaking(); vm.openDrills(keys) },
+                subtitle = "Kurze Sprech-Übungen mit Sätzen zu deinen Themen · ca. 5 Min.",
+                container = MaterialTheme.colorScheme.background,
+                modifier = Modifier.testTag("debrief_drills"),
+            )
+        }
     }
 }
 

@@ -12,6 +12,18 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import de.abicoach.data.Debrief
+import de.abicoach.learn.Drill
+import de.abicoach.learn.DrillCheck
+import de.abicoach.learn.DrillType
+import de.abicoach.learn.ErrorPattern
+import de.abicoach.learn.PatternExample
+import de.abicoach.memory.DossierArgument
+import de.abicoach.memory.DossierItem
+import de.abicoach.memory.DossierLink
+import de.abicoach.memory.DossierMaker
+import de.abicoach.memory.ExamUnit
+import de.abicoach.memory.TopicDossier
+import de.abicoach.session.LiveDiag
 import de.abicoach.data.ExamTask
 import de.abicoach.data.FeedbackMode
 import de.abicoach.data.LiveError
@@ -196,6 +208,29 @@ class SmokeTest {
         shot("einrichten_sprint")
         ui { vm.nav.pop() }
 
+        ui { vm.nav.openTab(Tab.KURS); vm.nav.push(Screen.Dossier(4)) }
+        shot("dossier")
+        swipeShot("dossier", "dossier_unten", 2)
+        ui { vm.nav.pop(); vm.nav.push(Screen.Doc(Demo.REAL)) }
+        shot("dokument_pruefung")
+        ui { vm.nav.pop(); vm.nav.openTab(Tab.TRAINING); vm.nav.push(Screen.RealTasks) }
+        shot("echte_aufgaben")
+        ui { vm.nav.pop(); vm.nav.push(Screen.Errors) }
+        shot("fehlergedaechtnis")
+        swipeShot("errors", "fehlergedaechtnis_unten", 2)
+        ui { vm.nav.pop(); vm.demoDrills(Demo.drills(), 0) }
+        shot("sprech_training")
+        ui {
+            vm.nav.pop()
+            vm.demoDrills(
+                Demo.drills(),
+                1,
+                DrillCheck.Result(false, "Since independence in 1960, Nigeria's population grew enormously", "Fast! Bei einer Entwicklung bis heute brauchst du das present perfect: „has grown“.", "Gemini 3.8 Flash"),
+            )
+        }
+        shot("sprech_training_ergebnis")
+        ui { vm.nav.pop() }
+
         ui { vm.nav.openTab(Tab.STATS) }
         shot("statistik")
         swipeShot("list_stats", "statistik_mitte", 1)
@@ -300,6 +335,7 @@ object Demo {
     const val BOOK = "demo-book"
     const val KLAUSUR = "demo-klausur"
     const val WORKSHEETS = "demo-worksheets"
+    const val REAL = "demo-real"
     const val SIMULATION = "demo-simulation"
 
     private const val DAY = 86_400_000L
@@ -410,6 +446,21 @@ object Demo {
             micLevel = 0.45f,
             examinerSpeaking = false,
             examinerLabel = "Gemini 3.8 Live",
+            diag =
+                LiveDiag(
+                    micHeard = true,
+                    segments = if (part == 2) 14 else 9,
+                    heard = if (part == 2) 13 else 9,
+                    checks = if (part == 2) 13 else 9,
+                    checkMs = 2_300,
+                    checkMode = "Audio",
+                    hints = 3,
+                    transcript = "läuft",
+                    transcriptTexts = 11,
+                    examiner = if (part == 2) "bereit" else "",
+                    coachSpoken = 1,
+                    repeatsOk = 1,
+                ),
         )
     }
 
@@ -445,6 +496,19 @@ object Demo {
                 history = listOf(8.3, 8.6, 8.9, 9.1, 9.0, 9.5, 9.8, 10.1).mapIndexed { i, v -> ForecastPoint(now - (12 - i) * DAY, v, "Demo") },
                 klausurErrors = mapOf("VERB_TENSE" to 5, "PREP" to 3, "WORD_CHOICE" to 4),
                 teacherNotes = listOf("Gute Argumentation, aber mehr Textbelege!", "Achte auf die Zeiten (present perfect)."),
+                topics =
+                    mapOf(
+                        4 to SkillState(10.6, 0.6, 4, now - 2 * DAY),
+                        0 to SkillState(8.2, 0.45, 2, now - 6 * DAY),
+                        3 to SkillState(9.4, 0.4, 2, now - 9 * DAY),
+                        10 to SkillState(7.1, 0.3, 1, now - 12 * DAY),
+                    ),
+                skillLog =
+                    mapOf(
+                        Skill.ANALYSE to listOf(6, 7, 7, 8, 9),
+                        Skill.GRAMMATIK to listOf(10, 10, 9, 8),
+                        Skill.FLUESSIGKEIT to listOf(9, 10, 10, 11),
+                    ),
             )
         }
 
@@ -503,6 +567,12 @@ object Demo {
                 debrief = debrief.copy(segments = listOf(1 to "The article Lagos Rising", 2 to "Moving on to the analysis", 3 to "Now I would like to comment")),
                 examiner = "Gemini 3.8 Live",
                 liveErrors = debrief.errors,
+                tech =
+                    "== Teil 1 (Vortrag) · 10:10 Min. · Coach ==\nMikrofon: hört dich (höchster Pegel 0.71)\nLive-Mitschrift: läuft, 31 Sätze\n" +
+                        "Ohr: 34 Äußerungen, 33 verstanden, 33 geprüft (Audio, Ø 2.4 s), 0 Störungen, 6 Hinweise\n" +
+                        "Coach: 3 wichtige Fehler, 3 gesagt (3 mit Handy-Stimme), 2 richtig wiederholt\n0:01 Start: Teil 1 (Vortrag), Rückmeldung Coach, Lautsprecher\n" +
+                        "0:02 Mitschrift verbunden\n1:12 Hinweis: „the author describe“ → „the author describes“ (third person -s)\n" +
+                        "1:13 Coach spricht: Careful: not \"the author describe\", but \"the author describes\". Say it again, please.\n1:19 Richtig wiederholt: „the author describes“",
                 utterances = talk() + liveState(2).utterances,
             ),
         )
@@ -589,6 +659,75 @@ object Demo {
             ),
         )
         memory.update(BOOK) { it.copy(summary = "Das Schulbuch für die Oberstufe mit Units zu Nigeria, Großbritannien, den USA und Globalisierung.") }
+        memory.add(CourseDoc(REAL, "Abitur NRW – mündliche Prüfungsaufgaben", DocKind.PRUEFUNG, "unbekannt", now - DAY, "abi_muendlich.pdf", "pdf", 24, 6_000_000, 24, true, 30, 30, false, true, DocStatus.DONE, topics = listOf(4, 8)))
+        memory.saveChunks(REAL, (0 until 30).map { i -> Chunk(REAL, i, 1 + i / 2, "Exam material passage $i", listOf(if (i % 2 == 0) 4 else 8), "text") })
+        memory.appendPages(REAL, (1..4).map { PageText(it, "Nollywood: Stories for a continent\n\nLagos, a city of twenty million, is also the capital of a film industry that tells Africa's stories to Africa. …", "text", listOf(4)) })
+        memory.saveDigest(
+            REAL,
+            Digest(
+                summary = "Original-Aufgaben für die mündliche Prüfung mit Erwartungshorizont.",
+                topics = listOf(4, 8),
+                halbjahr = "unbekannt",
+                facts = emptyList(),
+                vocabulary = emptyList(),
+                examTexts = emptyList(),
+                klausur = null,
+                examUnits =
+                    listOf(
+                        ExamUnit(
+                            id = "$REAL#0",
+                            docId = REAL,
+                            title = "Nollywood: Stories for a continent",
+                            source = "Abitur NRW, Grundkurs, mündliche Prüfung (Beispielaufgabe)",
+                            startPage = 1,
+                            endPage = 2,
+                            topic = 4,
+                            literary = false,
+                            textStart = "Lagos, a city of twenty million",
+                            textEnd = "to Africa",
+                            tasks =
+                                listOf(
+                                    TaskItem("outline", "I", "Outline the author's view of Nollywood.", listOf("film industry as voice of Africa", "economic importance")),
+                                    TaskItem("examine", "II", "Examine how the author presents the city of Lagos.", listOf("contrasts", "imagery of energy")),
+                                    TaskItem("comment", "III", "Comment on the claim that films can change how a country sees itself.", emptyList()),
+                                ),
+                            part2 = listOf("How do media shape the image of a country?"),
+                            solution = "Summary: Nollywood as Africa's own voice … Analysis: contrasts, enumeration … Comment: identity, single story (Adichie).",
+                            format = "oral",
+                        ),
+                        ExamUnit(
+                            id = "$REAL#1",
+                            docId = REAL,
+                            title = "Likes and lies",
+                            source = "Abitur NRW, Grundkurs, mündliche Prüfung (Beispielaufgabe)",
+                            startPage = 3,
+                            endPage = 4,
+                            topic = 8,
+                            literary = false,
+                            textStart = "",
+                            textEnd = "",
+                            tasks =
+                                listOf(
+                                    TaskItem("summarise", "I", "Summarise the text.", emptyList()),
+                                    TaskItem("analyse", "II", "Analyse the means the author uses to warn the reader.", emptyList()),
+                                    TaskItem("discuss", "III", "Discuss whether social media make young people more political.", emptyList()),
+                                ),
+                            part2 = emptyList(),
+                            solution = "",
+                            format = "oral",
+                        ),
+                    ),
+            ),
+        )
+        app.errorMemory.replaceAll(
+            listOf(
+                ErrorPattern("SVA:third person s", "third person -s", "SVA", listOf(PatternExample("the author describe", "the author describes", now - DAY, "Sitzung"), PatternExample("she live in Lagos", "she lives in Lagos", now - 4 * DAY, "Sitzung")), 7, 4, now - 20 * DAY, now - DAY, 0, "demo-1", dueAt = now - hour),
+                ErrorPattern("VERB_TENSE:present perfect for up to now", "present perfect for up to now", "VERB_TENSE", listOf(PatternExample("since 2016 the UK left", "since 2016 the UK has left", now - 10 * DAY, "Klausur")), 5, 3, now - 25 * DAY, now - 3 * DAY, 0, "demo-2", fromKlausur = 1, dueAt = now - hour),
+                ErrorPattern("PREP:since vs for", "since vs for", "PREP", listOf(PatternExample("since many years", "for many years", now - 6 * DAY, "Sitzung")), 3, 2, now - 14 * DAY, now - 6 * DAY, 1, "demo-3", dueAt = now + 2 * DAY, intervalDays = 3.0),
+                ErrorPattern("FALSE_FRIEND:false friend become", "false friend: become", "FALSE_FRIEND", listOf(PatternExample("I become a lot of likes", "I get a lot of likes", now - 2 * DAY, "Sitzung")), 1, 1, now - 2 * DAY, now - 2 * DAY, 0, "demo-4", dueAt = now - hour),
+                ErrorPattern("DET:article with general nouns", "article with general nouns", "DET", listOf(PatternExample("the society is changing", "society is changing", now - 30 * DAY, "Sitzung")), 4, 3, now - 40 * DAY, now - 30 * DAY, 4, "demo-5", dueAt = now + 20 * DAY, intervalDays = 14.0, drills = 3, drillsOk = 3, drillStreak = 3),
+            ),
+        )
         memory.saveDigest(
             KLAUSUR,
             Digest(
@@ -608,5 +747,42 @@ object Demo {
                     ),
             ),
         )
+        app.dossiers.clear()
+        app.dossiers.save(
+            TopicDossier(
+                topic = 4,
+                madeAt = now - DAY,
+                signature = DossierMaker.signature(app, 4),
+                by = "Gemini 4 Argon",
+                overview = "In your course, Nigeria is studied as a young, diverse nation between tradition and rapid change: colonial legacy, ethnic and religious diversity, a booming creative industry and the emigration of the educated young.",
+                keyPoints =
+                    listOf(
+                        "Nigeria has more than 250 ethnic groups; Hausa, Yoruba and Igbo are the largest.",
+                        "Independence from Britain in 1960; the borders were drawn by the colonial power.",
+                        "Nollywood is the second-largest film industry in the world by output.",
+                        "Many young graduates emigrate (\"japa\") – a brain drain, e.g. doctors to the UK.",
+                        "Adichie warns against \"a single story\" about Africa.",
+                    ),
+                examples = listOf(DossierItem("Chimamanda Ngozi Adichie: The danger of a single story", "Green Line Oberstufe NRW, S. 142"), DossierItem("Americanah: Ifemelu's experience of race in the USA", "Green Line Oberstufe NRW, S. 156")),
+                quotes = listOf(DossierItem("The single story creates stereotypes, and the problem with stereotypes is not that they are untrue, but that they are incomplete.", "Green Line Oberstufe NRW, S. 142")),
+                terms = listOf(Vocab("brain drain", "Abwanderung von Fachkräften", 4), Vocab("colonial legacy", "koloniales Erbe", 4), Vocab("ethnic diversity", "ethnische Vielfalt", 4)),
+                arguments =
+                    listOf(
+                        DossierArgument("Emigration weakens Nigeria's health system.", "contra", "Thousands of doctors have left for the UK since 2015."),
+                        DossierArgument("The diaspora sends money and ideas back home.", "pro", "Remittances are larger than foreign aid."),
+                        DossierArgument("Whether emigration helps depends on whether people return.", "nuance", "Return migration of tech founders to Lagos."),
+                    ),
+                links = listOf(DossierLink(10, "Brain drain connects Nigeria with migration and the global job market."), DossierLink(1, "The colonial legacy links Nigeria to Britain's view of its empire.")),
+                questions = listOf("Why do so many young Nigerians leave the country?", "Is Nollywood more than entertainment?", "What does Adichie mean by a 'single story'?"),
+                ownIdeas = listOf("Compared Nollywood with Hollywood's image of Africa."),
+            ),
+        )
     }
+
+    fun drills(): List<Drill> =
+        listOf(
+            Drill("d1", DrillType.SAY_RIGHT, "SVA:third person s", "Sag es richtig – achte auf die 3. Person -s.", "The author describe how young people in Lagos work.", "The author describes how young people in Lagos work.", "describes", 4),
+            Drill("d2", DrillType.COMPLETE, "VERB_TENSE:present perfect for up to now", "Vollende den Satz – es geht um eine Entwicklung bis heute.", "Since independence in 1960, Nigeria's population …", "Since independence in 1960, Nigeria's population has grown enormously.", "has grown", 4),
+            Drill("d3", DrillType.ANSWER, "PREP:since vs for", "Antworte in einem Satz – mit „for“ oder „since“.", "How long has Nollywood been so successful?", "Nollywood has been successful for about thirty years.", "for about thirty years", 4),
+        )
 }

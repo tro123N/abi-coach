@@ -36,6 +36,7 @@ object MaterialScheduler {
                 .putString(MaterialWorker.DOC, fixedDocId.orEmpty())
                 .putInt(MaterialWorker.PAGE, fixedPage)
                 .putBoolean(MaterialWorker.PREFETCH, prefetch)
+                .putString(MaterialWorker.UNIT, request.unitId)
                 .build()
         val builder =
             OneTimeWorkRequestBuilder<MaterialWorker>()
@@ -71,6 +72,7 @@ class MaterialWorker(context: Context, params: WorkerParameters) : CoroutineWork
                 source = runCatching { Knowledge.Source.valueOf(inputData.getString(SOURCE).orEmpty()) }.getOrDefault(Knowledge.Source.COURSE),
                 short = inputData.getBoolean(SHORT, false),
                 instruction = inputData.getString(INSTRUCTION).orEmpty(),
+                unitId = inputData.getString(UNIT).orEmpty(),
             )
         val docId = inputData.getString(DOC)?.takeIf { it.isNotBlank() }
         val page = inputData.getInt(PAGE, 0)
@@ -117,6 +119,7 @@ class MaterialWorker(context: Context, params: WorkerParameters) : CoroutineWork
         const val DOC = "doc"
         const val PAGE = "page"
         const val PREFETCH = "prefetch"
+        const val UNIT = "unit"
     }
 }
 
@@ -145,7 +148,7 @@ object MaterialPrefetch {
         val ordinary =
             (s.kind == SessionKind.PART1 || s.kind == SessionKind.SIMULATION) &&
                 s.fixedDocId == null && s.instruction.isBlank() &&
-                s.textType == Knowledge.TextType.GEMISCHT && s.source != Knowledge.Source.MATERIAL
+                s.textType == Knowledge.TextType.GEMISCHT && s.source != Knowledge.Source.MATERIAL && s.source != Knowledge.Source.REAL
         if (!ordinary) return null
         val entry = app.shelf.peek(MaterialShelf.PREFETCH) ?: return null
         val fits = s.topicChoice == Knowledge.FROM_COURSE || s.topicChoice == Knowledge.RANDOM || s.topicChoice == entry.task.topicId

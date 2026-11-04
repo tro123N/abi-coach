@@ -113,7 +113,7 @@ fun StatsScreen(vm: AppViewModel) {
                             if (state == null) {
                                 CaptionText("${s.label}: noch nicht gemessen")
                             } else {
-                                BarRow(s.label, (state.score / 15).toFloat(), points(state.score) + " P.", pointsColor(state.score))
+                                BarRow(s.label, (state.score / 15).toFloat(), points(state.score) + " P." + trendMark(profile.skillTrend(s)), pointsColor(state.score))
                             }
                             Gap(6.dp)
                         }
@@ -121,9 +121,12 @@ fun StatsScreen(vm: AppViewModel) {
                     }
                     val levers = profile.levers(3)
                     if (levers.isNotEmpty()) CaptionText("Größte Hebel: " + levers.joinToString(", ") { it.label })
+                    CaptionText("↑ / ↓: Trend der letzten Auswertungen")
                 }
             }
+            item { ReadinessCard(profile) }
         }
+        item { ErrorMemoryCard(vm) }
         item {
             AbiCard {
                 CardTitle("Übungszeit", icon = R.drawable.timer_24dp)
@@ -169,21 +172,7 @@ fun StatsScreen(vm: AppViewModel) {
             }
         }
         item { ExaminerProfileCard(vm) }
-        item {
-            AbiCard {
-                CardTitle("Themenfelder", icon = R.drawable.hub_24dp)
-                CaptionText("Geübt (Sitzungen) und Material (Abschnitte) je Themenfeld")
-                Gap(8.dp)
-                val maxPractice = (topicPractice.values.maxOrNull() ?: 1).coerceAtLeast(1)
-                Knowledge.TOPICS.forEach { t ->
-                    val n = topicPractice[t.id] ?: 0
-                    val m = coverage.getOrElse(t.id) { 0 }
-                    BarRow(t.short, n.toFloat() / maxPractice, "$n · $m", if (n == 0 && m > 0) yellow else accent)
-                    Gap(5.dp)
-                }
-                CaptionText("Gelb: Material da, aber noch nicht geübt.")
-            }
-        }
+        item { TopicCompassCard(vm) }
         val recent = sessions.take(5)
         if (recent.isNotEmpty()) {
             item {

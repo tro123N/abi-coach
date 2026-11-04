@@ -17,6 +17,7 @@ enum class DocKind(val label: String, val plural: String, val icon: Int) {
     UNTERRICHT("Unterrichtsmaterial", "Unterrichtsmaterial", R.drawable.description_24dp),
     MITSCHRIFT("Mitschrift / Notizen", "Mitschriften und Notizen", R.drawable.edit_note_24dp),
     ABI_BUCH("Abi-Vorbereitung", "Abi-Vorbereitung", R.drawable.library_books_24dp),
+    PRUEFUNG("Echte Abi-Prüfungsaufgaben", "Echte Abi-Prüfungsaufgaben", R.drawable.workspace_premium_24dp),
     LEKTUERE("Lektüre / Roman", "Lektüren", R.drawable.auto_stories_24dp),
     SONSTIGES("Sonstiges", "Sonstiges", R.drawable.folder_24dp),
 }
@@ -151,6 +152,8 @@ data class Digest(
     val vocabulary: List<Vocab>,
     val examTexts: List<ExamTextRef>,
     val klausur: KlausurInfo?,
+    /** Original exam tasks found in Abitur material (with their tasks and Erwartungshorizont). */
+    val examUnits: List<ExamUnit> = emptyList(),
 ) {
     fun toJson(): JSONObject =
         JSONObject()
@@ -174,6 +177,7 @@ data class Digest(
                         .put("weaknesses", k.weaknesses.toJsonArray())
                 } ?: JSONObject.NULL,
             )
+            .put("examUnits", examUnits.toJsonArray { it.toJson() })
 
     companion object {
         fun fromJson(o: JSONObject): Digest =
@@ -197,6 +201,7 @@ data class Digest(
                             weaknesses = k.optJSONArray("weaknesses").strings(),
                         )
                     },
+                examUnits = o.optJSONArray("examUnits").objects().map { ExamUnit.fromJson(it) }.filter { it.tasks.isNotEmpty() },
             )
     }
 }

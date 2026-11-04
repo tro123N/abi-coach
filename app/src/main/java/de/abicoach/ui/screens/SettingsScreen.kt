@@ -357,6 +357,8 @@ private fun KeyBlock(vm: AppViewModel, provider: String, title: String, role: St
 
 @Composable
 private fun SystemCheckCard(vm: AppViewModel) {
+    val micTest = rememberMicGate { vm.tap(); vm.openMicTest() }
+    MicTestDialog(vm)
     AbiCard(modifier = Modifier.testTag("settings_check")) {
         CardTitle("System prüfen", icon = R.drawable.verified_24dp)
         CaptionText(
@@ -377,6 +379,17 @@ private fun SystemCheckCard(vm: AppViewModel) {
             Gap(6.dp)
             CheckRow(line)
         }
+        Gap(10.dp)
+        ActionButton(
+            "Mikrofon-Test: selbst sprechen",
+            R.drawable.mic_24dp,
+            accent,
+            { micTest() },
+            enabled = vm.app.ai.hasGemini,
+            subtitle = "Du sagst einen Satz mit Fehler – prüft Mikrofon, Ohr, Hinweis und Coach-Stimme wie im echten Training",
+            container = MaterialTheme.colorScheme.background,
+            modifier = Modifier.testTag("check_mic"),
+        )
     }
 }
 

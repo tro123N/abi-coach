@@ -115,6 +115,8 @@ fun SetupScreen(vm: AppViewModel, initial: SessionSetup) {
     }
     val start = rememberMicGate { vm.start(s) }
     val topicOptions = listOfNotNull(if (hasMaterial) Knowledge.FROM_COURSE else null, Knowledge.RANDOM) + Knowledge.TOPICS.map { it.id }
+    val hasRealTasks = remember { de.abicoach.memory.ExamUnits.all(app).isNotEmpty() }
+    val sources = Knowledge.Source.entries.filter { it != Knowledge.Source.REAL || hasRealTasks || s.source == Knowledge.Source.REAL }
 
     DetailScaffold(
         title = setupTitle(s),
@@ -155,7 +157,7 @@ fun SetupScreen(vm: AppViewModel, initial: SessionSetup) {
                 CardTitle("Material für Teil 1", icon = R.drawable.article_24dp)
                 if (s.kind != SessionKind.PLACEMENT) {
                     ChoiceChips(
-                        options = Knowledge.Source.entries,
+                        options = sources,
                         selected = s.source,
                         label = { it.label },
                         onSelect = { vm.tap(); s = s.copy(source = it) },
@@ -165,7 +167,7 @@ fun SetupScreen(vm: AppViewModel, initial: SessionSetup) {
                     CaptionText(s.source.description + if (s.source != Knowledge.Source.NEW && !hasMaterial) " (Noch kein Material da – dann wird es ein neuer Text.)" else "")
                     Gap(12.dp)
                 }
-                if (s.source != Knowledge.Source.MATERIAL || s.kind == SessionKind.PLACEMENT) {
+                if ((s.source != Knowledge.Source.MATERIAL && s.source != Knowledge.Source.REAL) || s.kind == SessionKind.PLACEMENT) {
                     BodyText("Textart")
                     Gap(6.dp)
                     ChoiceChips(
@@ -469,6 +471,8 @@ fun LiveScreen(vm: AppViewModel) {
                     if (!state.transcriberReady) CaptionText("Mitschrift startet …")
                 }
             }
+            Gap(10.dp)
+            TechChips(state, draft?.feedback ?: FeedbackMode.PRUEFUNG)
             Gap(12.dp)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(mmss(state.elapsedSec), fontSize = dimens.fonts.body, color = MaterialTheme.colorScheme.onPrimary)
@@ -527,9 +531,11 @@ private fun WhisperBar(state: LiveUiState, mode: FeedbackMode) {
     }
     val alert = state.lastAlert
     val fresh = alert != null && now - state.alertAt < 6_000
+    val repeated = state.repeatOk && now - state.repeatAt < 5_000
     val container by animateColorAsState(
         targetValue =
             when {
+                repeated -> green
                 fresh -> yellow
                 alert != null -> yellow.copy(alpha = 0.22f)
                 else -> MaterialTheme.colorScheme.primary
@@ -545,7 +551,9 @@ private fun WhisperBar(state: LiveUiState, mode: FeedbackMode) {
             .padding(horizontal = 20.dp, vertical = 12.dp)
             .testTag("whisper_bar"),
     ) {
-        if (alert == null) {
+        if (repeated) {
+            Text("✓ Richtig wiederholt – weiter so!", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.White)
+        } else if (alert == null) {
             Text(
                 if (mode == FeedbackMode.COACH) "Coach aktiv – Hinweise erscheinen hier." else "Flüstern aktiv – Hinweise erscheinen hier.",
                 fontSize = 15.sp,
@@ -565,6 +573,9 @@ private fun WhisperBar(state: LiveUiState, mode: FeedbackMode) {
                 fontWeight = FontWeight.Bold,
                 color = if (fresh) ink else green,
             )
+            if (state.repeatTarget != null && mode == FeedbackMode.COACH) {
+                Text("Sag es noch einmal richtig.", fontSize = 14.sp, color = if (fresh) ink else MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f))
+            }
         }
     }
 }

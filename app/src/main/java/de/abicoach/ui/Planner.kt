@@ -22,6 +22,11 @@ sealed interface Target {
 
     data object Vocab : Target
 
+    /** The speaking training of the student's own error patterns. */
+    data object Drills : Target
+
+    data class Dossier(val topic: Int) : Target
+
     data class Setup(val setup: SessionSetup) : Target
 }
 
@@ -52,6 +57,8 @@ data class SessionSetup(
     val instruction: String = "",
     /** Length of a conversation (part 2 or training) in minutes. */
     val talkMinutes: Int = if (kind == SessionKind.PART2) 10 else 8,
+    /** A specific original exam task from the uploaded Abitur material (with source REAL). */
+    val unitId: String = "",
 ) {
     val isSprint: Boolean get() = instruction == SPRINT_INSTRUCTION
 
@@ -148,6 +155,32 @@ object Planner {
                     Target.Setup(SessionSetup.defaults(SessionKind.SIMULATION, 0, feedback)),
                 ),
             )
+        }
+        // Mistakes that are due again: short, and the most direct way to points in the Darstellungsleistung.
+        val duePatterns = app.errorMemory.due()
+        if (duePatterns.size >= 2) {
+            out.add(
+                minOf(1, out.size),
+                Recommendation(
+                    "Sprech-Training: ${duePatterns.size} Fehler fällig",
+                    "Ca. 5 Min. · z. B. " + duePatterns.take(2).joinToString(", ") { it.title },
+                    R.drawable.spellcheck_24dp,
+                    Tint.YELLOW,
+                    Target.Drills,
+                ),
+            )
+        }
+        // Original exam tasks from the uploaded Abitur material that were not practised yet.
+        val realOpen = de.abicoach.memory.ExamUnits.all(app).count { it.id !in de.abicoach.memory.ExamUnits.used(app) }
+        if (realOpen > 0) {
+            out +=
+                Recommendation(
+                    "Echte Prüfungsaufgabe",
+                    "$realOpen Original-Aufgaben aus deinem Abi-Material – mit Original-Erwartungshorizont",
+                    R.drawable.workspace_premium_24dp,
+                    Tint.GREEN,
+                    Target.Setup(SessionSetup.defaults(SessionKind.PART1, 0, feedback).copy(source = Knowledge.Source.REAL, prepMinutes = 20)),
+                )
         }
         val dueCards = app.vocab.due().size
         if (dueCards >= 5) {

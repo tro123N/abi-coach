@@ -195,6 +195,7 @@ fun CourseScreen(vm: AppViewModel) {
             }
         }
         if (docs.isNotEmpty()) item { StatusCard(stats, docs) }
+        if (stats.passages > 0) item { DossiersCard(vm) }
         if (stats.passages > 0) item { KnowledgeMapCard(stats) }
         DocKind.entries.forEach { kind ->
             val list = docs.filter { it.kind == kind }
@@ -338,6 +339,10 @@ private fun ImportDialog(files: List<Importer.Picked>, onConfirm: (DocKind, Stri
             Gap(8.dp)
             CaptionText("Tipp: Auch die Seiten mit den Korrekturen und dem Kommentar der Lehrkraft mitnehmen – daraus lernt die App deine typischen Fehler.")
         }
+        if (kind == DocKind.PRUEFUNG || kind == DocKind.ABI_BUCH) {
+            Gap(8.dp)
+            CaptionText("Die App sucht darin die Original-Prüfungsaufgaben: Text, Aufgaben, Erwartungshorizont und Lösungsvorschlag. Am besten mit den Seiten der Lösungen hochladen – dann wirst du nach dem Original bewertet.")
+        }
     }
 }
 
@@ -433,6 +438,23 @@ fun DocScreen(vm: AppViewModel, id: String) {
                             CaptionText(Knowledge.categoryLabel(e.category) + if (e.explanation.isNotBlank()) " · ${e.explanation}" else "")
                         }
                         CaptionText("Diese Fehlerarten fließen in dein Lernprofil und in „Schwachstellen üben“ ein.")
+                    }
+                }
+            }
+            if (digest.examUnits.isNotEmpty()) {
+                AbiCard(modifier = Modifier.testTag("doc_units")) {
+                    CardTitle("Original-Prüfungsaufgaben (${digest.examUnits.size})", icon = R.drawable.workspace_premium_24dp, iconTint = green)
+                    digest.examUnits.forEachIndexed { i, u ->
+                        if (i > 0) Gap(10.dp)
+                        BodyText(u.title)
+                        CaptionText(
+                            u.source + " · " + (if (u.endPage > u.startPage) "S. ${u.startPage}–${u.endPage}" else "S. ${u.startPage}") +
+                                (if (u.topic >= 0) " · ${Knowledge.topicShort(u.topic)}" else "") +
+                                " · ${u.tasks.size} Aufgaben" + (if (u.tasks.any { it.expectations.isNotEmpty() }) " · mit Erwartungshorizont" else "") +
+                                (if (u.solution.isNotBlank()) " · mit Lösungsvorschlag" else ""),
+                        )
+                        Gap(6.dp)
+                        ActionButton("Diese Aufgabe üben", R.drawable.co_present_24dp, green, { vm.startRealTask(u.id, whole = false) }, container = MaterialTheme.colorScheme.background)
                     }
                 }
             }

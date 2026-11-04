@@ -44,6 +44,27 @@ object CoachContext {
         }
         val errors = app.store.categoryCounts().entries.sortedByDescending { it.value }.take(4)
         if (errors.isNotEmpty()) sb.append("\nHäufigste Fehler: ").append(errors.joinToString(", ") { "${Knowledge.categoryLabel(it.key)} (${it.value}×)" })
+        val patterns = app.errorMemory.summary(5)
+        if (patterns.isNotBlank()) {
+            sb.append("\nFehlergedächtnis (wichtigste offene Fehlermuster):\n").append(patterns)
+            val due = app.errorMemory.due().size
+            if (due > 0) sb.append("\nIm Sprech-Training fällig: ").append(due).append(" Fehlermuster (Aktion: training).")
+        }
+        val covered = app.course.coveredTopics().map { it.first }
+        if (covered.isNotEmpty() || profile.topics.isNotEmpty()) {
+            val rated = profile.topics.entries.sortedBy { it.value.score }.joinToString(", ") { "${Knowledge.topicShort(it.key)} ${"%.0f".format(it.value.score)} P." }
+            val untried = covered.filter { it !in profile.topics }.take(4).joinToString(", ") { Knowledge.topicShort(it) }
+            sb.append("\nThemen-Kompass:")
+            if (rated.isNotBlank()) sb.append(" geübt – ").append(rated).append('.')
+            if (untried.isNotBlank()) sb.append(" Im Kurs, aber noch nie geübt: ").append(untried).append('.')
+        }
+        val dossiers = app.dossiers.all.value.keys.sorted()
+        if (dossiers.isNotEmpty()) sb.append("\nDossiers vorhanden (Aktion dossier:NUMMER): ").append(dossiers.joinToString(", ") { "$it = ${Knowledge.topicShort(it)}" }).append('.')
+        val real = de.abicoach.memory.ExamUnits.all(app)
+        if (real.isNotEmpty()) {
+            val open = real.count { it.id !in de.abicoach.memory.ExamUnits.used(app) }
+            sb.append("\nEchte Prüfungsaufgaben im Gedächtnis: ").append(real.size).append(" (noch nicht geübt: ").append(open).append("; Aktion: echt).")
+        }
         de.abicoach.session.ProgressMaker.note(app).takeIf { it.isNotBlank() }?.let { sb.append("\nFortschritt seit der Sitzung davor:\n").append(it) }
         if (profile.teacherNotes.isNotEmpty()) sb.append("\nKommentare der Lehrkraft: ").append(profile.teacherNotes.takeLast(3).joinToString(" | ").take(300))
         val due = app.vocab.due().size
@@ -112,7 +133,8 @@ Regeln:
 - headline: ein motivierender, konkreter Satz (höchstens 14 Wörter), kein Floskel-Satz.
 - focus: zwei Sätze: Woran liegt es gerade am meisten (Zahlen aus dem Stand nennen) und was bringt heute die meisten Punkte.
 - steps: genau 3 Schritte in sinnvoller Reihenfolge (Warm-up kurz, Hauptübung, Wiederholung/Wortschatz). Jeder Schritt hat title (höchstens 6 Wörter), why (ein Satz, warum das heute dran ist, mit Bezug zu seinen Fehlern oder Lehrkraft-Kommentaren) und action.
-- action ist genau einer dieser Werte: aufgabe1, aufgabe2, aufgabe3, vortrag, gespraech, sprint, simulation, wortschatz, aussprache oder level:ID (nur eine ID aus der Liste im Stand).
+- action ist genau einer dieser Werte: aufgabe1, aufgabe2, aufgabe3, vortrag, gespraech, sprint, simulation, wortschatz, aussprache, training (Sprech-Training seiner eigenen Fehlermuster), echt (eine echte Prüfungsaufgabe aus seinem Abi-Material, nur wenn vorhanden), dossier:NUMMER (ein Themen-Dossier lesen, nur vorhandene) oder level:ID (nur eine ID aus der Liste im Stand).
+- Wenn Fehlermuster im Sprech-Training fällig sind, gehört „training“ fast immer in den Plan (kurz, 5 Minuten). Ein Themenfeld, das im Kurs vorkommt, aber noch nie geübt wurde, ist ein guter Hauptschritt.
 - Plane realistisch für die Tageszeit des Schülers (etwa 20–30 Minuten insgesamt). Wenn der Prüfungstermin nah ist (unter 21 Tage), plane mehr Simulation und Vortrag.
 - Wenn er heute schon geübt hat, schlage etwas Leichteres vor und lobe ihn.
         """.trimIndent()

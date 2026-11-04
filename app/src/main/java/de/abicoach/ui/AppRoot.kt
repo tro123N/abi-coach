@@ -85,6 +85,10 @@ fun AppRoot(vm: AppViewModel) {
                 Screen.Vocab -> de.abicoach.ui.screens.VocabScreen(vm)
                 Screen.Pronunciation -> de.abicoach.ui.screens.PronunciationScreen(vm)
                 is Screen.Corrections -> de.abicoach.ui.screens.CorrectionsScreen(vm, screen.id)
+                Screen.Drills -> de.abicoach.ui.screens.DrillsScreen(vm)
+                Screen.Errors -> de.abicoach.ui.screens.ErrorsScreen(vm)
+                is Screen.Dossier -> de.abicoach.ui.screens.DossierScreen(vm, screen.topic)
+                Screen.RealTasks -> de.abicoach.ui.screens.RealTasksScreen(vm)
             }
         }
     }

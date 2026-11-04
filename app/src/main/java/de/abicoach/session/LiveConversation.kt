@@ -15,6 +15,7 @@ import de.abicoach.data.FeedbackMode
 import de.abicoach.data.LiveError
 import de.abicoach.data.Speaker
 import de.abicoach.data.Utterance
+import de.abicoach.learn.ErrorMemoryStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -26,7 +27,34 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
+
+/** What each part of the live chain is doing, shown as small status chips and saved as "Technik-Protokoll". */
+data class LiveDiag(
+    /** The microphone has heard something louder than silence. */
+    val micHeard: Boolean = false,
+    /** Utterances the ear cut out at pauses. */
+    val segments: Int = 0,
+    /** Utterances the ear understood. */
+    val heard: Int = 0,
+    val checks: Int = 0,
+    val checkFailures: Int = 0,
+    val checkMs: Int = 0,
+    val checkMode: String = "",
+    val hints: Int = 0,
+    /** State of the verbatim live transcription: "startet", "läuft", "neu verbunden", "aus". */
+    val transcript: String = "startet",
+    val transcriptTexts: Int = 0,
+    /** Utterances the transcript took from the ear because the live transcription missed them. */
+    val earTranscripts: Int = 0,
+    /** State of the examiner: "" (none), "verbindet", "bereit", "Fehler". */
+    val examiner: String = "",
+    val coachDue: Int = 0,
+    val coachSpoken: Int = 0,
+    val coachByPhone: Int = 0,
+    val repeatsOk: Int = 0,
+)
 
 data class LiveUiState(
     val part: Int = 0,
@@ -52,12 +80,17 @@ data class LiveUiState(
     /** One line about the live error check ("Gemini 3.8 Flash · 6 Prüfungen"), or the reason it is not working. */
     val checkInfo: String? = null,
     val checkFailed: Boolean = false,
+    val diag: LiveDiag = LiveDiag(),
+    /** The corrected words the coach asked the student to say again (null = nothing to repeat). */
+    val repeatTarget: String? = null,
+    val repeatOk: Boolean = false,
+    val repeatAt: Long = 0,
 )
 
 /**
- * One live part of a session: the examiner (Gemini Live, optional), the verbatim transcriber
- * running in parallel, the live error check and the recording for the later pronunciation analysis.
- * While it runs, a foreground service keeps the microphone alive when the screen goes off.
+ * One live part of a session: the examiner (Gemini Live, optional), the verbatim transcriber running in parallel,
+ * the ear (own pause detection + Gemini listening to every utterance) for Flüstern and Coach, the coach's voice and
+ * the recording for the later pronunciation analysis. While it runs, a foreground service keeps the microphone alive.
  */
 class LiveConversation(private val app: AbiCoachApp, private val config: Config) {
     data class Config(
@@ -74,10 +107,25 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
         val targetSeconds: Int,
     )
 
-    data class Result(val utterances: List<Utterance>, val liveErrors: List<LiveError>, val seconds: Int, val examinerSeconds: Double, val examinerLabel: String)
+    data class Result(
+        val utterances: List<Utterance>,
+        val liveErrors: List<LiveError>,
+        val seconds: Int,
+        val examinerSeconds: Double,
+        val examinerLabel: String,
+        /** Technical summary and log of this part. */
+        val tech: String = "",
+    )
 
     private val _state =
-        MutableStateFlow(LiveUiState(part = config.part, targetSec = config.targetSeconds, hasExaminer = config.examinerPrompt != null))
+        MutableStateFlow(
+            LiveUiState(
+                part = config.part,
+                targetSec = config.targetSeconds,
+                hasExaminer = config.examinerPrompt != null,
+                diag = LiveDiag(examiner = if (config.examinerPrompt != null) "verbindet" else ""),
+            ),
+        )
     val state: StateFlow<LiveUiState> = _state.asStateFlow()
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -92,11 +140,18 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
     @Volatile private var transcriber: LiveSocket? = null
     private var checker: LiveChecker? = null
 
+    /** The ear's own pause detection; only with Flüstern or Coach. */
+    private val segmenter: SpeechSegmenter? = if (config.feedback != FeedbackMode.PRUEFUNG) SpeechSegmenter(::onSegment) else null
+
     private val lock = Any()
     private val examinerTurn = StringBuilder()
     private val fallbackStudent = StringBuilder()
+    private val sessionRules = HashMap<String, Int>()
+    private val techLog = ArrayList<String>()
 
     @Volatile private var transcriberWorks = false
+
+    @Volatile private var lastTranscriberTextAt = 0L
 
     @Volatile private var kickoffSent = false
 
@@ -125,6 +180,13 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
     /** The examiner did not answer an app instruction: from now on the coach speaks with the phone's voice. */
     @Volatile private var coachViaPhone = false
 
+    /** The coach asked the student to say this correction again. */
+    @Volatile private var repeatTarget: LiveError? = null
+
+    @Volatile private var repeatSince = 0L
+
+    @Volatile private var repeatTries = 0
+
     @Volatile private var lastWhisperAt = 0L
 
     @Volatile private var kickoffAt = 0L
@@ -137,6 +199,10 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
     @Volatile private var voicedMs = 0L
 
     @Volatile private var lastRefreshAt = 0L
+
+    @Volatile private var micWarned = false
+
+    @Volatile private var maxLevel = 0f
 
     /** When the transient message was set (0 = none or permanent); it fades after a few seconds. */
     @Volatile private var infoAt = 0L
@@ -157,6 +223,7 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
         }
         LiveService.start(app)
         routing.enter()
+        log("Start: ${partLabel()}, Rückmeldung ${config.feedback.label}, " + if (routing.usingHeadset) "Kopfhörer" else "Lautsprecher")
         player.start()
         config.wavFile?.let { wav = WavWriter(it, 16_000) }
 
@@ -170,7 +237,7 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
         }
 
         if (config.feedback != FeedbackMode.PRUEFUNG) {
-            checker = LiveChecker(app.ai, scope, config.checkerContext, ::onLiveErrors, ::onCheckerStatus).also { it.start() }
+            checker = LiveChecker(app.ai, scope, config.checkerContext, ::onLiveErrors, ::onCheckerStatus, ::onHeard).also { it.start() }
         }
 
         mic = MicStreamer(::onMic).also { it.start(scope) }
@@ -181,7 +248,33 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
                 tick()
             }
         }
+        // The coach reacts within a quarter of a second once the student pauses.
+        if (config.feedback == FeedbackMode.COACH) {
+            scope.launch {
+                while (isActive) {
+                    delay(250)
+                    deliverCoach(System.currentTimeMillis())
+                }
+            }
+        }
     }
+
+    private fun partLabel(): String =
+        when (config.part) {
+            1 -> "Teil 1 (Vortrag)"
+            2 -> "Teil 2 (Gespräch)"
+            else -> "Gesprächstraining"
+        }
+
+    private fun log(text: String) {
+        val s = ((System.currentTimeMillis() - startedAt) / 1000).toInt().coerceAtLeast(0)
+        synchronized(techLog) {
+            techLog += "%d:%02d %s".format(s / 60, s % 60, text.take(160))
+            if (techLog.size > 120) techLog.removeAt(0)
+        }
+    }
+
+    private fun diag(change: (LiveDiag) -> LiveDiag) = _state.update { it.copy(diag = change(it.diag)) }
 
     /** A short message above the transcript; it fades after a few seconds. */
     private fun info(text: String) {
@@ -197,6 +290,12 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
             infoAt = 0
             _state.update { it.copy(info = null) }
         }
+        // Nothing louder than silence for 20 seconds: the microphone is probably muted or blocked.
+        if (!micWarned && !finished && seconds >= 20 && maxLevel < 0.03f) {
+            micWarned = true
+            log("Mikrofon hört nichts (höchster Pegel ${"%.3f".format(maxLevel)})")
+            info("Das Mikrofon hört kaum etwas. Ist es stummgeschaltet oder verdeckt? Sprich ruhig etwas lauter.")
+        }
         // Part 1: like a real examiner, give a short impulse if the student has been silent for a while.
         if (config.part == 1 && seconds > 20 && now - lastSpeechAt > 25_000 && now - lastImpulseAt > 60_000) {
             lastImpulseAt = now
@@ -208,14 +307,16 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
         if (voicedMs > 12_000 && ear != null && ear.ready && !finished && now - lastRefreshAt > 60_000) {
             voicedMs = 0
             lastRefreshAt = now
+            log("Mitschrift schweigt trotz Sprache – verbinde neu")
+            diag { it.copy(transcript = "neu verbunden") }
             ear.reconnectNow()
         }
         // The examiner stayed silent after the start instruction: ask once more.
         if (kickoffSent && !examinerHeard && !kickoffRetried && now - kickoffAt > 8_000) {
             kickoffRetried = true
+            log("Prüfer schweigt nach dem Start – zweite Startanweisung")
             config.kickoff?.let { examiner?.sendInstruction(it) }
         }
-        deliverCoach(now)
         // The examiner ends the conversation politely when the time is up.
         if (examiner != null && !timeUpSent && seconds >= config.targetSeconds + 20) {
             timeUpSent = true
@@ -236,30 +337,51 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
     private fun onMic(pcm: ByteArray) {
         val now = System.currentTimeMillis()
         val level = AudioUtil.level(pcm)
+        if (level > maxLevel) maxLevel = level
         val examinerAudible = player.isPlaying(now) || now < muteUntil
         val headset = routing.usingHeadset
         // On the loudspeaker the examiner would hear (and interrupt) himself: send silence while he talks.
         // With headphones the real microphone signal goes through, so the student can cut in.
         examiner?.sendAudio(if (examinerAudible && !headset) ByteArray(pcm.size) else pcm)
-        // While the examiner (or the app) is speaking over the loudspeaker, the microphone mostly hears the
-        // loudspeaker: keep that out of the student's transcript and recording.
+        // While the examiner (or the coach) is speaking over the loudspeaker, the microphone mostly hears the
+        // loudspeaker: keep that out of the student's transcript, the ear and the recording.
         if (!examinerAudible || headset) {
             transcriber?.sendAudio(pcm)
             wav?.write(pcm)
+            segmenter?.feed(pcm, now)
             if (level > 0.06f) {
                 lastSpeechAt = now
                 voicedMs += 100
             }
+        } else {
+            segmenter?.flush(now)
         }
-        _state.update { it.copy(micLevel = level, examinerSpeaking = examinerAudible) }
+        val heard = level > 0.05f
+        _state.update { s ->
+            if (heard && !s.diag.micHeard) {
+                s.copy(micLevel = level, examinerSpeaking = examinerAudible, diag = s.diag.copy(micHeard = true))
+            } else {
+                s.copy(micLevel = level, examinerSpeaking = examinerAudible)
+            }
+        }
+    }
+
+    private fun onSegment(segment: SpeechSegment) {
+        checker?.feedSegment(segment)
+        diag { it.copy(segments = it.segments + 1) }
     }
 
     private fun onTranscriberEvent(event: LiveEvent) {
         when (event) {
-            is LiveEvent.Ready -> _state.update { it.copy(transcriberReady = true) }
+            is LiveEvent.Ready -> {
+                _state.update { it.copy(transcriberReady = true, diag = it.diag.copy(transcript = "läuft")) }
+                log("Mitschrift verbunden")
+            }
             is LiveEvent.UserInterim -> {
                 if (event.text.isNotBlank()) {
-                    lastSpeechAt = System.currentTimeMillis()
+                    val now = System.currentTimeMillis()
+                    lastSpeechAt = now
+                    lastTranscriberTextAt = now
                     voicedMs = 0
                 }
                 _state.update { it.copy(interim = event.text) }
@@ -267,20 +389,31 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
             }
             is LiveEvent.UserText -> {
                 transcriberWorks = true
+                lastTranscriberTextAt = System.currentTimeMillis()
                 voicedMs = 0
                 addStudent(event.text)
             }
             is LiveEvent.Failed -> {
                 transcriber = null
                 infoAt = 0
+                log("Mitschrift ausgefallen: ${event.message}")
                 _state.update {
                     it.copy(
                         transcriberReady = false,
-                        info = "Wortgetreue Mitschrift nicht verfügbar (${event.message}). Die Auswertung nutzt die Aufnahme.",
+                        info =
+                            if (segmenter != null) {
+                                "Die Live-Mitschrift ist ausgefallen (${event.message}). Das Ohr hört weiter zu und schreibt mit."
+                            } else {
+                                "Wortgetreue Mitschrift nicht verfügbar (${event.message}). Die Auswertung nutzt die Aufnahme."
+                            },
+                        diag = it.diag.copy(transcript = "aus"),
                     )
                 }
             }
-            is LiveEvent.Info -> info(event.message)
+            is LiveEvent.Info -> {
+                log(event.message)
+                info(event.message)
+            }
             else -> Unit
         }
     }
@@ -288,7 +421,8 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
     private fun onExaminerEvent(event: LiveEvent) {
         when (event) {
             is LiveEvent.Ready -> {
-                _state.update { it.copy(examinerReady = true) }
+                _state.update { it.copy(examinerReady = true, diag = it.diag.copy(examiner = "bereit")) }
+                log("Prüfer verbunden")
                 if (!kickoffSent) {
                     kickoffSent = true
                     kickoffAt = System.currentTimeMillis()
@@ -297,7 +431,12 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
             }
             is LiveEvent.Audio -> {
                 examinerHeard = true
-                coachSent = null
+                val sent = coachSent
+                if (sent != null) {
+                    coachSent = null
+                    log("Prüfer sagt die Korrektur (nach ${System.currentTimeMillis() - coachSentAt} ms)")
+                    diag { it.copy(coachSpoken = it.coachSpoken + 1) }
+                }
                 flushFallbackStudent()
                 player.enqueue(event.pcm)
             }
@@ -308,26 +447,44 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
                 _state.update { it.copy(examinerLive = text) }
             }
             is LiveEvent.UserText -> {
-                if (!transcriberWorks) synchronized(lock) { fallbackStudent.append(event.text) }
+                // The examiner's own (non-verbatim) transcript is only a last resort, when neither the
+                // transcriber nor the ear can write along.
+                if (!transcriberWorks && segmenter == null) synchronized(lock) { fallbackStudent.append(event.text) }
             }
             is LiveEvent.TurnComplete -> flushExaminer(interrupted = false)
             is LiveEvent.Interrupted -> {
                 player.flush()
                 flushExaminer(interrupted = true)
             }
-            is LiveEvent.Failed -> _state.update { it.copy(error = event.message) }
-            is LiveEvent.Info -> info(event.message)
+            is LiveEvent.Failed -> {
+                log("Prüfer: ${event.message}")
+                _state.update { it.copy(error = event.message, diag = it.diag.copy(examiner = "Fehler")) }
+            }
+            is LiveEvent.Info -> {
+                log(event.message)
+                info(event.message)
+            }
             else -> Unit
         }
     }
 
-    private fun addStudent(text: String) {
+    private fun addStudent(text: String, fromEar: Boolean = false) {
         val clean = text.trim()
         if (clean.isEmpty()) return
-        lastSpeechAt = System.currentTimeMillis()
-        val utterance = Utterance(Speaker.STUDENT, clean, config.part, System.currentTimeMillis() - startedAt)
-        _state.update { it.copy(utterances = it.utterances + utterance, interim = "") }
-        checker?.feed(clean)
+        val now = System.currentTimeMillis()
+        lastSpeechAt = now
+        val utterance = Utterance(Speaker.STUDENT, clean, config.part, now - startedAt)
+        _state.update {
+            it.copy(
+                utterances = it.utterances + utterance,
+                interim = if (fromEar) it.interim else "",
+                diag = if (fromEar) it.diag.copy(earTranscripts = it.diag.earTranscripts + 1) else it.diag.copy(transcriptTexts = it.diag.transcriptTexts + 1),
+            )
+        }
+        if (!fromEar) {
+            checker?.feed(clean)
+            checkRepeat(clean, countTry = false)
+        }
     }
 
     private fun flushExaminer(interrupted: Boolean) {
@@ -343,7 +500,7 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
         _state.update { it.copy(utterances = it.utterances + utterance, examinerLive = "") }
     }
 
-    /** Uses the examiner's own (non-verbatim) transcript only if the verbatim transcriber is not working. */
+    /** Uses the examiner's own (non-verbatim) transcript only if nothing better is writing along. */
     private fun flushFallbackStudent() {
         if (transcriberWorks) return
         val text =
@@ -355,38 +512,72 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
         if (text.isNotEmpty()) addStudent(text)
     }
 
+    /** The ear understood one utterance. */
+    private fun onHeard(segment: SpeechSegment, heard: String) {
+        diag { it.copy(heard = it.heard + 1) }
+        // The live transcription missed this utterance (or is broken): keep the ear's version in the transcript.
+        if (!finished && (transcriber == null || !transcriberWorks || lastTranscriberTextAt < segment.startMs)) {
+            addStudent(heard, fromEar = true)
+        }
+        if (segment.startMs >= repeatSince) checkRepeat(heard, countTry = true)
+    }
+
     private fun onCheckerStatus(s: CheckerStatus) {
         val ago = if (s.lastOkAt > 0) ((System.currentTimeMillis() - s.lastOkAt) / 1000).toInt() else -1
+        val how = if (s.mode == "Audio") "hört zu" else "liest die Mitschrift"
         val text =
             when {
                 s.failure != null -> "Fehlerprüfung gestört (${s.failure}) – die Auswertung findet die Fehler trotzdem."
-                s.checks == 0 -> "Fehlerprüfung bereit (${s.label}) – sie startet mit deinen ersten Sätzen."
-                else -> "Fehlerprüfung aktiv (${s.label}) · ${s.checks} Prüfungen" + if (ago >= 0) " · zuletzt vor ${ago.coerceAtLeast(0)} s" else ""
+                s.checks == 0 -> "Fehlerprüfung bereit (${s.label}, $how) – sie startet mit deinen ersten Sätzen."
+                else -> "Fehlerprüfung aktiv (${s.label}, $how) · ${s.checks} geprüft · Ø ${"%.1f".format(s.avgMs / 1000.0)} s" + if (ago >= 0) " · zuletzt vor ${ago.coerceAtLeast(0)} s" else ""
             }
-        _state.update { it.copy(checkInfo = text, checkFailed = s.failure != null) }
+        if (s.failure != null) log("Fehlerprüfung: ${s.failure}")
+        _state.update {
+            it.copy(
+                checkInfo = text,
+                checkFailed = s.failure != null,
+                diag = it.diag.copy(checks = s.checks, checkFailures = s.failures, checkMs = s.avgMs, checkMode = s.mode),
+            )
+        }
+    }
+
+    private fun ruleKey(e: LiveError): String = ErrorMemoryStore.keyOf(e.category, e.rule)
+
+    /** Worth an interruption: a serious mistake, one of the student's known patterns, or one that keeps coming back today. */
+    private fun coachWorthy(e: LiveError, now: Long): Boolean {
+        if (e.severity == "major" || e.severity == "content") return true
+        if (app.errorMemory.isActive(e, now)) return true
+        return (synchronized(lock) { sessionRules[ruleKey(e)] } ?: 0) >= 2
     }
 
     private fun onLiveErrors(errors: List<LiveError>) {
         _state.update { it.copy(liveErrors = it.liveErrors + errors) }
-        if (config.feedback == FeedbackMode.PRUEFUNG || finished) return
-        val counts = app.store.categoryCounts()
-        val important = errors.filter { it.severity == "major" || it.severity == "content" || (counts[it.category] ?: 0) >= 3 }
-        val alert = important.firstOrNull() ?: errors.firstOrNull()?.takeIf { config.feedback == FeedbackMode.FLUESTERN }
-        if (alert == null) return
+        if (config.feedback == FeedbackMode.PRUEFUNG || finished || errors.isEmpty()) return
         val now = System.currentTimeMillis()
-        _state.update { it.copy(lastAlert = alert, alertSeq = it.alertSeq + 1, alertAt = now) }
+        synchronized(lock) { errors.forEach { e -> val k = ruleKey(e); sessionRules[k] = (sessionRules[k] ?: 0) + 1 } }
+        val worthy = errors.filter { coachWorthy(it, now) }
+        val alert = worthy.firstOrNull() ?: errors.first()
+        _state.update { it.copy(lastAlert = alert, alertSeq = it.alertSeq + 1, alertAt = now, diag = it.diag.copy(hints = it.diag.hints + errors.size)) }
+        log("Hinweis: „${alert.quote}“ → „${alert.correction}“" + if (alert.rule.isNotBlank()) " (${alert.rule})" else "")
         if (now - lastBuzzAt > 3_000) {
             lastBuzzAt = now
             app.feedback.buzz(FeedbackType.ALERT)
         }
-        whisperAloud(alert, now)
-        // Only the conversation with an examiner is interrupted. In the presentation the coach only whispers;
-        // the important mistakes are practised right after the talk.
-        if (config.feedback == FeedbackMode.COACH && important.isNotEmpty() && config.examinerPrompt != null) {
+        if (config.feedback == FeedbackMode.FLUESTERN) whisperAloud(alert, now)
+        if (config.feedback == FeedbackMode.COACH && worthy.isNotEmpty()) {
+            val pick = worthy.minByOrNull { severityRank(it.severity) } ?: worthy.first()
             if (pendingCoach == null) pendingSince = now
-            pendingCoach = important.first()
+            pendingCoach = pick
+            diag { it.copy(coachDue = it.coachDue + 1) }
         }
     }
+
+    private fun severityRank(severity: String): Int =
+        when (severity) {
+            "major" -> 0
+            "content" -> 1
+            else -> 2
+        }
 
     /** With headphones the hint is also spoken very softly; on the loudspeaker it would disturb the microphone. */
     private fun whisperAloud(error: LiveError, now: Long) {
@@ -397,22 +588,33 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
     }
 
     /**
-     * Coach mode in a conversation: the examiner says the correction himself as soon as the student pauses (or after
-     * 6 seconds at the latest), never while he is talking and at most every 15 seconds. If he does not answer the
-     * instruction within 6 seconds, the phone's voice says it and keeps doing so for this conversation.
+     * Coach mode, in every part: the correction is said as soon as the student pauses (after 7 seconds at the
+     * latest), never while someone is talking and not more often than every 12–18 seconds. In a conversation the
+     * examiner says it himself; if he does not answer the instruction within 4 seconds, and in the presentation,
+     * the coach speaks with the phone's voice. Then the coach waits for the student to say it again.
      */
     private fun deliverCoach(now: Long) {
+        if (finished) return
         val sent = coachSent
-        if (sent != null && now - coachSentAt > 6_000) {
+        if (sent != null && now - coachSentAt > 4_000) {
             coachSent = null
             coachViaPhone = true
-            info("Der Prüfer hat nicht auf den Coach-Hinweis geantwortet – der Coach spricht jetzt mit der Handy-Stimme.")
-            speakOnPhone(sent, now)
+            log("Prüfer hat nicht auf den Coach-Hinweis geantwortet – ab jetzt Handy-Stimme")
+            info("Der Prüfer hat nicht auf den Coach-Hinweis geantwortet – der Coach spricht jetzt selbst.")
+            speakCoach(sent, now)
+            return
         }
         val error = pendingCoach ?: return
-        if (finished || now - lastCoachAt < 15_000 || player.isPlaying(now) || now < muteUntil) return
-        val studentPaused = now - lastSpeechAt > 700
-        if (!studentPaused && now - pendingSince < 6_000) return
+        if (now - pendingSince > 25_000) {
+            pendingCoach = null
+            log("Coach-Hinweis verworfen (der Moment ist vorbei)")
+            return
+        }
+        val gap = if (examiner != null) 12_000 else 18_000
+        if (now - lastCoachAt < gap || coachSent != null || player.isPlaying(now) || now < muteUntil) return
+        val voiceAt = maxOf(segmenter?.lastVoiceAt ?: 0L, lastSpeechAt)
+        val paused = now - voiceAt > 650
+        if (!paused && now - pendingSince < 7_000) return
         pendingCoach = null
         lastCoachAt = now
         val agent = examiner
@@ -420,25 +622,79 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
             if (agent.sendInstruction(Prompts.coachMessage(error))) {
                 coachSent = error
                 coachSentAt = now
+                log("Coach → Prüfer: „${error.quote}“ → „${error.correction}“")
             } else {
-                // The connection is just being renewed: try again in a second.
+                // The connection is just being renewed: try again in a moment.
                 pendingCoach = error
                 lastCoachAt = 0
+                return
             }
         } else {
-            speakOnPhone(error, now)
+            speakCoach(error, now)
+        }
+        expectRepeat(error, now)
+    }
+
+    /** The coach's own voice: Gemini's voice if it comes quickly, otherwise Android's voice. */
+    private fun speakCoach(error: LiveError, now: Long) {
+        val line = Prompts.coachSpeech(error)
+        muteUntil = now + 1_500 + line.length * 70L
+        diag { it.copy(coachSpoken = it.coachSpoken + 1, coachByPhone = it.coachByPhone + 1) }
+        log("Coach spricht: $line")
+        scope.launch {
+            val pcm = withTimeoutOrNull(3_000) { app.ai.speak(line) }
+            if (finished) return@launch
+            if (pcm != null && pcm.size > 4_000) {
+                player.enqueue(pcm)
+                muteUntil = System.currentTimeMillis() + 300
+            } else {
+                muteUntil = System.currentTimeMillis() + 1_200 + line.length * 70L
+                tts.say(line)
+            }
         }
     }
 
-    private fun speakOnPhone(error: LiveError, now: Long) {
-        val speech = Prompts.coachSpeech(error)
-        muteUntil = now + 1_500 + speech.length * 70L
-        tts.say(speech)
+    private fun expectRepeat(error: LiveError, now: Long) {
+        repeatTarget = error
+        repeatSince = now
+        repeatTries = 0
+        _state.update { it.copy(repeatTarget = error.correction, repeatOk = false, repeatAt = now) }
+    }
+
+    /** Did the student say the correction again? A tick on the screen and a short vibration when he did. */
+    private fun checkRepeat(heard: String, countTry: Boolean) {
+        val target = repeatTarget ?: return
+        val now = System.currentTimeMillis()
+        if (now - repeatSince < 600) return
+        if (matchesCorrection(heard, target)) {
+            repeatTarget = null
+            _state.update { it.copy(repeatOk = true, repeatAt = now, diag = it.diag.copy(repeatsOk = it.diag.repeatsOk + 1)) }
+            app.feedback.buzz(FeedbackType.CORRECT)
+            log("Richtig wiederholt: „${target.correction}“")
+            return
+        }
+        if (countTry) repeatTries++
+        if (repeatTries >= 2 || now - repeatSince > 30_000) {
+            repeatTarget = null
+            _state.update { it.copy(repeatTarget = null) }
+        }
+    }
+
+    private fun matchesCorrection(heard: String, e: LiveError): Boolean {
+        val h = Prompts.normalize(heard)
+        val c = Prompts.normalize(e.correction)
+        if (c.isBlank() || h.isBlank()) return false
+        if (h.contains(c)) return true
+        val needed = c.split(" ").filter { it.length > 1 }.toSet()
+        if (needed.isEmpty()) return false
+        val said = h.split(" ").toSet()
+        return needed.count { it in said } >= maxOf(1, (needed.size * 0.8).toInt())
     }
 
     /** Ends the part, waits briefly for the last transcript and returns everything that was said. */
     suspend fun stop(): Result {
         if (finished) return result()
+        segmenter?.flush(System.currentTimeMillis())
         finished = true
         mic?.stop()
         mic = null
@@ -473,6 +729,30 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
         LiveService.stop(app)
     }
 
+    private fun techText(seconds: Int): String {
+        val d = _state.value.diag
+        val sb = StringBuilder()
+        sb.append("== ").append(partLabel()).append(" · ").append(seconds / 60).append(":").append("%02d".format(seconds % 60)).append(" Min. · ")
+            .append(config.feedback.label).append(" ==\n")
+        sb.append("Mikrofon: ").append(if (d.micHeard) "hört dich" else "kaum Pegel").append(" (höchster Pegel ").append("%.2f".format(maxLevel)).append(")\n")
+        sb.append("Live-Mitschrift: ").append(d.transcript).append(", ").append(d.transcriptTexts).append(" Sätze")
+        if (d.earTranscripts > 0) sb.append(", ").append(d.earTranscripts).append(" Sätze vom Ohr ergänzt")
+        sb.append('\n')
+        if (segmenter != null) {
+            sb.append("Ohr: ").append(d.segments).append(" Äußerungen, ").append(d.heard).append(" verstanden, ")
+                .append(d.checks).append(" geprüft (").append(d.checkMode.ifBlank { "–" }).append(", Ø ").append("%.1f".format(d.checkMs / 1000.0)).append(" s), ")
+                .append(d.checkFailures).append(" Störungen, ").append(d.hints).append(" Hinweise\n")
+        }
+        if (config.feedback == FeedbackMode.COACH) {
+            sb.append("Coach: ").append(d.coachDue).append(" wichtige Fehler, ").append(d.coachSpoken).append(" gesagt")
+            if (d.coachByPhone > 0) sb.append(" (").append(d.coachByPhone).append(" mit Handy-Stimme)")
+            sb.append(", ").append(d.repeatsOk).append(" richtig wiederholt\n")
+        }
+        if (config.examinerPrompt != null) sb.append("Prüfer: ").append(d.examiner.ifBlank { "–" }).append(" (").append(_state.value.examinerLabel).append(")\n")
+        synchronized(techLog) { techLog.forEach { sb.append(it).append('\n') } }
+        return sb.toString().trim()
+    }
+
     private fun result(): Result {
         val seconds = ((System.currentTimeMillis() - startedAt) / 1000).toInt()
         return Result(
@@ -481,6 +761,7 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
             seconds = seconds,
             examinerSeconds = if (config.examinerPrompt != null) seconds.toDouble() else 0.0,
             examinerLabel = _state.value.examinerLabel,
+            tech = if (_state.value.elapsedSec == 0 && techLog.isEmpty()) "" else techText(seconds),
         )
     }
 }

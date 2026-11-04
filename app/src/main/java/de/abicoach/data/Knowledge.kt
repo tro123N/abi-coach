@@ -54,6 +54,7 @@ object Knowledge {
         COURSE("Passend zu meinem Kurs", "Ein neuer Text, der genau zu euren Unterrichtsinhalten passt."),
         MATERIAL("Aus meinem Material", "Ein Text aus deinem Schulbuch oder Abi-Buch – mit neuen Aufgaben."),
         NEW("Ganz neu", "Ein neuer Text zum Themenfeld, unabhängig von deinem Material."),
+        REAL("Echte Prüfungsaufgabe", "Eine Original-Aufgabe aus deinem hochgeladenen Abi-Material – mit Original-Erwartungshorizont."),
     }
 
     /**

@@ -52,7 +52,20 @@ Rules:
         return sb.toString()
     }
 
-    fun part2Examiner(task: ExamTask, part1Excerpt: String, courseOverview: String, topicContext: String, teacherNotes: String, minutes: Int): String {
+    /**
+     * The student's persistent error patterns for the examiner of a practice conversation. In a real exam simulation
+     * it stays empty: there the examiner must not steer the conversation towards the student's weaknesses.
+     */
+    fun patternBlock(patterns: List<String>, coach: Boolean): String {
+        if (patterns.isEmpty()) return ""
+        val sb = StringBuilder("\n\nThe student's persistent mistakes from earlier sessions (most important first):\n")
+        patterns.take(6).forEach { sb.append("- ").append(it).append('\n') }
+        sb.append("Ask questions whose natural answer needs exactly these structures (e.g. questions about developments up to now for the present perfect, about a third person for the -s).")
+        if (coach) sb.append(" When a COACH message concerns one of them, this is the most important correction of the session.")
+        return sb.toString()
+    }
+
+    fun part2Examiner(task: ExamTask, part1Excerpt: String, courseOverview: String, topicContext: String, teacherNotes: String, minutes: Int, patterns: String = ""): String {
         val topics = task.part2.ifEmpty { emptyList() }
         val topicA = topics.getOrNull(0)?.let { "${Knowledge.topic(it.topicId)?.english ?: "another topic area"} – ${it.question}" } ?: "a topic area from another term of the course"
         val topicB = topics.getOrNull(1)?.let { "${Knowledge.topic(it.topicId)?.english ?: "another topic area"} – ${it.question}" } ?: topicA
@@ -68,9 +81,9 @@ What the student said in part 1 (excerpt): $part1Excerpt
 Your plan for part 2:
 1. Thank the student in one short sentence and lead over from the presentation to a broader question.
 2. Talk about: $topicA
-3. After about half of the time, switch to: $topicB. Make the switch explicit and connect it to what was said before.$factLine${courseBlock(courseOverview, topicContext, teacherNotes)}
+3. After about half of the time, switch to: $topicB. Make the switch explicit and connect it to what was said before.$factLine${courseBlock(courseOverview, topicContext, teacherNotes)}$patterns
 $EXAMINER_RULES
-- Never correct the student's English and never comment on mistakes. This is an exam.
+- Never correct the student's English and never comment on mistakes yourself. Only a COACH message from the app may make you correct something.
 """.trim()
     }
 
@@ -83,6 +96,7 @@ $EXAMINER_RULES
         teacherNotes: String,
         part2Style: Boolean,
         extra: String = "",
+        patterns: String = "",
     ): String {
         val coach =
             if (mode == FeedbackMode.COACH) {
@@ -103,7 +117,7 @@ $EXAMINER_RULES
 You are an experienced English teacher in North Rhine-Westphalia, Germany, running a speaking practice that prepares a student for the oral Abitur exam in English (basic course). You start speaking with one short greeting and your first question.
 
 Topic field: $topic$focusLine
-$style${if (extra.isNotBlank()) "\nSpecial focus of this exercise: $extra" else ""}${courseBlock(courseOverview, topicContext, teacherNotes)}
+$style${if (extra.isNotBlank()) "\nSpecial focus of this exercise: $extra" else ""}${courseBlock(courseOverview, topicContext, teacherNotes)}$patterns
 $EXAMINER_RULES
 $coach
 """.trim()
@@ -113,11 +127,21 @@ $coach
     const val KICKOFF_TRAINING = "START: Greet the student in one short sentence and ask your first open question."
 
     fun coachMessage(error: LiveError): String =
-        "COACH: The student just said \"${error.quote}\". Correct form: \"${error.correction}\". " +
-            "Interrupt now, tell them briefly and kindly, ask them to say the corrected sentence once, then continue."
+        "COACH: The student just said \"${error.quote}\". Correct form: \"${error.correction}\"" +
+            (if (error.rule.isNotBlank()) " (${error.rule})" else "") + ". " +
+            "Interrupt now: in one short sentence say what he said and the correct form, ask him to say the corrected sentence once, " +
+            "and when he has repeated it, say one word of praise and continue exactly where you were."
 
     /** What the phone says aloud when the coach interrupts (short, in English, like a teacher at the exam table). */
-    fun coachSpeech(error: LiveError): String = "Sorry, quick correction. You said: ${error.quote}. Better: ${error.correction}. Please say it once more."
+    fun coachSpeech(error: LiveError): String {
+        val wrong = error.quote.trim().trimEnd('.', '!', '?')
+        val right = error.correction.trim().trimEnd('.', '!', '?')
+        return if (wrong.split(" ").size <= 8) {
+            "Careful: not \"$wrong\", but \"$right\". Say it again, please."
+        } else {
+            "Careful: it should be \"$right\". Say it again, please."
+        }
+    }
 
     /** Tells the examiner what the app has just said, so he reacts naturally and does not repeat it. */
     fun coachNote(error: LiveError): String =
@@ -145,19 +169,26 @@ For each error:
 - explanation: a very short reason in German, at most 15 words
 - category: one of ${Knowledge.ERROR_CATEGORIES.keys.joinToString(", ")}
 - severity: "major" for a basic error a top student would not make or one that makes the meaning unclear, "minor" for a small slip, "content" for a factually wrong statement
+- rule: the rule behind the mistake in at most five English words, always worded the same way for the same kind of mistake (e.g. "third person -s", "since vs for", "present perfect for up to now", "make vs do", "article with general nouns", "false friend: become")
 Return an empty list if there are no errors.
         """.trimIndent()
 
     fun checkRequest(utterance: String, context: String): String = "Context: $context\nStudent said: $utterance"
 
-    private val errorSchema: Sch =
+    val errorSchema: Sch =
         obj(
             "quote" to str(),
             "correction" to str(),
             "explanation" to str(),
             "category" to enumOf(Knowledge.ERROR_CATEGORIES.keys.toList()),
             "severity" to enumOf(listOf("minor", "major", "content")),
+            "rule" to str(),
         )
+
+    /** How the error memory names a rule, for prompts: "third person -s (e.g. "the author describe" → "describes")". */
+    const val RULE_HINT =
+        "rule: die Regel hinter dem Fehler in höchstens fünf englischen Wörtern, für die gleiche Fehlerart immer gleich formuliert " +
+            "(z. B. third person -s, since vs for, present perfect for up to now, make vs do, article with general nouns, false friend: become)"
 
     val checkSchema: Sch = obj("errors" to arr(errorSchema))
 
@@ -201,7 +232,7 @@ Return:
     private fun topicNumbers(): String = Knowledge.TOPICS.joinToString("\n") { "${it.id}: ${it.english}" }
 
     /** A new text that fits what the course covered (or just the topic field when there is no material). */
-    fun materialRequest(topicId: Int, textType: Knowledge.TextType, courseOverview: String, topicContext: String, anchored: Boolean): String {
+    fun materialRequest(topicId: Int, textType: Knowledge.TextType, courseOverview: String, topicContext: String, anchored: Boolean, examples: String = ""): String {
         val topic = Knowledge.topic(topicId)?.english ?: "any topic field"
         val anchor =
             if (anchored && topicContext.isNotBlank()) {
@@ -213,7 +244,7 @@ Return:
 Create the material for part 1 and the plan for part 2.
 Topic field: $topic
 Text type: ${textTypeLine(textType)}, 230 to 300 words, original (do not quote real copyrighted texts), with a clear perspective or problem that invites analysis and comment.$anchor
-${if (courseOverview.isNotBlank()) "\n$courseOverview" else ""}
+${if (courseOverview.isNotBlank()) "\n$courseOverview" else ""}${if (examples.isNotBlank()) "\n\n$examples" else ""}
 Topic fields (numbers):
 ${topicNumbers()}
 $MATERIAL_RETURN
@@ -268,7 +299,7 @@ ${skillLines()}
 - task_reviews: nur bei einem Vortrag (Teil 1): für jede bearbeitete Aufgabe Nummer, Punkte (0–15), covered (welche Punkte des Erwartungshorizonts vorkamen), missing (was fehlte), tip (ein konkreter Tipp). Sonst leer.
 - strengths: 2–4 konkrete Stärken.
 - levers: die 3 Änderungen, die am meisten Punkte bringen würden, konkret und umsetzbar.
-- errors: alle relevanten sprachlichen und inhaltlichen Fehler. quote muss ein exaktes Zitat aus den Zeilen des Prüflings (STUDENT) sein. Kategorie aus: ${Knowledge.ERROR_CATEGORIES.keys.joinToString(", ")}.
+- errors: alle relevanten sprachlichen und inhaltlichen Fehler. quote muss ein exaktes Zitat aus den Zeilen des Prüflings (STUDENT) sein. Kategorie aus: ${Knowledge.ERROR_CATEGORIES.keys.joinToString(", ")}. $RULE_HINT.
 - upgrades: 3–6 der wichtigsten Sätze oder Antworten des Prüflings, umformuliert auf 15-Punkte-Niveau (natürliches, idiomatisches C1-Englisch, gleiche Gedanken); why erklärt auf Deutsch, was besser ist.
 - pronunciation: konkrete Wörter mit Ausspracheproblemen und ein Tipp (typisch für Deutsche: th, w/v, Auslautverhärtung, Wortbetonung). Leer, wenn kein Audio und keine Audio-Auswertung vorliegt.
 - content_feedback: was inhaltlich fehlte (Aufgabenbezug, Tiefe im Anforderungsbereich III, Beispiele, Verknüpfung von Themen).
@@ -298,6 +329,8 @@ ${skillLines()}
             }
             if (record.kind.hasPart2) sb.append("Themen für Teil 2: ").append(t.part2.joinToString(" | ") { "${Knowledge.topicShort(it.topicId)}: ${it.question}" }).append('\n')
             if (t.courseLinks.isNotEmpty()) sb.append("Passende Inhalte aus dem Kurs: ").append(t.courseLinks.joinToString(" | ")).append('\n')
+            if (t.isReal) sb.append("Dies ist eine ORIGINAL-Prüfungsaufgabe (").append(t.sourceNote).append("); der Erwartungshorizont oben stammt aus dem Original.\n")
+            if (t.solution.isNotBlank()) sb.append("Lösungsvorschlag aus dem Original-Material (Kernpunkte):\n").append(t.solution.take(3_000)).append('\n')
         }
         if (record.focusCategories.isNotEmpty()) sb.append("\nGeübte Schwachstellen: ").append(record.focusCategories.joinToString(", ") { Knowledge.categoryLabel(it) })
         if (record.notes.isNotBlank()) sb.append("\n\nNotizen des Prüflings aus der Vorbereitung:\n").append(record.notes)

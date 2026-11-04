@@ -64,10 +64,15 @@ data class LiveError(
     val explanation: String,
     val category: String,
     val severity: String,
+    /**
+     * The rule behind the mistake in a few English words ("third person -s", "since vs for"). The same wording for
+     * the same kind of mistake lets the error memory group them across sessions.
+     */
+    val rule: String = "",
 ) {
     fun toJson(): JSONObject =
         JSONObject().put("quote", quote).put("correction", correction).put("explanation", explanation)
-            .put("category", category).put("severity", severity)
+            .put("category", category).put("severity", severity).put("rule", rule)
 
     companion object {
         fun fromJson(o: JSONObject) =
@@ -77,6 +82,7 @@ data class LiveError(
                 explanation = o.optString("explanation"),
                 category = o.optString("category", "OTHER"),
                 severity = o.optString("severity", "minor"),
+                rule = o.optString("rule"),
             )
     }
 }
@@ -113,13 +119,21 @@ data class ExamTask(
     val source: String = "new",
     /** Short facts from the student's own course that fit this text (for the debrief). */
     val courseLinks: List<String> = emptyList(),
+    /** Id of the original exam task from the student's uploaded Abitur material ("real"), empty otherwise. */
+    val unitId: String = "",
+    /** Key points of the original model solution (Lösungsvorschlag), if the material had one. */
+    val solution: String = "",
 ) {
     val wordCount: Int get() = text.split(Regex("\\s+")).count { it.isNotBlank() }
+
+    /** An original task from real Abitur material, not one the AI wrote. */
+    val isReal: Boolean get() = unitId.isNotBlank()
 
     fun toJson(): JSONObject =
         JSONObject().put("topicId", topicId).put("title", title).put("textType", textType).put("text", text)
             .put("sourceNote", sourceNote).put("tasks", tasks.toJsonArray { it.toJson() })
             .put("part2", part2.toJsonArray { it.toJson() }).put("source", source).put("courseLinks", courseLinks.toJsonArray())
+            .put("unitId", unitId).put("solution", solution)
 
     companion object {
         fun fromJson(o: JSONObject) =
@@ -133,6 +147,8 @@ data class ExamTask(
                 part2 = o.optJSONArray("part2").objects().map { Part2Topic.fromJson(it) },
                 source = o.optString("source", "new"),
                 courseLinks = o.optJSONArray("courseLinks").strings(),
+                unitId = o.optString("unitId"),
+                solution = o.optString("solution"),
             )
     }
 }
@@ -306,6 +322,8 @@ data class SessionRecord(
     val levelId: String = "",
     /** Id of the session whose text and task are repeated here ("Zweiter Versuch"); empty for a normal session. */
     val retryOf: String = "",
+    /** Technical log of the live parts (microphone, ear, transcript, coach), for the "Technik-Protokoll". */
+    val tech: String = "",
 ) {
     val studentText: String
         get() = utterances.filter { it.speaker == Speaker.STUDENT }.joinToString(" ") { it.text }
@@ -334,6 +352,7 @@ data class SessionRecord(
             .put("examinerSeconds", examinerSeconds)
             .put("levelId", levelId)
             .put("retryOf", retryOf)
+            .put("tech", tech)
 
     companion object {
         fun create(kind: SessionKind, feedback: FeedbackMode, topicId: Int, task: ExamTask?, focusTask: Int = 0, focusCategories: List<String> = emptyList()) =
@@ -374,6 +393,7 @@ data class SessionRecord(
                 examinerSeconds = o.optDouble("examinerSeconds", 0.0),
                 levelId = o.optString("levelId"),
                 retryOf = o.optString("retryOf"),
+                tech = o.optString("tech"),
             )
     }
 }

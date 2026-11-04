@@ -226,6 +226,8 @@ fun TrainingScreen(vm: AppViewModel) {
     val focus = remember(sessions) { Planner.topErrorCategories(app, 2) }
     val cards by app.vocab.cards.collectAsState()
     val dueCards = remember(cards) { app.vocab.due().size }
+    val patterns by app.errorMemory.patterns.collectAsState()
+    val duePatterns = remember(patterns) { app.errorMemory.due().size }
 
     fun lastPoints(kind: SessionKind, task: Int = 0): String? =
         sessions.firstOrNull { it.kind == kind && it.focusTask == task && it.debrief != null }?.debrief?.let { "${it.totalPoints} P." }
@@ -319,6 +321,7 @@ fun TrainingScreen(vm: AppViewModel) {
                 )
             }
         }
+        item { RealTasksCard(vm) }
         item {
             AbiCard {
                 CardTitle("Teil 2 – Prüfungsgespräch", icon = R.drawable.forum_24dp)
@@ -360,6 +363,22 @@ fun TrainingScreen(vm: AppViewModel) {
         item {
             AbiCard(modifier = Modifier.testTag("train_coach")) {
                 CardTitle("Gezielt trainieren", icon = R.drawable.target_24dp, iconTint = yellow)
+                ActionButton(
+                    "Sprech-Training: deine Fehler",
+                    R.drawable.spellcheck_24dp,
+                    if (duePatterns > 0) yellow else accent,
+                    { vm.openDrills() },
+                    subtitle =
+                        if (patterns.isEmpty()) {
+                            "Füllt sich mit jeder Übung: die App merkt sich jede Fehlerart"
+                        } else {
+                            "Kurze Sprech-Übungen zu ${patterns.count { it.state != de.abicoach.learn.PatternState.BEHOBEN }} offenen Fehlerarten"
+                        },
+                    trailing = if (duePatterns > 0) "$duePatterns fällig" else null,
+                    container = MaterialTheme.colorScheme.background,
+                    modifier = Modifier.testTag("train_drills"),
+                )
+                Gap(8.dp)
                 ActionButton(
                     "Gesprächs-Sprint",
                     R.drawable.speed_24dp,
