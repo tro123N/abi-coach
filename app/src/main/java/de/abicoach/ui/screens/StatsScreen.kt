@@ -30,7 +30,7 @@ import de.abicoach.ui.SessionSetup
 import de.abicoach.ui.TabScaffold
 import de.abicoach.ui.components.AbiCard
 import de.abicoach.ui.components.ActionButton
-import de.abicoach.ui.components.AreaIntro
+import de.abicoach.ui.components.Segmented
 import de.abicoach.ui.components.BarRow
 import de.abicoach.ui.components.BigNumber
 import de.abicoach.ui.components.BodyText
@@ -49,10 +49,11 @@ import de.abicoach.ui.theme.pointsColor
 import de.abicoach.ui.theme.red
 import de.abicoach.ui.theme.yellow
 
-/** Forecast, competences, practice time, errors and topic fields. */
+/** "Fortschritt" in four short sections instead of one long list: overview, competences, mistakes, topic fields. */
 @Composable
 fun StatsScreen(vm: AppViewModel) {
     val app = vm.app
+    val version by app.settings.version.collectAsState()
     val profile by app.profiles.profile.collectAsState()
     val sessions by app.store.sessions.collectAsState()
     val docs by app.memory.docs.collectAsState()
@@ -65,127 +66,162 @@ fun StatsScreen(vm: AppViewModel) {
         profile.klausurErrors.forEach { (k, v) -> map[k] = (map[k] ?: 0) + v }
         map.filterKeys { it != "CONTENT" }.entries.sortedByDescending { it.value }.take(6)
     }
-    val topicPractice = remember(sessions) { app.store.topicCounts() }
-    val coverage = remember(docs) { app.memory.stats().chunksPerTopic }
+    val milestones = remember(version, profile, sessions, docs) { Planner.milestones(app) }
+    val first = sessions.minOfOrNull { it.startedAt }
 
-    TabScaffold(vm, Tab.STATS, "Statistik") {
-        item { AreaIntro(R.drawable.bar_chart_24dp, "Dein Lernprofil", "Nach dem Bewertungsraster der mündlichen Prüfung: Inhalt 40 %, Darstellungsleistung 60 %.") }
-        item {
-            AbiCard(modifier = Modifier.testTag("stats_prognosis")) {
-                CardTitle("Punktprognose", icon = R.drawable.trending_up_24dp)
+    TabScaffold(
+        vm,
+        Tab.STATS,
+        "Fortschritt",
+        caption = if (first == null) "Nach dem NRW-Raster: Inhalt 40 %, Darstellung 60 %" else "Seit ${formatDay(first)} · ${sessions.size} " + (if (sessions.size == 1) "Übung" else "Übungen"),
+    ) {
+        item(key = "views") {
+            Segmented(
+                options = listOf("Überblick", "Kompetenzen", "Fehler", "Themen"),
+                selected = vm.progressView,
+                onSelect = { vm.tap(); vm.progressView = it },
+                tags = listOf("progress_overview", "progress_skills", "progress_errors", "progress_topics"),
+            )
+        }
+        when (vm.progressView) {
+            1 -> {
                 if (prognosis == null) {
-                    BodyText("Noch keine Daten. Mach die Einstufung oder eine Übung – danach erscheint hier deine Prognose.")
-                    Gap(8.dp)
-                    ActionButton("Zur Einstufung", R.drawable.flag_24dp, yellow, { vm.tap(); vm.nav.push(Screen.PlacementIntro) }, container = MaterialTheme.colorScheme.background)
+                    item { EmptyProgress(vm) }
                 } else {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        BigNumber(prognosis.points.toString(), "Punkte", pointsColor(prognosis.total))
-                        Spacer(Modifier.width(16.dp))
-                        Column2 {
-                            Text(Planner.gradeLabel(prognosis.points), fontSize = dimens.fonts.label, color = pointsColor(prognosis.total))
-                            CaptionText("Spanne ${prognosis.lowPoints}–${prognosis.highPoints} · Sicherheit ${(prognosis.confidence * 100).toInt()} %")
-                        }
-                    }
-                    ProjectionBlock(vm)
-                    if (profile.history.size >= 2) {
-                        Gap(12.dp)
-                        LineChart(
-                            values = profile.history.takeLast(30).map { it.total.toFloat() },
-                            color = accent,
-                            guides = listOf(ChartGuide(13f, "13", green), ChartGuide(10f, "10", yellow)),
-                            minY = maxOf(0f, (profile.history.takeLast(30).minOf { it.total }.toFloat() - 2f)),
-                            maxY = 15f,
-                            valueText = { points(it.toDouble()) },
-                        )
-                        CaptionText("Verlauf der Prognose nach jeder Auswertung")
-                    }
-                }
-            }
-        }
-        if (prognosis != null) {
-            item {
-                AbiCard(modifier = Modifier.testTag("stats_skills")) {
-                    CardTitle("Kompetenzen", icon = R.drawable.insights_24dp)
-                    Area.entries.forEach { area ->
-                        Text("${area.label} (${(area.weight * 100).toInt()} %)", fontSize = dimens.fonts.body, color = accent)
-                        Gap(4.dp)
-                        Skill.entries.filter { it.area == area }.forEach { s ->
-                            val state = profile.skills[s]
-                            if (state == null) {
-                                CaptionText("${s.label}: noch nicht gemessen")
-                            } else {
-                                BarRow(s.label, (state.score / 15).toFloat(), points(state.score) + " P." + trendMark(profile.skillTrend(s)), pointsColor(state.score))
+                    item { AreasCard(vm, profile) }
+                    item {
+                        AbiCard(modifier = Modifier.testTag("stats_skills")) {
+                            CardTitle("Kompetenzen", icon = R.drawable.insights_24dp)
+                            Area.entries.forEach { area ->
+                                Text("${area.label} (${(area.weight * 100).toInt()} %)", fontSize = dimens.fonts.body, fontWeight = androidx.compose.ui.text.font.FontWeight.Medium, color = accent)
+                                Gap(4.dp)
+                                Skill.entries.filter { it.area == area }.forEach { s ->
+                                    val state = profile.skills[s]
+                                    if (state == null) {
+                                        CaptionText("${s.label}: noch nicht gemessen")
+                                    } else {
+                                        BarRow(s.label, (state.score / 15).toFloat(), points(state.score) + " P." + trendMark(profile.skillTrend(s)), pointsColor(state.score))
+                                    }
+                                    Gap(6.dp)
+                                }
+                                Gap(6.dp)
                             }
-                            Gap(6.dp)
+                            val levers = profile.levers(3)
+                            if (levers.isNotEmpty()) CaptionText("Größte Hebel: " + levers.joinToString(", ") { it.label })
+                            CaptionText("↑ / ↓: Trend der letzten Auswertungen")
                         }
-                        Gap(6.dp)
                     }
-                    val levers = profile.levers(3)
-                    if (levers.isNotEmpty()) CaptionText("Größte Hebel: " + levers.joinToString(", ") { it.label })
-                    CaptionText("↑ / ↓: Trend der letzten Auswertungen")
                 }
+                item { ExaminerProfileCard(vm) }
             }
-            item { ReadinessCard(profile) }
-        }
-        item { InsightsCard(vm) }
-        item { ErrorMemoryCard(vm) }
-        item {
-            AbiCard {
-                CardTitle("Übungszeit", icon = R.drawable.timer_24dp)
-                val total = sessions.sumOf { it.durationSec } / 60
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.height(androidx.compose.foundation.layout.IntrinsicSize.Min)) {
-                    StatTile(sessions.size.toString(), "Sitzungen", Modifier.weight(1f).fillMaxHeight(), icon = R.drawable.history_24dp, color = accent)
-                    StatTile("$total", "Minuten gesamt", Modifier.weight(1f).fillMaxHeight(), icon = R.drawable.timer_24dp, color = accent)
-                    StatTile(app.store.streak().toString(), "Tage in Folge", Modifier.weight(1f).fillMaxHeight(), icon = R.drawable.whatshot_24dp, color = red)
-                }
-                Gap(12.dp)
-                ColorBarChart(
-                    values = minutes.map { it.second.toFloat() },
-                    colors = minutes.map { if (it.second >= app.settings.dailyMinutes) green else accent },
-                    labels = minutes.mapIndexed { i, p -> if (i % 3 == 0 || i == minutes.lastIndex) "${p.first.dayOfMonth}." else "" },
-                    guide = ChartGuide(app.settings.dailyMinutes.toFloat(), "Ziel", yellow),
-                )
-                CaptionText("Minuten pro Tag, letzte 14 Tage")
-            }
-        }
-        if (errorCounts.isNotEmpty()) {
-            item {
-                AbiCard(modifier = Modifier.testTag("stats_errors")) {
-                    CardTitle("Häufigste Fehler", icon = R.drawable.spellcheck_24dp, iconTint = red)
-                    val max = errorCounts.first().value.coerceAtLeast(1)
-                    errorCounts.forEach { (k, v) ->
-                        BarRow(Knowledge.categoryLabel(k), v.toFloat() / max, "$v×", red)
-                        Gap(6.dp)
+            2 -> {
+                if (errorCounts.isNotEmpty()) {
+                    item {
+                        AbiCard(modifier = Modifier.testTag("stats_errors")) {
+                            CardTitle("Häufigste Fehler", icon = R.drawable.spellcheck_24dp, iconTint = red)
+                            val max = errorCounts.first().value.coerceAtLeast(1)
+                            errorCounts.forEach { (k, v) ->
+                                BarRow(Knowledge.categoryLabel(k), v.toFloat() / max, "$v×", red)
+                                Gap(6.dp)
+                            }
+                            CaptionText("Aus deinen Übungen" + if (profile.klausurErrors.isNotEmpty()) " und Klausuren" else "")
+                            Gap(8.dp)
+                            ActionButton(
+                                "Gezielt üben",
+                                R.drawable.spellcheck_24dp,
+                                yellow,
+                                {
+                                    vm.tap()
+                                    vm.nav.push(Screen.Setup(SessionSetup.defaults(SessionKind.TRAINING, 0, FeedbackMode.COACH).copy(focusCategories = errorCounts.take(2).map { it.key })))
+                                },
+                                subtitle = "Gesprächstraining mit Coach-Korrekturen",
+                                container = MaterialTheme.colorScheme.background,
+                            )
+                        }
                     }
-                    CaptionText("Aus deinen Übungen" + if (profile.klausurErrors.isNotEmpty()) " und Klausuren" else "")
-                    Gap(8.dp)
-                    ActionButton(
-                        "Gezielt üben",
-                        R.drawable.spellcheck_24dp,
-                        yellow,
-                        {
-                            vm.tap()
-                            vm.nav.push(Screen.Setup(SessionSetup.defaults(SessionKind.TRAINING, 0, FeedbackMode.COACH).copy(focusCategories = errorCounts.take(2).map { it.key })))
-                        },
-                        subtitle = "Gesprächstraining mit Coach-Korrekturen",
-                        container = MaterialTheme.colorScheme.background,
-                    )
+                }
+                item { ErrorMemoryCard(vm) }
+            }
+            3 -> item { TopicCompassCard(vm) }
+            else -> {
+                item {
+                    AbiCard(modifier = Modifier.testTag("stats_prognosis")) {
+                        CardTitle("So entwickelst du dich", icon = R.drawable.trending_up_24dp)
+                        if (prognosis == null) {
+                            BodyText("Noch keine Daten. Mach die Einstufung oder eine Übung – danach erscheint hier deine Prognose.")
+                            Gap(8.dp)
+                            ActionButton("Zur Einstufung", R.drawable.flag_24dp, yellow, { vm.tap(); vm.nav.push(Screen.PlacementIntro) }, container = MaterialTheme.colorScheme.background)
+                        } else {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                BigNumber(prognosis.points.toString(), "Punkte", pointsColor(prognosis.total))
+                                Spacer(Modifier.width(16.dp))
+                                Column2 {
+                                    Text(Planner.gradeLabel(prognosis.points), fontSize = dimens.fonts.label, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = pointsColor(prognosis.total))
+                                    CaptionText("Spanne ${prognosis.lowPoints}–${prognosis.highPoints} · Sicherheit ${(prognosis.confidence * 100).toInt()} %")
+                                }
+                            }
+                            ProjectionBlock(vm)
+                            if (profile.history.size >= 2) {
+                                Gap(12.dp)
+                                LineChart(
+                                    values = profile.history.takeLast(30).map { it.total.toFloat() },
+                                    color = accent,
+                                    guides = listOf(ChartGuide(13f, "13", green), ChartGuide(10f, "10", yellow)),
+                                    minY = maxOf(0f, (profile.history.takeLast(30).minOf { it.total }.toFloat() - 2f)),
+                                    maxY = 15f,
+                                    valueText = { points(it.toDouble()) },
+                                )
+                                CaptionText("Verlauf der Prognose nach jeder Auswertung")
+                            }
+                        }
+                    }
+                }
+                if (prognosis != null) item { ReadinessCard(profile) }
+                item { InsightsCard(vm) }
+                item { MilestonesCard(milestones) }
+                item {
+                    AbiCard {
+                        CardTitle("Übungszeit", icon = R.drawable.timer_24dp)
+                        val total = sessions.sumOf { it.durationSec } / 60
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.height(androidx.compose.foundation.layout.IntrinsicSize.Min)) {
+                            StatTile(sessions.size.toString(), "Sitzungen", Modifier.weight(1f).fillMaxHeight(), icon = R.drawable.history_24dp, color = accent)
+                            StatTile("$total", "Minuten gesamt", Modifier.weight(1f).fillMaxHeight(), icon = R.drawable.timer_24dp, color = accent)
+                            StatTile(app.store.streak().toString(), "Tage in Folge", Modifier.weight(1f).fillMaxHeight(), icon = R.drawable.whatshot_24dp, color = red)
+                        }
+                        Gap(12.dp)
+                        ColorBarChart(
+                            values = minutes.map { it.second.toFloat() },
+                            colors = minutes.map { if (it.second >= app.settings.dailyMinutes) green else accent },
+                            labels = minutes.mapIndexed { i, p -> if (i % 3 == 0 || i == minutes.lastIndex) "${p.first.dayOfMonth}." else "" },
+                            guide = ChartGuide(app.settings.dailyMinutes.toFloat(), "Ziel", yellow),
+                        )
+                        CaptionText("Minuten pro Tag, letzte 14 Tage")
+                    }
+                }
+                val recent = sessions.take(5)
+                if (recent.isNotEmpty()) {
+                    item {
+                        AbiCard {
+                            CardTitle("Letzte Sitzungen", icon = R.drawable.history_24dp)
+                            recent.forEach { s -> SessionRow(s) { vm.tap(); if (s.debrief != null) vm.nav.push(Screen.Debrief(s.id)) else vm.openAnalysis(s.id) } }
+                            Gap(6.dp)
+                            ActionButton("Alle Sitzungen", R.drawable.history_24dp, MaterialTheme.colorScheme.onPrimary, { vm.tap(); vm.nav.push(Screen.Sessions) }, container = MaterialTheme.colorScheme.background)
+                        }
+                    }
                 }
             }
         }
-        item { ExaminerProfileCard(vm) }
-        item { TopicCompassCard(vm) }
-        val recent = sessions.take(5)
-        if (recent.isNotEmpty()) {
-            item {
-                AbiCard {
-                    CardTitle("Letzte Sitzungen", icon = R.drawable.history_24dp)
-                    recent.forEach { s -> SessionRow(s) { vm.tap(); if (s.debrief != null) vm.nav.push(Screen.Debrief(s.id)) else vm.openAnalysis(s.id) } }
-                    Gap(6.dp)
-                    ActionButton("Alle Sitzungen", R.drawable.history_24dp, MaterialTheme.colorScheme.onPrimary, { vm.tap(); vm.nav.push(Screen.Sessions) }, container = MaterialTheme.colorScheme.background)
-                }
-            }
-        }
+    }
+}
+
+/** Shown in a section that needs measurements first. */
+@Composable
+private fun EmptyProgress(vm: AppViewModel) {
+    AbiCard {
+        CardTitle("Noch nichts gemessen", icon = R.drawable.flag_24dp, iconTint = yellow)
+        BodyText("Mach die Einstufung oder eine Übung – danach siehst du hier jede Kompetenz des Bewertungsrasters.")
+        Gap(8.dp)
+        ActionButton("Zur Einstufung", R.drawable.flag_24dp, yellow, { vm.tap(); vm.nav.push(Screen.PlacementIntro) }, container = MaterialTheme.colorScheme.background)
     }
 }
 

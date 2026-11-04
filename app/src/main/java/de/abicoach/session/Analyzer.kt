@@ -52,7 +52,7 @@ object MaterialGenerator {
                     note = "Die Original-Aufgabe ließ sich nicht lesen (${e.message}) – hier ein neuer Text im gleichen Stil."
                 }
             } else {
-                note = "Noch keine echten Prüfungsaufgaben im Gedächtnis – lade dein Abi-Material unter „Mein Kurs“ hoch. Hier ein neuer Text im Prüfungsstil."
+                note = "Noch keine echten Prüfungsaufgaben im Gedächtnis – lade dein Abi-Material unter „Kurs“ hoch. Hier ein neuer Text im Prüfungsstil."
             }
             source = Knowledge.Source.COURSE
         }

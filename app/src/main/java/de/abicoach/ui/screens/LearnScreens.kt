@@ -629,7 +629,7 @@ fun RealTasksCard(vm: AppViewModel) {
     AbiCard(modifier = Modifier.testTag("train_real")) {
         CardTitle("Echte Prüfungsaufgaben", icon = R.drawable.workspace_premium_24dp, iconTint = green)
         if (units.isEmpty()) {
-            CaptionText("Lade unter „Mein Kurs“ echtes Abi-Material hoch (Art: „Echte Abi-Prüfungsaufgaben“ oder „Abi-Vorbereitung“). Die App findet darin Text, Original-Aufgaben und Erwartungshorizont – dann übst du hier genau diese Aufgaben.")
+            CaptionText("Lade unter „Kurs“ echtes Abi-Material hoch (Art: „Echte Abi-Prüfungsaufgaben“ oder „Abi-Vorbereitung“). Die App findet darin Text, Original-Aufgaben und Erwartungshorizont – dann übst du hier genau diese Aufgaben.")
             Gap(8.dp)
             ActionButton("Material hochladen", R.drawable.cloud_upload_24dp, accent, { vm.tap(); vm.nav.openTab(Tab.KURS) }, container = MaterialTheme.colorScheme.background)
         } else {
@@ -660,7 +660,7 @@ fun RealTasksScreen(vm: AppViewModel) {
     val used = remember(sessions) { ExamUnits.used(vm.app) }
     DetailScaffold(title = "Echte Prüfungsaufgaben", onBack = { vm.tap(); vm.nav.pop() }, tag = "real_tasks") {
         if (units.isEmpty()) {
-            AbiCard { BodyText("Noch keine Original-Aufgaben gefunden. Lade Abi-Material unter „Mein Kurs“ hoch.") }
+            AbiCard { BodyText("Noch keine Original-Aufgaben gefunden. Lade Abi-Material unter „Kurs“ hoch.") }
             return@DetailScaffold
         }
         units.forEach { u ->

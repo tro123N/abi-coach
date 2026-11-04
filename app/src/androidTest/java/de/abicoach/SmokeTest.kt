@@ -158,9 +158,14 @@ class SmokeTest {
         scrollShot("list_weg", 4, "abiweg_heute_dran")
         ui { vm.nav.openTab(Tab.TRAINING); vm.nav.openTab(Tab.WEG) }
         runCatching { compose.onNodeWithTag("list_weg").performScrollToIndex(0) }
-        swipeShot("list_weg", "abiweg_weg", 1)
-        swipeShot("list_weg", "abiweg_welten", 1)
-        swipeShot("list_weg", "abiweg_unten", 3)
+        swipeShot("list_weg", "abiweg_unten", 2)
+        // The climbing path now lives under "Üben → Abi-Weg".
+        ui { vm.practiceView = 1; vm.nav.openTab(Tab.TRAINING) }
+        runCatching { compose.onNodeWithTag("list_training").performScrollToIndex(0) }
+        shot("ueben_abiweg")
+        swipeShot("list_training", "ueben_abiweg_welten", 1)
+        swipeShot("list_training", "ueben_abiweg_unten", 3)
+        ui { vm.practiceView = 0; vm.nav.openTab(Tab.WEG) }
         ui { vm.nav.push(Screen.Level("w3.perceive")) }
         shot("level_perceive")
         swipeShot("level", "level_perceive_unten", 2)
@@ -172,7 +177,9 @@ class SmokeTest {
         ui { vm.nav.pop() }
 
         ui { vm.nav.openTab(Tab.TRAINING) }
+        runCatching { compose.onNodeWithTag("list_training").performScrollToIndex(0) }
         shot("training")
+        swipeShot("list_training", "training_mitte", 1)
         swipeShot("list_training", "training_unten", 2)
 
         ui { vm.nav.openTab(Tab.KURS) }
@@ -240,6 +247,17 @@ class SmokeTest {
         swipeShot("list_stats", "statistik_mitte", 1)
         scrollShot("list_stats", 4, "statistik_lerner_gedaechtnis")
         swipeShot("list_stats", "statistik_unten", 2)
+        ui { vm.progressView = 1 }
+        runCatching { compose.onNodeWithTag("list_stats").performScrollToIndex(0) }
+        shot("fortschritt_kompetenzen")
+        swipeShot("list_stats", "fortschritt_kompetenzen_unten", 2)
+        ui { vm.progressView = 2 }
+        runCatching { compose.onNodeWithTag("list_stats").performScrollToIndex(0) }
+        shot("fortschritt_fehler")
+        ui { vm.progressView = 3 }
+        runCatching { compose.onNodeWithTag("list_stats").performScrollToIndex(0) }
+        shot("fortschritt_themen")
+        ui { vm.progressView = 0 }
 
         ui { vm.nav.push(Screen.Debrief(Demo.SIMULATION)) }
         shot("auswertung")
@@ -251,6 +269,11 @@ class SmokeTest {
         shot("auswertung_beobachtungen")
         runCatching { compose.onNodeWithTag("debrief_talk").performScrollTo() }
         shot("auswertung_vortrags_coach")
+        runCatching { compose.onNodeWithTag("debrief_details").performScrollTo() }
+        shot("auswertung_details")
+        runCatching { compose.onNodeWithTag("debrief_upgrades").performClick() }
+        runCatching { compose.onNodeWithTag("debrief_upgrades").performScrollTo() }
+        shot("auswertung_15_punkte_offen")
         swipeShot("debrief", "auswertung_2", 1)
         swipeShot("debrief", "auswertung_3", 1)
         swipeShot("debrief", "auswertung_4", 2)
@@ -296,6 +319,8 @@ class SmokeTest {
         // Dark mode
         ui { app.settings.themeMode = ThemeMode.DARK; vm.nav.openTab(Tab.WEG) }
         shot("dunkel_abiweg")
+        ui { vm.nav.openTab(Tab.TRAINING) }
+        shot("dunkel_ueben")
         ui { vm.nav.openTab(Tab.KURS) }
         shot("dunkel_kurs")
         ui { vm.nav.openTab(Tab.STATS) }

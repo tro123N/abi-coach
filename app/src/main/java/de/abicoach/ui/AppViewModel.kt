@@ -107,21 +107,31 @@ class Navigator {
     /** The tab whose bottom bar entry is highlighted. */
     val tab: Tab get() = stack.filterIsInstance<Screen.Root>().lastOrNull()?.tab ?: Tab.WEG
 
+    /** Which way the last change went: 1 = a page opened on top, -1 = back, 0 = another area. Drives the page motion. */
+    var direction: Int = 0
+        private set
+
     fun push(screen: Screen) {
-        if (stack.last() != screen) stack.add(screen)
+        if (stack.last() != screen) {
+            direction = 1
+            stack.add(screen)
+        }
     }
 
     fun pop(): Boolean {
         if (stack.size <= 1) return false
+        direction = -1
         stack.removeAt(stack.lastIndex)
         return true
     }
 
     fun replaceTop(screen: Screen) {
+        direction = 0
         stack[stack.lastIndex] = screen
     }
 
     fun openTab(tab: Tab) {
+        direction = if (stack.last() is Screen.Root) 0 else -1
         stack.clear()
         stack.add(Screen.Root(Tab.WEG))
         if (tab != Tab.WEG) stack.add(Screen.Root(tab))
@@ -131,7 +141,10 @@ class Navigator {
     fun resetTo(screen: Screen? = null) {
         val root = tab
         openTab(root)
-        if (screen != null) stack.add(screen)
+        if (screen != null) {
+            direction = 1
+            stack.add(screen)
+        }
     }
 }
 
@@ -166,6 +179,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     /** An evaluation that finished while the student was elsewhere: shown as a banner. */
     var readyDebrief by mutableStateOf<Pair<String, Int>?>(null)
+
+    /** "Üben": 0 = free practice tiles, 1 = the Abi-Weg with its worlds and levels. */
+    var practiceView by mutableIntStateOf(0)
+
+    /** "Fortschritt": 0 = overview, 1 = competences, 2 = mistakes, 3 = topic fields. */
+    var progressView by mutableIntStateOf(0)
 
     /** Tasks of part 1 the student ticked off during the presentation. */
     val tasksDone = mutableStateListOf<Int>()

@@ -126,15 +126,18 @@ fun CourseScreen(vm: AppViewModel) {
     TabScaffold(
         vm,
         Tab.KURS,
-        "Mein Kurs",
+        "Kurs",
+        caption = if (docs.isEmpty()) "Dein Material – die KI liest alles mit" else if (docs.size == 1) "1 Dokument im Gedächtnis" else "${docs.size} Dokumente im Gedächtnis",
         actions = { TopBarAction(R.drawable.forum_24dp, "Frag dein Material", { vm.tap(); vm.nav.push(Screen.Ask) }, tint = accent, tag = "action_ask") },
     ) {
-        item {
-            AreaIntro(
-                icon = R.drawable.school_24dp,
-                title = "Dein Gedächtnis",
-                text = "Lade das komplette Schulbuch, alle Klausuren und dein Unterrichtsmaterial hoch. Die KI liest alles und nutzt es für Prüfungstexte, Fragen und Auswertungen.",
-            )
+        if (docs.isEmpty()) {
+            item {
+                AreaIntro(
+                    icon = R.drawable.school_24dp,
+                    title = "Dein Gedächtnis",
+                    text = "Lade das komplette Schulbuch, alle Klausuren und dein Unterrichtsmaterial hoch. Die KI liest alles und nutzt es für Prüfungstexte, Fragen und Auswertungen.",
+                )
+            }
         }
         if (vm.errorMessage != null || vm.notice != null || vm.readyDebrief != null) item { MessageBanners(vm) }
         item {
@@ -606,7 +609,8 @@ fun AskScreen(vm: AppViewModel) {
                 }
             }
         },
-        containerColor = MaterialTheme.colorScheme.background,
+        containerColor = Color.Transparent,
+        contentColor = MaterialTheme.colorScheme.onPrimary,
     ) { padding ->
         LazyColumn(
             state = listState,

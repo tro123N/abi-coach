@@ -78,7 +78,7 @@ fun ClimbCard(vm: AppViewModel, worlds: List<World>, progress: PathProgress, pro
     AbiCard(modifier = Modifier.testTag("climb")) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
-                Text("$passed von ${all.size} Levels", fontSize = dimens.fonts.label, color = MaterialTheme.colorScheme.onPrimary)
+                Text("$passed von ${all.size} Levels", fontSize = dimens.fonts.label * 0.9f, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimary)
                 CaptionText("$stars von $maxStars Sternen")
             }
             StarRow(stars = if (maxStars == 0) 0 else (3 * stars + maxStars - 1) / maxStars, size = dimens.icons.status * 0.8f)
@@ -112,9 +112,9 @@ fun ClimbCard(vm: AppViewModel, worlds: List<World>, progress: PathProgress, pro
         }
         Gap(12.dp)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            MiniAction(R.drawable.flag_24dp, "Einstufung", { vm.tap(); vm.nav.push(Screen.PlacementIntro) }, Modifier.weight(1f))
-            MiniAction(R.drawable.record_voice_over_24dp, "Training", { vm.tap(); vm.nav.openTab(Tab.TRAINING) }, Modifier.weight(1f))
-            MiniAction(R.drawable.bar_chart_24dp, "Statistik", { vm.tap(); vm.nav.openTab(Tab.STATS) }, Modifier.weight(1f))
+            MiniAction(R.drawable.flag_24dp, "Einstufung", { vm.tap(); vm.nav.push(Screen.PlacementIntro) }, Modifier.weight(1f), tint = yellow)
+            MiniAction(R.drawable.mic_24dp, "Frei üben", { vm.tap(); vm.practiceView = 0 }, Modifier.weight(1f))
+            MiniAction(R.drawable.trending_up_24dp, "Fortschritt", { vm.tap(); vm.nav.openTab(Tab.STATS) }, Modifier.weight(1f), tint = green)
         }
     }
 }
@@ -344,7 +344,7 @@ private fun TopicMaterialCard(vm: AppViewModel, topicId: Int) {
     AbiCard {
         CardTitle("Aus deinem Material", icon = R.drawable.school_24dp)
         if (facts.isEmpty() && vocab.isEmpty()) {
-            BodyText("Zu „${Knowledge.topicShort(topicId)}“ hat die App noch kein Material. Lade unter „Mein Kurs“ hoch, was ihr dazu im Unterricht hattet.")
+            BodyText("Zu „${Knowledge.topicShort(topicId)}“ hat die App noch kein Material. Lade unter „Kurs“ hoch, was ihr dazu im Unterricht hattet.")
             Gap(8.dp)
             ActionButton("Zu Mein Kurs", R.drawable.cloud_upload_24dp, accent, { vm.tap(); vm.nav.openTab(Tab.KURS) }, container = MaterialTheme.colorScheme.background)
         } else {

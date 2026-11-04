@@ -250,7 +250,7 @@ fun SettingsScreen(vm: AppViewModel) {
             Gap(8.dp)
             ActionButton("Lernprofil zurücksetzen", R.drawable.refresh_24dp, yellow, { confirm = "profile" }, container = MaterialTheme.colorScheme.background)
             Gap(6.dp)
-            CaptionText("Dein Kursmaterial verwaltest du unter „Mein Kurs“.")
+            CaptionText("Dein Kursmaterial verwaltest du unter „Kurs“.")
         }
         AbiCard {
             CardTitle("Über AbiCoach", icon = R.drawable.info_24dp)

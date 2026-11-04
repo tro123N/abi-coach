@@ -123,7 +123,7 @@ fun SetupScreen(vm: AppViewModel, initial: SessionSetup) {
         onBack = { vm.tap(); vm.nav.pop() },
         tag = "setup",
         bottom = {
-            Surface(color = MaterialTheme.colorScheme.background) {
+            Surface(color = androidx.compose.ui.graphics.Color.Transparent) {
                 Box(Modifier.navigationBarsPadding().padding(horizontal = 20.dp, vertical = 12.dp)) {
                     StartButton("Los geht's", onClick = start, modifier = Modifier.testTag("setup_start"))
                 }
@@ -157,7 +157,7 @@ fun SetupScreen(vm: AppViewModel, initial: SessionSetup) {
             )
             if (!hasMaterial) {
                 Gap(8.dp)
-                CaptionText("Tipp: Lade in „Mein Kurs“ dein Material hoch – dann passen Texte und Fragen genau zu eurem Unterricht.")
+                CaptionText("Tipp: Lade unter „Kurs“ dein Material hoch – dann passen Texte und Fragen genau zu eurem Unterricht.")
             }
         }
         if (s.kind.hasPart1) {
@@ -304,7 +304,7 @@ fun PrepScreen(vm: AppViewModel) {
             )
         },
         bottom = {
-            Surface(color = MaterialTheme.colorScheme.background) {
+            Surface(color = androidx.compose.ui.graphics.Color.Transparent) {
                 Box(Modifier.navigationBarsPadding().padding(horizontal = 20.dp, vertical = 12.dp)) {
                     StartButton(if (draft.focusTask in 1..3) "Sprechen" else "Vortrag beginnen", onClick = start, modifier = Modifier.testTag("prep_start"), icon = R.drawable.mic_24dp)
                 }
@@ -457,7 +457,7 @@ fun LiveScreen(vm: AppViewModel) {
             if (mode != FeedbackMode.PRUEFUNG) WhisperBar(state, mode)
         },
         bottom = {
-            Surface(color = MaterialTheme.colorScheme.background) {
+            Surface(color = androidx.compose.ui.graphics.Color.Transparent) {
                 Box(Modifier.navigationBarsPadding().padding(horizontal = 20.dp, vertical = 12.dp)) {
                     StartButton(
                         text = vm.busy ?: if (toPart2) "Weiter zu Teil 2" else "Auswerten",

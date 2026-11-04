@@ -1,7 +1,16 @@
 package de.abicoach.ui.screens
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -46,6 +55,10 @@ import de.abicoach.ui.components.BulletText
 import de.abicoach.ui.components.CaptionText
 import de.abicoach.ui.components.CardTitle
 import de.abicoach.ui.components.ExpandableCard
+import de.abicoach.ui.components.FoldGroup
+import de.abicoach.ui.components.FoldRow
+import de.abicoach.ui.components.HeroCard
+import de.abicoach.ui.components.HeroChip
 import de.abicoach.ui.components.Gap
 import de.abicoach.ui.components.GoalRow
 import de.abicoach.ui.components.LevelBadge
@@ -102,6 +115,7 @@ fun DebriefScreen(vm: AppViewModel, id: String) {
         }
         SummaryCard(record, d)
         GoalResultsCard(record, d)
+        NextStepCard(vm)
         d.progress?.let { ProgressCard(it, d) }
         if (record.levelId.isNotBlank()) {
             de.abicoach.path.Curriculum.level(record.levelId)?.let { level ->
@@ -114,7 +128,6 @@ fun DebriefScreen(vm: AppViewModel, id: String) {
                 d.levers.forEach { BulletText(it) }
             }
         }
-        NextStepCard(vm)
         if (d.strengths.isNotEmpty()) {
             AbiCard {
                 CardTitle("Das war stark", icon = R.drawable.thumb_up_24dp, iconTint = green)
@@ -122,7 +135,6 @@ fun DebriefScreen(vm: AppViewModel, id: String) {
             }
         }
         ObservationsCard(d)
-        if (d.taskReviews.isNotEmpty()) TaskReviewCard(record, d)
         if (record.task != null && record.kind.hasPart1 && d.taskReviews.isNotEmpty()) {
             val weakest = d.taskReviews.minByOrNull { it.points }
             if (weakest != null && weakest.points < 15) {
@@ -137,99 +149,8 @@ fun DebriefScreen(vm: AppViewModel, id: String) {
             }
         }
         if (record.kind.hasPart1) TalkCoachCard(record, d)
-        record.task?.let { task ->
-            if (task.tasks.any { it.expectations.isNotEmpty() }) {
-                ExpandableCard("Erwartungshorizont", subtitle = "Was ein 15-Punkte-Vortrag enthalten hätte", icon = R.drawable.checklist_24dp) {
-                    task.tasks.forEachIndexed { i, t ->
-                        if (record.focusTask == 0 || record.focusTask == i + 1) {
-                            Text("Aufgabe ${i + 1} (AFB ${t.afb})", fontSize = AbiTheme.dimens.fonts.body, color = accent)
-                            CaptionText(t.instruction)
-                            t.expectations.forEach { BulletText(it) }
-                            Gap(8.dp)
-                        }
-                    }
-                }
-            }
-        }
-        val rated = Skill.entries.mapNotNull { s -> d.skills[s]?.let { s to it } }
-        if (rated.isNotEmpty()) {
-            ExpandableCard("Kompetenzen", subtitle = "So hat die KI diese Sitzung eingeschätzt", icon = R.drawable.insights_24dp) {
-                rated.forEach { (s, v) ->
-                    BarRow(s.label, v / 15f, "$v P.", pointsColor(v.toDouble()))
-                    Gap(6.dp)
-                }
-            }
-        }
-        if (d.errors.isNotEmpty()) ErrorsCard(vm, d)
-        if (d.upgrades.isNotEmpty()) {
-            AbiCard(modifier = Modifier.testTag("debrief_upgrades")) {
-                CardTitle("So klingt es nach 15 Punkten", icon = R.drawable.auto_awesome_24dp)
-                d.upgrades.forEachIndexed { i, u ->
-                    if (i > 0) Gap(12.dp)
-                    CaptionText("Du: „${u.original}“")
-                    Row(verticalAlignment = Alignment.Top) {
-                        BodyText("„${u.upgraded}“", color = green, modifier = Modifier.weight(1f))
-                        SpeakButton(vm, u.upgraded)
-                        SayItIcon(vm, u.original, u.upgraded, u.why)
-                    }
-                    CaptionText(u.why)
-                }
-            }
-        }
         if (record.utterances.any { it.speaker == Speaker.STUDENT }) ModelCard(vm, record, d)
-        if (d.pronunciation.isNotEmpty()) {
-            AbiCard {
-                CardTitle("Aussprache", icon = R.drawable.graphic_eq_24dp)
-                d.pronunciation.forEach { p ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(p.word, fontSize = AbiTheme.dimens.fonts.label, color = MaterialTheme.colorScheme.onPrimary)
-                            CaptionText(p.issue)
-                            BodyText(p.tip)
-                        }
-                        SpeakButton(vm, p.word)
-                    }
-                    Gap(8.dp)
-                }
-                ActionButton(
-                    "Im Aussprache-Labor üben",
-                    R.drawable.mic_24dp,
-                    accent,
-                    { vm.stopSpeaking(); vm.openPronunciation(d.pronunciation.first().word) },
-                    subtitle = "Nachsprechen und sofort eine Bewertung bekommen",
-                    container = MaterialTheme.colorScheme.background,
-                )
-            }
-        }
-        if (d.contentFeedback.isNotEmpty()) {
-            AbiCard {
-                CardTitle("Inhalt", icon = R.drawable.psychology_24dp)
-                d.contentFeedback.forEach { BulletText(it) }
-            }
-        }
-        if (d.courseLinks.isNotEmpty()) {
-            AbiCard {
-                CardTitle("Aus deinem Kurs hätte gepasst", icon = R.drawable.school_24dp)
-                d.courseLinks.forEach { BulletText(it) }
-            }
-        }
-        if (d.phrases.isNotEmpty()) {
-            ExpandableCard("Redemittel für dich", subtitle = "${d.phrases.size} Formulierungen zum Thema", icon = R.drawable.translate_24dp) {
-                d.phrases.forEach { p ->
-                    Row(verticalAlignment = Alignment.Top) {
-                        Column(Modifier.weight(1f)) {
-                            BodyText(p.phrase, color = accent)
-                            CaptionText(p.meaningDe)
-                            Text(p.example, fontSize = AbiTheme.dimens.fonts.caption, fontStyle = FontStyle.Italic, color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f))
-                        }
-                        SpeakButton(vm, p.example.ifBlank { p.phrase })
-                    }
-                    Gap(10.dp)
-                }
-                CaptionText("Alle Redemittel stehen jetzt auch in deinem Wortschatz zum Wiederholen.")
-            }
-        }
-        TranscriptSection(record)
+        DetailsGroup(vm, record, d)
         TechCard(record)
         ActionButton(
             "Mit dem KI-Coach besprechen",
@@ -256,41 +177,227 @@ fun DebriefScreen(vm: AppViewModel, id: String) {
             },
             subtitle = "Gleiche Übung, neues Material",
         )
-        ActionButton("Zum Abi-Weg", R.drawable.route_24dp, green, { vm.tap(); vm.stopSpeaking(); vm.nav.openTab(Tab.WEG) })
+        ActionButton("Zur Startseite", R.drawable.light_mode_24dp, green, { vm.tap(); vm.stopSpeaking(); vm.nav.openTab(Tab.WEG) })
+    }
+}
+
+/** One section of the folding details under an evaluation. */
+private class Fold(
+    val title: String,
+    val icon: Int,
+    val tint: Color,
+    val tag: String,
+    val count: String? = null,
+    val countColor: Color? = null,
+    val subtitle: String? = null,
+    val open: Boolean = false,
+    val content: @Composable ColumnScope.() -> Unit,
+)
+
+/** Everything below the most important part folds away into one card: open what you want to look at. */
+@Composable
+private fun DetailsGroup(vm: AppViewModel, record: SessionRecord, d: Debrief) {
+    val dimens = AbiTheme.dimens
+    val folds =
+        buildList<Fold> {
+            add(
+                Fold("Warum diese Punkte", R.drawable.grading_24dp, accent, "debrief_reasons", subtitle = "Begründung, Zweitbewertung, Prüfer") {
+                    ReasonsContent(record, d)
+                },
+            )
+            if (d.taskReviews.isNotEmpty()) {
+                add(Fold("Die Aufgaben im Einzelnen", R.drawable.assignment_24dp, accent, "debrief_tasks", count = d.taskReviews.size.toString()) { TaskReviewContent(record, d) })
+            }
+            if (d.errors.isNotEmpty()) {
+                val grouped = d.errors.groupBy { it.category }.entries.sortedByDescending { it.value.size }
+                add(
+                    Fold(
+                        "Deine Fehler",
+                        R.drawable.spellcheck_24dp,
+                        red,
+                        "debrief_errors",
+                        count = d.errors.size.toString(),
+                        countColor = red,
+                        subtitle = grouped.take(2).joinToString(" · ") { "${Knowledge.categoryLabel(it.key)} ${it.value.size}×" },
+                        open = d.errors.size <= 3,
+                    ) { ErrorsContent(vm, d) },
+                )
+            }
+            if (d.upgrades.isNotEmpty()) {
+                add(
+                    Fold("So klingt es nach 15 Punkten", R.drawable.auto_awesome_24dp, yellow, "debrief_upgrades", count = d.upgrades.size.toString()) {
+                        d.upgrades.forEachIndexed { i, u ->
+                            if (i > 0) Gap(12.dp)
+                            CaptionText("Du: „${u.original}“")
+                            Row(verticalAlignment = Alignment.Top) {
+                                BodyText("„${u.upgraded}“", color = green, modifier = Modifier.weight(1f))
+                                SpeakButton(vm, u.upgraded)
+                                SayItIcon(vm, u.original, u.upgraded, u.why)
+                            }
+                            CaptionText(u.why)
+                        }
+                    },
+                )
+            }
+            if (d.pronunciation.isNotEmpty()) {
+                add(
+                    Fold("Aussprache", R.drawable.graphic_eq_24dp, green, "debrief_pronunciation", count = d.pronunciation.size.toString()) {
+                        d.pronunciation.forEach { p ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(p.word, fontSize = dimens.fonts.label * 0.9f, color = MaterialTheme.colorScheme.onPrimary)
+                                    CaptionText(p.issue)
+                                    BodyText(p.tip)
+                                }
+                                SpeakButton(vm, p.word)
+                            }
+                            Gap(8.dp)
+                        }
+                        ActionButton(
+                            "Im Aussprache-Labor üben",
+                            R.drawable.mic_24dp,
+                            accent,
+                            { vm.stopSpeaking(); vm.openPronunciation(d.pronunciation.first().word) },
+                            subtitle = "Nachsprechen und sofort eine Bewertung bekommen",
+                            container = MaterialTheme.colorScheme.background,
+                        )
+                    },
+                )
+            }
+            if (d.contentFeedback.isNotEmpty()) {
+                add(Fold("Inhalt", R.drawable.psychology_24dp, accent, "debrief_content") { d.contentFeedback.forEach { BulletText(it) } })
+            }
+            if (d.courseLinks.isNotEmpty()) {
+                add(Fold("Aus deinem Kurs hätte gepasst", R.drawable.school_24dp, accent, "debrief_course") { d.courseLinks.forEach { BulletText(it) } })
+            }
+            if (d.phrases.isNotEmpty()) {
+                add(
+                    Fold("Redemittel für dich", R.drawable.translate_24dp, accent, "debrief_phrases", count = d.phrases.size.toString()) {
+                        d.phrases.forEach { p ->
+                            Row(verticalAlignment = Alignment.Top) {
+                                Column(Modifier.weight(1f)) {
+                                    BodyText(p.phrase, color = accent)
+                                    CaptionText(p.meaningDe)
+                                    Text(p.example, fontSize = dimens.fonts.caption, fontStyle = FontStyle.Italic, color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f))
+                                }
+                                SpeakButton(vm, p.example.ifBlank { p.phrase })
+                            }
+                            Gap(10.dp)
+                        }
+                        CaptionText("Alle Redemittel stehen jetzt auch in deinem Wortschatz zum Wiederholen.")
+                    },
+                )
+            }
+            val task = record.task
+            if (task != null && task.tasks.any { it.expectations.isNotEmpty() }) {
+                add(
+                    Fold("Erwartungshorizont", R.drawable.checklist_24dp, accent, "debrief_expectations", subtitle = "Was ein 15-Punkte-Vortrag enthalten hätte") {
+                        task.tasks.forEachIndexed { i, t ->
+                            if (record.focusTask == 0 || record.focusTask == i + 1) {
+                                Text("Aufgabe ${i + 1} (AFB ${t.afb})", fontSize = dimens.fonts.body, color = accent)
+                                CaptionText(t.instruction)
+                                t.expectations.forEach { BulletText(it) }
+                                Gap(8.dp)
+                            }
+                        }
+                    },
+                )
+            }
+            val rated = Skill.entries.mapNotNull { s -> d.skills[s]?.let { s to it } }
+            if (rated.isNotEmpty()) {
+                add(
+                    Fold("Kompetenzen", R.drawable.insights_24dp, accent, "debrief_skills", subtitle = "So hat die KI diese Sitzung eingeschätzt") {
+                        rated.forEach { (s, v) ->
+                            BarRow(s.label, v / 15f, "$v P.", pointsColor(v.toDouble()))
+                            Gap(6.dp)
+                        }
+                    },
+                )
+            }
+            if (record.utterances.isNotEmpty()) {
+                add(
+                    Fold("Transkript", R.drawable.text_snippet_24dp, MaterialTheme.colorScheme.onPrimary, "debrief_transcript", subtitle = "${record.utterances.count { it.speaker == Speaker.STUDENT }} Beiträge von dir") {
+                        TranscriptContent(record)
+                    },
+                )
+            }
+        }
+    FoldGroup(modifier = Modifier.testTag("debrief_details")) {
+        folds.forEachIndexed { i, f ->
+            FoldRow(
+                title = f.title,
+                icon = f.icon,
+                iconTint = f.tint,
+                subtitle = f.subtitle,
+                count = f.count,
+                countColor = f.countColor,
+                initiallyOpen = f.open,
+                divider = i > 0,
+                modifier = Modifier.testTag(f.tag),
+                content = f.content,
+            )
+        }
+    }
+}
+
+/** Why the session got its points: the reasons for both areas, the second grading and who graded. */
+@Composable
+private fun ReasonsContent(record: SessionRecord, d: Debrief) {
+    BarRow("Inhalt (40 %)", d.inhaltPoints / 15f, "${d.inhaltPoints} P.", pointsColor(d.inhaltPoints.toDouble()))
+    if (d.inhaltReason.isNotBlank()) CaptionText(d.inhaltReason, modifier = Modifier.padding(top = 4.dp))
+    Gap(10.dp)
+    BarRow("Darstellungsleistung (60 %)", d.darstellungPoints / 15f, "${d.darstellungPoints} P.", pointsColor(d.darstellungPoints.toDouble()))
+    if (d.darstellungReason.isNotBlank()) CaptionText(d.darstellungReason, modifier = Modifier.padding(top = 4.dp))
+    SecondOpinionLine(d)
+    Gap(10.dp)
+    val by =
+        listOfNotNull(
+            d.gradedBy.ifBlank { null }?.let { "Bewertet von $it" },
+            d.listenedBy.ifBlank { null }?.takeIf { it != d.gradedBy }?.let { "Aufnahme gehört von $it" },
+            record.examiner.ifBlank { null }?.let { "Prüfer: $it" },
+        )
+    if (by.isNotEmpty()) CaptionText(by.joinToString(" · "))
+}
+
+/** A thin white bar on the hero card. */
+@Composable
+private fun HeroBar(label: String, value: Int) {
+    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Row {
+            Text(label, fontSize = 12.sp, color = Color.White.copy(alpha = 0.9f), modifier = Modifier.weight(1f))
+            Text("$value", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+        }
+        Box(Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)).background(Color.White.copy(alpha = 0.25f))) {
+            Box(Modifier.fillMaxWidth((value / 15f).coerceIn(0f, 1f)).height(6.dp).clip(RoundedCornerShape(3.dp)).background(Color.White))
+        }
     }
 }
 
 @Composable
 private fun SummaryCard(record: SessionRecord, d: Debrief) {
-    val dimens = AbiTheme.dimens
-    AbiCard(modifier = Modifier.testTag("debrief_summary")) {
-        CardTitle("${record.title} · ${Knowledge.topicShort(record.topicId)}")
+    HeroCard(modifier = Modifier.testTag("debrief_summary")) {
+        Text("${record.title} · ${Knowledge.topicShort(record.topicId)}", fontSize = 13.sp, lineHeight = 17.sp, color = Color.White.copy(alpha = 0.9f), maxLines = 2)
+        Gap(12.dp)
         Row(verticalAlignment = Alignment.CenterVertically) {
-            BigNumber(d.totalPoints.toString(), "Punkte", pointsColor(d.totalPoints.toDouble()))
+            BigNumber(d.totalPoints.toString(), "Punkte", Color.White, track = Color.White.copy(alpha = 0.25f), textColor = Color.White, size = 86.dp)
             Spacer(Modifier.width(16.dp))
-            Column(Modifier.weight(1f)) {
-                StarRow(stars = d.stars, size = dimens.icons.scoreHeader * 0.5f)
-                Gap(4.dp)
-                Text(Planner.gradeLabel(d.totalPoints), fontSize = dimens.fonts.label, color = pointsColor(d.totalPoints.toDouble()))
-                CaptionText(formatDate(record.startedAt) + " · " + mmss(record.durationSec) + " Min.")
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(Planner.gradeLabel(d.totalPoints), fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.weight(1f, fill = false))
+                    Spacer(Modifier.width(8.dp))
+                    StarRow(stars = d.stars, size = 16.dp)
+                }
+                HeroBar("Inhalt", d.inhaltPoints)
+                HeroBar("Darstellung", d.darstellungPoints)
             }
         }
-        Gap(12.dp)
-        BarRow("Inhalt (40 %)", d.inhaltPoints / 15f, "${d.inhaltPoints} P.", pointsColor(d.inhaltPoints.toDouble()))
-        if (d.inhaltReason.isNotBlank()) CaptionText(d.inhaltReason, modifier = Modifier.padding(top = 4.dp))
+        d.secondOpinion?.let { second ->
+            Gap(12.dp)
+            HeroChip("Zwei Prüfer: ${second.firstTotal} und ${second.total} → ${d.totalPoints} · " + if (second.agrees) "verlässlich" else "weichen ab")
+        }
         Gap(10.dp)
-        BarRow("Darstellungsleistung (60 %)", d.darstellungPoints / 15f, "${d.darstellungPoints} P.", pointsColor(d.darstellungPoints.toDouble()))
-        if (d.darstellungReason.isNotBlank()) CaptionText(d.darstellungReason, modifier = Modifier.padding(top = 4.dp))
-        SecondOpinionLine(d)
-        Gap(10.dp)
-        val by =
-            listOfNotNull(
-                d.gradedBy.ifBlank { null }?.let { "Bewertet von $it" },
-                d.listenedBy.ifBlank { null }?.takeIf { it != d.gradedBy }?.let { "Aufnahme gehört von $it" },
-                record.examiner.ifBlank { null }?.let { "Prüfer: $it" },
-            )
-        if (by.isNotEmpty()) CaptionText(by.joinToString(" · "))
-        if (!d.audioAnalysed) CaptionText("Ohne Aufnahme bewertet – Aussprache und Flüssigkeit sind nur geschätzt.")
+        Text(formatDate(record.startedAt) + " · " + mmss(record.durationSec) + " Min.", fontSize = 12.sp, color = Color.White.copy(alpha = 0.8f))
+        if (!d.audioAnalysed) Text("Ohne Aufnahme bewertet – Aussprache und Flüssigkeit sind nur geschätzt.", fontSize = 12.sp, lineHeight = 16.sp, color = Color.White.copy(alpha = 0.8f))
     }
 }
 
@@ -327,25 +434,22 @@ private fun ProgressCard(p: Progress, d: Debrief) {
 }
 
 @Composable
-private fun TaskReviewCard(record: SessionRecord, d: Debrief) {
+private fun TaskReviewContent(record: SessionRecord, d: Debrief) {
     val dimens = AbiTheme.dimens
-    AbiCard(modifier = Modifier.testTag("debrief_tasks")) {
-        CardTitle("Die Aufgaben", icon = R.drawable.assignment_24dp)
-        d.taskReviews.sortedBy { it.number }.forEachIndexed { i, r ->
-            if (i > 0) Gap(12.dp)
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                LevelBadge(r.number.toString(), locked = false, mastered = r.points >= 13, attention = false, highlighted = r.points < 13, size = dimens.components.button * 0.5f)
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    val instruction = record.task?.tasks?.getOrNull(r.number - 1)?.instruction.orEmpty()
-                    Text("Aufgabe ${r.number} · ${r.points} P.", fontSize = dimens.fonts.body, color = pointsColor(r.points.toDouble()))
-                    if (instruction.isNotBlank()) CaptionText(instruction)
-                }
+    d.taskReviews.sortedBy { it.number }.forEachIndexed { i, r ->
+        if (i > 0) Gap(12.dp)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            LevelBadge(r.number.toString(), locked = false, mastered = r.points >= 13, attention = false, highlighted = r.points < 13, size = dimens.components.button * 0.5f)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                val instruction = record.task?.tasks?.getOrNull(r.number - 1)?.instruction.orEmpty()
+                Text("Aufgabe ${r.number} · ${r.points} P.", fontSize = dimens.fonts.body, color = pointsColor(r.points.toDouble()))
+                if (instruction.isNotBlank()) CaptionText(instruction)
             }
-            r.covered.forEach { GoalRow(ok = true, text = it) }
-            r.missing.forEach { GoalRow(ok = false, text = it) }
-            if (r.tip.isNotBlank()) CaptionText("Tipp: " + r.tip, color = accent)
         }
+        r.covered.forEach { GoalRow(ok = true, text = it) }
+        r.missing.forEach { GoalRow(ok = false, text = it) }
+        if (r.tip.isNotBlank()) CaptionText("Tipp: " + r.tip, color = accent)
     }
 }
 
@@ -391,63 +495,61 @@ private fun ModelCard(vm: AppViewModel, record: SessionRecord, d: Debrief) {
 }
 
 @Composable
-private fun ErrorsCard(vm: AppViewModel, d: Debrief) {
+private fun ErrorsContent(vm: AppViewModel, d: Debrief) {
     val dimens = AbiTheme.dimens
     val grouped = d.errors.groupBy { it.category }.entries.sortedByDescending { it.value.size }
-    ExpandableCard(
-        "Fehler (${d.errors.size})",
-        subtitle = grouped.take(3).joinToString(" · ") { "${Knowledge.categoryLabel(it.key)} ${it.value.size}×" },
-        icon = R.drawable.spellcheck_24dp,
-        iconTint = red,
-        initiallyOpen = d.errors.size <= 6,
-    ) {
-        grouped.forEach { (category, errors) ->
-            Text(Knowledge.categoryLabel(category), fontSize = dimens.fonts.body, color = accent)
-            errors.forEach { e ->
-                Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.Top) {
-                    Column(Modifier.weight(1f)) {
-                        Text("„${e.quote}“", fontSize = dimens.fonts.body, color = red, textDecoration = TextDecoration.LineThrough)
-                        Text("→ „${e.correction}“", fontSize = dimens.fonts.body, color = green)
-                        if (e.explanation.isNotBlank()) CaptionText(e.explanation)
-                        vm.app.errorMemory.matching(e)?.takeIf { it.total >= 2 }?.let { p ->
-                            CaptionText("${p.title}: schon ${p.total}× · ${p.state.label}", color = if (p.total >= 3) red else yellow)
-                        }
+    grouped.forEach { (category, errors) ->
+        Text(Knowledge.categoryLabel(category), fontSize = dimens.fonts.body, color = accent)
+        errors.forEach { e ->
+            Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.Top) {
+                Column(Modifier.weight(1f)) {
+                    Text("„${e.quote}“", fontSize = dimens.fonts.body, color = red, textDecoration = TextDecoration.LineThrough)
+                    Text("→ „${e.correction}“", fontSize = dimens.fonts.body, color = green)
+                    if (e.explanation.isNotBlank()) CaptionText(e.explanation)
+                    vm.app.errorMemory.matching(e)?.takeIf { it.total >= 2 }?.let { p ->
+                        CaptionText("${p.title}: schon ${p.total}× · ${p.state.label}", color = if (p.total >= 3) red else yellow)
                     }
-                    SayItIcon(vm, e.quote, e.correction, e.explanation)
                 }
+                SayItIcon(vm, e.quote, e.correction, e.explanation)
             }
-            Gap(8.dp)
         }
-        CaptionText("Tippe auf das Mikrofon, um den Satz richtig nachzusprechen – die KI hört zu und sagt dir sofort, ob es stimmt.")
-        if (d.droppedUnverified > 0) CaptionText("${d.droppedUnverified} Korrekturen weggelassen, weil das Zitat so nicht in deiner Mitschrift stand.")
-        val keys = d.errors.mapNotNull { vm.app.errorMemory.matching(it)?.key }.distinct().take(4)
-        if (keys.isNotEmpty()) {
-            Gap(8.dp)
-            ActionButton(
-                "Diese Fehler im Sprech-Training üben",
-                R.drawable.spellcheck_24dp,
-                yellow,
-                { vm.stopSpeaking(); vm.openDrills(keys) },
-                subtitle = "Kurze Sprech-Übungen mit Sätzen zu deinen Themen · ca. 5 Min.",
-                container = MaterialTheme.colorScheme.background,
-                modifier = Modifier.testTag("debrief_drills"),
-            )
-        }
+        Gap(8.dp)
+    }
+    CaptionText("Tippe auf das Mikrofon, um den Satz richtig nachzusprechen – die KI hört zu und sagt dir sofort, ob es stimmt.")
+    if (d.droppedUnverified > 0) CaptionText("${d.droppedUnverified} Korrekturen weggelassen, weil das Zitat so nicht in deiner Mitschrift stand.")
+    val keys = d.errors.mapNotNull { vm.app.errorMemory.matching(it)?.key }.distinct().take(4)
+    if (keys.isNotEmpty()) {
+        Gap(8.dp)
+        ActionButton(
+            "Diese Fehler im Sprech-Training üben",
+            R.drawable.spellcheck_24dp,
+            yellow,
+            { vm.stopSpeaking(); vm.openDrills(keys) },
+            subtitle = "Kurze Sprech-Übungen mit Sätzen zu deinen Themen · ca. 5 Min.",
+            container = MaterialTheme.colorScheme.background,
+            modifier = Modifier.testTag("debrief_drills"),
+        )
     }
 }
 
 @Composable
+private fun TranscriptContent(record: SessionRecord) {
+    val dimens = AbiTheme.dimens
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        record.utterances.forEach { u ->
+            val who = if (u.speaker == Speaker.STUDENT) "Du" else "Prüfer"
+            val part = when (u.part) { 1 -> "Teil 1 · "; 2 -> "Teil 2 · "; else -> "" }
+            CaptionText(part + who, color = if (u.speaker == Speaker.STUDENT) accent else null)
+            Text(u.text, fontSize = dimens.fonts.body * 0.95f, lineHeight = dimens.fonts.body * 1.3f, color = MaterialTheme.colorScheme.onPrimary)
+        }
+    }
+}
+
+/** The transcript as its own folding card (for sessions without an evaluation). */
+@Composable
 private fun TranscriptSection(record: SessionRecord) {
     if (record.utterances.isEmpty()) return
-    val dimens = AbiTheme.dimens
     ExpandableCard("Transkript", subtitle = "${record.utterances.count { it.speaker == Speaker.STUDENT }} Beiträge von dir", icon = R.drawable.text_snippet_24dp) {
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            record.utterances.forEach { u ->
-                val who = if (u.speaker == Speaker.STUDENT) "Du" else "Prüfer"
-                val part = when (u.part) { 1 -> "Teil 1 · "; 2 -> "Teil 2 · "; else -> "" }
-                CaptionText(part + who, color = if (u.speaker == Speaker.STUDENT) accent else null)
-                Text(u.text, fontSize = dimens.fonts.body * 0.95f, lineHeight = dimens.fonts.body * 1.3f, color = MaterialTheme.colorScheme.onPrimary)
-            }
-        }
+        TranscriptContent(record)
     }
 }

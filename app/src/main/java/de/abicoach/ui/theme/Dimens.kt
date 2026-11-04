@@ -32,12 +32,12 @@ data class Dimens(
             return Dimens(
                 fonts =
                     FontSizes(
-                        title = sp(0.031f),
-                        actionButton = sp(0.038f),
+                        title = sp(0.030f),
+                        actionButton = sp(0.036f),
                         popUpDescription = sp(0.018f),
-                        caption = sp(0.015f),
-                        label = sp(0.024f),
-                        body = sp(0.020f),
+                        caption = sp(0.0148f),
+                        label = sp(0.0225f),
+                        body = sp(0.0192f),
                         reading = sp(0.0195f),
                         big = sp(0.057f),
                         huge = sp(0.075f),
@@ -57,7 +57,7 @@ data class Dimens(
                         button = dp(0.09f),
                         screenPadding = dp(0.024f),
                         cornerRadius = 16.dp,
-                        cardCornerRadius = 32.dp,
+                        cardCornerRadius = 28.dp,
                         dividerThickness = 2.dp,
                     ),
             )
