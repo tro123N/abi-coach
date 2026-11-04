@@ -337,10 +337,13 @@ class SmokeTest {
         swipeShot("settings", "einstellungen_3", 2)
         // The other AI companies (the settings change only what is shown here; no key is needed for the picture).
         ui { app.settings.provider = de.abicoach.ai.Provider.OPENAI; vm.nav.pop(); vm.nav.push(Screen.Settings) }
+        runCatching { compose.onNodeWithTag("settings_ai").performScrollTo() }
         shot("einstellungen_openai")
         ui { app.settings.provider = de.abicoach.ai.Provider.ANTHROPIC; vm.nav.pop(); vm.nav.push(Screen.Settings) }
+        runCatching { compose.onNodeWithTag("settings_ai").performScrollTo() }
         shot("einstellungen_claude")
-        swipeShot("settings", "einstellungen_claude_2", 1)
+        runCatching { compose.onNodeWithTag("settings_roles").performScrollTo() }
+        shot("einstellungen_claude_rollen")
         ui { app.settings.provider = de.abicoach.ai.Provider.GOOGLE; vm.nav.pop() }
 
         // Dark mode

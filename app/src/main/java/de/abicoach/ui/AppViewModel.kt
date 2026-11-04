@@ -995,6 +995,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             errorMessage = "Für das Aussprache-Labor brauchst du den ${app.ai.provider.company}-Schlüssel (Einstellungen → KI)."
             return
         }
+        if (app.ai.provider == de.abicoach.ai.Provider.ANTHROPIC && notice == null) {
+            notice = "Mit Claude hört die Spracherkennung des Handys zu: Sie prüft, ob dein Wort verstanden wird – feine Laute hört nur Google oder OpenAI."
+        }
         stopSpeaking()
         recorder?.release()
         recorder = de.abicoach.practice.ShortRecorder().also { it.start() }

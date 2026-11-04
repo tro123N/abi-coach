@@ -322,6 +322,11 @@ class OpenAiTranscriber(
     private val lock = Any()
     private val interim = LinkedHashMap<String, StringBuilder>()
 
+    /** The chosen model first; if the key cannot use it, the older transcription models. */
+    private val models = listOf(model, "gpt-realtime-whisper", "gpt-4o-transcribe").distinct()
+
+    @Volatile private var modelIndex = 0
+
     @Volatile private var socket: WebSocket? = null
 
     @Volatile override var ready = false
@@ -364,7 +369,7 @@ class OpenAiTranscriber(
     }
 
     private fun configure(webSocket: WebSocket) {
-        val transcription = JSONObject().put("model", model).put("language", "en")
+        val transcription = JSONObject().put("model", models[modelIndex]).put("language", "en")
         val words = vocabulary.filter { it.length in 2..40 }.take(40)
         if (words.isNotEmpty()) transcription.put("prompt", "English oral exam practice. Possible names and terms: " + words.joinToString(", "))
         val input =
@@ -380,12 +385,16 @@ class OpenAiTranscriber(
     private fun handle(text: String) {
         val message = runCatching { JSONObject(text) }.getOrNull() ?: return
         when (message.optString("type")) {
-            "session.created", "session.updated", "transcription_session.created", "transcription_session.updated" -> {
-                if (!ready) {
-                    ready = true
-                    failures = 0
-                    onEvent(LiveEvent.Ready)
-                }
+            // Ready only once our settings (model, language, pause detection) are taken.
+            "session.updated", "transcription_session.updated" -> becomeReady()
+            "session.created", "transcription_session.created" -> {
+                // Should the confirmation never come, the session works with what it has after three seconds.
+                val ws = socket
+                val at = modelIndex
+                Thread {
+                    runCatching { Thread.sleep(3_000) }
+                    if (socket === ws && !closedByUser && modelIndex == at) becomeReady()
+                }.apply { isDaemon = true }.start()
             }
             "conversation.item.input_audio_transcription.delta" -> {
                 val id = message.optString("item_id")
@@ -402,9 +411,26 @@ class OpenAiTranscriber(
             }
             "error" -> {
                 val msg = message.optJSONObject("error")?.optString("message").orEmpty().ifBlank { "unbekannter Fehler" }
-                if (!ready) onEvent(LiveEvent.Failed("OpenAI-Mitschrift: $msg")) else onEvent(LiveEvent.Info("OpenAI-Mitschrift: $msg"))
+                val ws = socket
+                when {
+                    ready -> onEvent(LiveEvent.Info("OpenAI-Mitschrift: $msg"))
+                    modelIndex < models.lastIndex && ws != null -> {
+                        // The model is not offered for this key: the next one.
+                        modelIndex++
+                        configure(ws)
+                    }
+                    else -> onEvent(LiveEvent.Failed("OpenAI-Mitschrift: $msg"))
+                }
             }
         }
+    }
+
+    @Synchronized
+    private fun becomeReady() {
+        if (ready) return
+        ready = true
+        failures = 0
+        onEvent(LiveEvent.Ready)
     }
 
     private inner class Listener : WebSocketListener() {
@@ -442,4 +468,241 @@ class OpenAiTranscriber(
             if (wasReady && failures++ < 3) connect() else onEvent(LiveEvent.Failed("OpenAI-Mitschrift: $why"))
         }
     }
+}
+
+/**
+ * OpenAI's Realtime API (gpt-realtime) as the examiner – the safety net when GPT-Live cannot be reached with the key.
+ * Speech in and out as 24 kHz PCM; the server notices when the student has finished and answers, and stops talking
+ * when the student cuts in.
+ */
+class OpenAiRealtimeAgent(
+    private val http: OkHttpClient,
+    private val apiKey: String,
+    private val model: String,
+    private val voice: String,
+    private val instructions: String,
+    private val onEvent: (LiveEvent) -> Unit,
+    override val label: String,
+) : VoiceAgent {
+    override val outputRate: Int = 24_000
+
+    private val resampler = Upsampler16to24()
+
+    @Volatile private var socket: WebSocket? = null
+
+    @Volatile private var ready = false
+
+    @Volatile private var closedByUser = false
+
+    @Volatile private var speaking = false
+
+    @Volatile private var reconnects = 0
+
+    private val pending = ArrayList<Pair<String, Boolean>>()
+
+    override fun connect() {
+        closedByUser = false
+        ready = false
+        socket = http.newWebSocket(Request.Builder().url("wss://api.openai.com/v1/realtime?model=$model").header("Authorization", "Bearer $apiKey").build(), Listener())
+    }
+
+    override fun sendAudio(pcm16k: ByteArray) {
+        if (!ready) return
+        val pcm24 = resampler.process(pcm16k)
+        if (pcm24.isEmpty()) return
+        socket?.send(JSONObject().put("type", "input_audio_buffer.append").put("audio", Base64.encodeToString(pcm24, Base64.NO_WRAP)).toString())
+    }
+
+    override fun sendInstruction(text: String): Boolean = post(text, answer = true)
+
+    override fun sendNote(text: String): Boolean = post(text, answer = false)
+
+    /** A message from the app; [answer] makes the examiner react at once (otherwise it shapes his next turn). */
+    private fun post(text: String, answer: Boolean): Boolean {
+        if (!ready) {
+            synchronized(pending) { pending += text to answer }
+            return true
+        }
+        val s = socket ?: return false
+        val item =
+            JSONObject()
+                .put("type", "message")
+                .put("role", if (answer) "user" else "system")
+                .put("content", JSONArray().put(JSONObject().put("type", "input_text").put("text", text.take(1800))))
+        val sent = s.send(JSONObject().put("type", "conversation.item.create").put("item", item).toString())
+        if (sent && answer) s.send(JSONObject().put("type", "response.create").toString())
+        return sent
+    }
+
+    override fun sendStreamEnd() = Unit
+
+    override fun close() {
+        closedByUser = true
+        ready = false
+        socket?.close(1000, "done")
+        socket = null
+    }
+
+    private fun configure(webSocket: WebSocket) {
+        val input =
+            JSONObject()
+                .put("format", JSONObject().put("type", "audio/pcm").put("rate", 24_000))
+                .put("transcription", JSONObject().put("model", "gpt-4o-mini-transcribe").put("language", "en"))
+                .put(
+                    "turn_detection",
+                    JSONObject().put("type", "server_vad").put("silence_duration_ms", 700).put("create_response", true).put("interrupt_response", true),
+                )
+        val output = JSONObject().put("format", JSONObject().put("type", "audio/pcm").put("rate", 24_000)).put("voice", voice)
+        val session =
+            JSONObject()
+                .put("type", "realtime")
+                .put("instructions", instructions)
+                .put("output_modalities", JSONArray().put("audio"))
+                .put("audio", JSONObject().put("input", input).put("output", output))
+        webSocket.send(JSONObject().put("type", "session.update").put("session", session).toString())
+    }
+
+    private fun handle(text: String) {
+        val message = runCatching { JSONObject(text) }.getOrNull() ?: return
+        when (message.optString("type")) {
+            "session.updated" -> {
+                if (!ready) {
+                    ready = true
+                    reconnects = 0
+                    onEvent(LiveEvent.Ready)
+                    val queued = synchronized(pending) { pending.toList().also { pending.clear() } }
+                    queued.forEach { (t, answer) -> post(t, answer) }
+                }
+            }
+            "response.output_audio.delta", "response.audio.delta" -> {
+                val b64 = message.optString("delta")
+                if (b64.isNotEmpty()) {
+                    speaking = true
+                    onEvent(LiveEvent.Audio(Base64.decode(b64, Base64.DEFAULT)))
+                }
+            }
+            "response.output_audio_transcript.delta", "response.audio_transcript.delta" -> {
+                val delta = message.optString("delta")
+                if (delta.isNotEmpty()) onEvent(LiveEvent.ModelText(delta))
+            }
+            "conversation.item.input_audio_transcription.completed" -> {
+                val said = message.optString("transcript").trim()
+                if (said.isNotEmpty()) onEvent(LiveEvent.UserText(said))
+            }
+            "input_audio_buffer.speech_started" -> {
+                if (speaking) {
+                    speaking = false
+                    onEvent(LiveEvent.Interrupted)
+                }
+            }
+            "response.done" -> {
+                speaking = false
+                onEvent(LiveEvent.TurnComplete)
+            }
+            "error" -> {
+                val msg = message.optJSONObject("error")?.optString("message").orEmpty().ifBlank { "unbekannter Fehler" }
+                if (!ready) onEvent(LiveEvent.Failed("$label: $msg")) else onEvent(LiveEvent.Info("$label: $msg"))
+            }
+        }
+    }
+
+    private inner class Listener : WebSocketListener() {
+        override fun onOpen(webSocket: WebSocket, response: Response) = configure(webSocket)
+
+        override fun onMessage(webSocket: WebSocket, text: String) {
+            if (webSocket === socket) handle(text)
+        }
+
+        override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
+            if (webSocket === socket) handle(bytes.utf8())
+        }
+
+        override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+            webSocket.close(1000, null)
+        }
+
+        override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+            if (webSocket !== socket || closedByUser) return
+            val wasReady = ready
+            ready = false
+            if (wasReady && reconnects++ < 3) {
+                onEvent(LiveEvent.Info("$label: verbinde neu …"))
+                connect()
+            } else {
+                onEvent(LiveEvent.Failed("$label: ${reason.ifBlank { "Code $code" }}"))
+            }
+        }
+
+        override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+            if (webSocket !== socket || closedByUser) return
+            val wasReady = ready
+            ready = false
+            val why =
+                when (response?.code) {
+                    401 -> "OpenAI-Schlüssel ungültig"
+                    403 -> "kein Zugriff auf $model"
+                    404 -> "$model nicht gefunden"
+                    429 -> "Limit oder Guthaben erschöpft"
+                    else -> t.message ?: t.javaClass.simpleName
+                }
+            if (wasReady && reconnects++ < 3) {
+                onEvent(LiveEvent.Info("$label: verbinde neu …"))
+                connect()
+            } else {
+                onEvent(LiveEvent.Failed("$label: $why"))
+            }
+        }
+    }
+}
+
+/**
+ * Tries the [first] examiner; if it fails before it was ever ready (model not offered for the key, wrong address),
+ * the [second] one takes over with the same instructions – the conversation does not notice.
+ */
+class FallbackVoiceAgent(
+    first: ((LiveEvent) -> Unit) -> VoiceAgent,
+    private val second: ((LiveEvent) -> Unit) -> VoiceAgent,
+    private val onEvent: (LiveEvent) -> Unit,
+) : VoiceAgent {
+    @Volatile private var current: VoiceAgent
+
+    @Volatile private var switched = false
+
+    @Volatile private var readySeen = false
+
+    init {
+        current = first { event -> fromFirst(event) }
+    }
+
+    override val label: String get() = current.label
+
+    override val outputRate: Int get() = current.outputRate
+
+    private fun fromFirst(event: LiveEvent) {
+        if (switched) return
+        if (event is LiveEvent.Ready) readySeen = true
+        if (event is LiveEvent.Failed && !readySeen) {
+            switched = true
+            val old = current
+            val next = second(onEvent)
+            current = next
+            runCatching { old.close() }
+            onEvent(LiveEvent.Info("${old.label} ist nicht erreichbar (${event.message.take(80)}) – ${next.label} übernimmt."))
+            next.connect()
+            return
+        }
+        onEvent(event)
+    }
+
+    override fun connect() = current.connect()
+
+    override fun sendAudio(pcm16k: ByteArray) = current.sendAudio(pcm16k)
+
+    override fun sendInstruction(text: String): Boolean = current.sendInstruction(text)
+
+    override fun sendNote(text: String): Boolean = current.sendNote(text)
+
+    override fun sendStreamEnd() = current.sendStreamEnd()
+
+    override fun close() = current.close()
 }

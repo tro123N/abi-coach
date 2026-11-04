@@ -190,7 +190,12 @@ fun SetupScreen(vm: AppViewModel, initial: SessionSetup) {
                 )
                 if (picked.isNotEmpty()) {
                     Gap(6.dp)
-                    val first = main?.let { Knowledge.topicShort(it) } ?: if (s.kind == SessionKind.SIMULATION) "Text aus Teil 1" else "dein Themenfeld"
+                    val first =
+                        main?.let { Knowledge.topicShort(it) } ?: when {
+                            s.kind == SessionKind.SIMULATION -> "Text aus Teil 1"
+                            s.topicChoice == Knowledge.RANDOM -> "zufälliges Themenfeld"
+                            else -> "Themenfeld aus deinem Kurs"
+                        }
                     CaptionText("Geprüft wird: " + (listOf(first) + picked.map { Knowledge.topicShort(it) }).joinToString(" → "))
                 }
             }

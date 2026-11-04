@@ -172,8 +172,9 @@ class AnalysisCenter {
 
 /** Evaluates a session and folds the result into the profile, the Abi-Weg and the vocabulary. */
 object AnalysisRunner {
-    suspend fun run(app: AbiCoachApp, record: SessionRecord, onProgress: (String) -> Unit): Debrief {
-        val startInCloud = app.ai.canRunInCloud && app.settings.cloudAnalysis
+    /** [newCloudJob] false (a retry of the background worker): no new cloud job – a running one is still picked up. */
+    suspend fun run(app: AbiCoachApp, record: SessionRecord, newCloudJob: Boolean = true, onProgress: (String) -> Unit): Debrief {
+        val startInCloud = app.ai.canRunInCloud && app.settings.cloudAnalysis && newCloudJob
         // A job that already runs at Google is picked up even after switching to another company.
         val running = app.cloudJobs.get(record.id) != null && app.settings.geminiKey.isNotBlank()
         val graded =
@@ -295,7 +296,8 @@ class AnalysisWorker(context: Context, params: WorkerParameters) : CoroutineWork
         runCatching { setForeground(getForegroundInfo()) }
         app.analysis.begin(id)
         return try {
-            val debrief = AnalysisRunner.run(app, record) { text -> app.analysis.progress(id, text) }
+            // A retry never starts another cloud job: it grades directly (or picks up the job that is still running).
+            val debrief = AnalysisRunner.run(app, record, newCloudJob = runAttemptCount == 0) { text -> app.analysis.progress(id, text) }
             app.pendingNotice = app.ai.lastNotice.also { app.ai.lastNotice = null }
             app.analysis.done(id, debrief.totalPoints)
             if (!app.isVisible) {

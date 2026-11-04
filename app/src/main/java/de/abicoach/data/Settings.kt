@@ -148,6 +148,9 @@ class Settings(context: Context) {
     var oaFastModel by StringPref("oa_fast_model", "gpt-6-luna")
     var oaAudioModel by StringPref("oa_audio_model", "gpt-audio-1.5")
     var oaLiveModel by StringPref("oa_live_model", "gpt-live-1")
+
+    /** Takes over as examiner if GPT-Live cannot be reached with the key. */
+    var oaRealtimeModel by StringPref("oa_realtime_model", "gpt-realtime")
     var oaVoice by StringPref("oa_voice", "cedar")
     var oaTranscribeModel by StringPref("oa_transcribe_model", "gpt-live-transcribe")
     var oaFileTranscribeModel by StringPref("oa_file_transcribe_model", "gpt-transcribe")

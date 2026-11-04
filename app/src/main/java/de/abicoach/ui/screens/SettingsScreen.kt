@@ -114,7 +114,7 @@ fun SettingsScreen(vm: AppViewModel) {
             CaptionText("Die Schlüssel bleiben verschlüsselt auf deinem Handy und gehen nur an die jeweilige Firma.")
         }
         SystemCheckCard(vm)
-        AbiCard {
+        AbiCard(modifier = Modifier.testTag("settings_roles")) {
             CardTitle("Wer macht was", icon = R.drawable.hub_24dp)
             CaptionText(app.ai.providerLabel())
             Gap(4.dp)
@@ -280,6 +280,7 @@ fun SettingsScreen(vm: AppViewModel) {
                 }
                 Provider.OPENAI -> {
                     ModelField("Prüfer (Live-Stimme)", settings.oaLiveModel) { settings.oaLiveModel = it }
+                    ModelField("Prüfer, Ersatz (Realtime)", settings.oaRealtimeModel) { settings.oaRealtimeModel = it }
                     ModelField("Mitschrift (live)", settings.oaTranscribeModel) { settings.oaTranscribeModel = it }
                     ModelField("Stärkstes Modell", settings.oaBrainModel) { settings.oaBrainModel = it }
                     ModelField("Normales Modell (auch Material lesen)", settings.oaTextModel) { settings.oaTextModel = it }

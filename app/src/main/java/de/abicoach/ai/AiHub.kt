@@ -282,6 +282,7 @@ class AiHub(context: Context, private val http: OkHttpClient, private val settin
                 }
             }
             Provider.ANTHROPIC -> {
+                if (!phone.canRecognize) throw AiException("Mit Claude hört die Spracherkennung des Handys zu – dafür braucht es Android 13 oder neuer.", NOT_OFFERED)
                 val written = writtenDown(parts) { wav -> Wav.toPcm(wav, 16_000)?.let { phone.transcribe(it) }.orEmpty() }
                 val (json, model) = quick { m -> claude.json(m, system + WRITTEN_NOTE, written, schema, 1, null, maxTokens = 4_000, think = false) }
                 Answer(json, pretty(model))
@@ -489,7 +490,13 @@ class AiHub(context: Context, private val http: OkHttpClient, private val settin
                     )
                 GeminiVoiceAgent(socket, pretty(settings.geminiLiveModel))
             }
-            Provider.OPENAI -> OpenAiLiveAgent(http, settings.openAiKey, settings.oaLiveModel, settings.oaVoice, instructions, onEvent, pretty(settings.oaLiveModel))
+            Provider.OPENAI ->
+                // GPT-Live first; if the key cannot reach it, the Realtime model takes over.
+                FallbackVoiceAgent(
+                    first = { events -> OpenAiLiveAgent(http, settings.openAiKey, settings.oaLiveModel, settings.oaVoice, instructions, events, pretty(settings.oaLiveModel)) },
+                    second = { events -> OpenAiRealtimeAgent(http, settings.openAiKey, settings.oaRealtimeModel, settings.oaVoice, instructions, events, pretty(settings.oaRealtimeModel)) },
+                    onEvent = onEvent,
+                )
             Provider.ANTHROPIC -> {
                 val ear = phoneEar?.takeIf { System.currentTimeMillis() - phoneEarAt < 15_000 }
                 PhoneVoiceAgent(
