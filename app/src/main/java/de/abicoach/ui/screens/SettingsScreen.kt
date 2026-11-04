@@ -493,10 +493,17 @@ private fun CheckRow(line: de.abicoach.session.CheckLine) {
 
 @Composable
 private fun RoleRow(role: String, model: String) {
+    // Both sides keep their share of the width, so long names wrap instead of squeezing the other side.
     Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
-        CaptionText(role, modifier = Modifier.weight(1f))
+        CaptionText(role, modifier = Modifier.weight(0.42f))
         Spacer(Modifier.width(8.dp))
-        BodyText(model, color = accent)
+        Text(
+            model,
+            color = accent,
+            fontSize = AbiTheme.dimens.fonts.body,
+            textAlign = androidx.compose.ui.text.style.TextAlign.End,
+            modifier = Modifier.weight(0.58f),
+        )
     }
 }
 

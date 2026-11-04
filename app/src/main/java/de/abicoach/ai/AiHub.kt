@@ -158,7 +158,7 @@ class AiHub(context: Context, private val http: OkHttpClient, private val settin
         when (provider) {
             Provider.GOOGLE -> pretty(settings.embeddingModel)
             Provider.OPENAI -> pretty(settings.oaEmbeddingModel)
-            Provider.ANTHROPIC -> "Stichwortsuche (Claude hat keine Suchvektoren)"
+            Provider.ANTHROPIC -> "Stichwortsuche (ohne Vektoren)"
         }
 
     fun voiceLabel(): String =
