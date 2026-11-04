@@ -20,13 +20,28 @@ class AiHub(private val http: OkHttpClient, private val settings: Settings) {
     /** Models that failed permanently in this run of the app (no access, no credit, unknown): skipped from now on. */
     private val unavailable = ConcurrentHashMap.newKeySet<String>()
 
+    /** Models that were overloaded ("high demand", 503): skipped for a few minutes, then tried again. */
+    private val busyUntil = ConcurrentHashMap<String, Long>()
+
+    private fun usable(model: String): Boolean = model !in unavailable && (busyUntil[model] ?: 0L) <= System.currentTimeMillis()
+
+    /** Remembers why a model did not answer; true if another model should be tried. */
+    private fun shouldFallBack(model: String, e: AiException): Boolean {
+        when {
+            e.isPermanent -> unavailable += model
+            e.code == 429 || e.isOverloaded -> busyUntil[model] = System.currentTimeMillis() + BUSY_MS
+            else -> return false
+        }
+        return true
+    }
+
     /** Set when a better model failed and a fallback answered; shown once in the app. */
     @Volatile var lastNotice: String? = null
 
     val hasGemini: Boolean get() = settings.geminiKey.isNotBlank()
 
     private val bestGemini: String
-        get() = if (settings.quality == Quality.BEST && settings.geminiBestModel !in unavailable) settings.geminiBestModel else settings.geminiTextModel
+        get() = if (settings.quality == Quality.BEST && usable(settings.geminiBestModel)) settings.geminiBestModel else settings.geminiTextModel
 
     fun brainLabel(): String = pretty(bestGemini)
 
@@ -48,23 +63,35 @@ class AiHub(private val http: OkHttpClient, private val settings: Settings) {
         return try {
             gemini.generateText(primary, system, turns) to pretty(primary)
         } catch (e: AiException) {
-            if (primary == settings.geminiTextModel || !(e.isPermanent || e.code == 429)) throw e
-            unavailable += primary
+            if (primary == settings.geminiTextModel || !shouldFallBack(primary, e)) throw e
             lastNotice = fallbackNotice(primary, e)
             gemini.generateText(settings.geminiTextModel, system, turns) to pretty(settings.geminiTextModel)
         }
     }
 
+    /** The quick models in order: the chosen fast model, the normal one, then Flash-Lite as the last resort. */
+    private fun quickChain(): List<String> = listOf(settings.geminiFastModel, settings.geminiTextModel, LITE_MODEL).distinct()
+
+    /** Tries the quick models one after the other when one is overloaded, has no quota or is not available. */
+    private suspend fun <T> quick(block: suspend (String) -> T): Pair<T, String> {
+        val chain = quickChain()
+        val first = chain.firstOrNull { usable(it) } ?: chain.first()
+        var last: AiException? = null
+        for (model in listOf(first) + chain.filter { it != first && usable(it) }) {
+            try {
+                return block(model) to model
+            } catch (e: AiException) {
+                last = e
+                if (!shouldFallBack(model, e)) throw e
+            }
+        }
+        throw last ?: AiException("Kein schnelles Modell erreichbar", 503)
+    }
+
     /** Quick checks during speaking: must answer within one or two seconds. */
     suspend fun fastJson(system: String, user: String, schema: Sch): JSONObject {
-        val model = settings.geminiFastModel
         val parts = listOf(GeminiRest.textPart(user))
-        return try {
-            gemini.generateJson(model, system, parts, schema, retries = 0, thinking = "low")
-        } catch (e: AiException) {
-            if (model == settings.geminiTextModel || !e.isPermanent) throw e
-            gemini.generateJson(settings.geminiTextModel, system, parts, schema, retries = 0, thinking = "low")
-        }
+        return quick { model -> gemini.generateJson(model, system, parts, schema, retries = 0, thinking = "low") }.first
     }
 
     /** Reading pages, photos and documents. */
@@ -79,23 +106,30 @@ class AiHub(private val http: OkHttpClient, private val settings: Settings) {
     suspend fun listenJson(system: String, parts: List<JSONObject>, schema: Sch): Answer =
         geminiJson(bestGemini, settings.geminiTextModel, system, parts, schema)
 
-    /** A quick listen to a short recording ("Sag es richtig", pronunciation lab): the fast model with little thinking. */
+    /** A quick listen to a short recording (the ear, "Sag es richtig", speaking training): the fast model with little thinking. */
     suspend fun quickListenJson(system: String, parts: List<JSONObject>, schema: Sch): Answer {
-        val model = settings.geminiFastModel
-        return try {
-            Answer(gemini.generateJson(model, system, parts, schema, retries = 1, thinking = "low"), pretty(model))
-        } catch (e: AiException) {
-            if (model == settings.geminiTextModel || !e.isPermanent) throw e
-            Answer(gemini.generateJson(settings.geminiTextModel, system, parts, schema, retries = 1, thinking = "low"), pretty(settings.geminiTextModel))
-        }
+        val (json, model) = quick { model -> gemini.generateJson(model, system, parts, schema, retries = 1, thinking = "low") }
+        return Answer(json, pretty(model))
     }
 
     suspend fun embed(texts: List<String>, query: Boolean, titles: List<String>? = null): List<FloatArray> =
         gemini.embed(settings.embeddingModel, texts, query, titles = titles)
 
-    /** Speech for "read aloud" buttons; null if it failed (the app then uses Android's voice). */
-    suspend fun speak(text: String): ByteArray? =
-        runCatching { gemini.tts(settings.ttsModel, text, settings.ttsVoice) }.getOrNull()
+    /** Speech for "read aloud" buttons and the coach; null if it failed (the app then uses Android's voice). */
+    suspend fun speak(text: String): ByteArray? {
+        for (model in listOf(settings.ttsModel, LITE_TTS_MODEL).distinct().filter { usable(it) }) {
+            try {
+                return gemini.tts(model, text, settings.ttsVoice)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: AiException) {
+                if (!shouldFallBack(model, e)) return null
+            } catch (e: Exception) {
+                return null
+            }
+        }
+        return null
+    }
 
     /** The examiner for a live conversation (Gemini Live). */
     fun examiner(instructions: String, onEvent: (LiveEvent) -> Unit): VoiceAgent {
@@ -123,7 +157,11 @@ class AiHub(private val http: OkHttpClient, private val settings: Settings) {
         )
 
     private fun fallbackNotice(model: String, e: AiException): String =
-        "${pretty(model)} ist für deinen Schlüssel gerade nicht nutzbar (${e.message}). ${pretty(settings.geminiTextModel)} hat übernommen – etwas weniger genau."
+        if (e.isOverloaded || e.code == 429) {
+            "${pretty(model)} ist gerade überlastet. ${pretty(settings.geminiTextModel)} hat übernommen – in ein paar Minuten ist wieder ${pretty(model)} dran."
+        } else {
+            "${pretty(model)} ist für deinen Schlüssel gerade nicht nutzbar (${e.message}). ${pretty(settings.geminiTextModel)} hat übernommen – etwas weniger genau."
+        }
 
     private suspend fun geminiJson(
         primary: String,
@@ -137,14 +175,18 @@ class AiHub(private val http: OkHttpClient, private val settings: Settings) {
         try {
             Answer(gemini.generateJson(primary, system, parts, schema, retries, thinkingLevel), pretty(primary))
         } catch (e: AiException) {
-            if (primary == fallback || !(e.isPermanent || e.code == 429)) throw e
-            // e.g. Gemini 4 Argon is not part of the free tier: remember it and use Flash from now on.
-            unavailable += primary
+            // e.g. Gemini 4 Argon is overloaded or not part of the free tier: Flash answers instead.
+            if (primary == fallback || !shouldFallBack(primary, e)) throw e
             lastNotice = fallbackNotice(primary, e)
             Answer(gemini.generateJson(fallback, system, parts, schema, retries, thinkingLevel), pretty(fallback))
         }
 
     companion object {
+        /** Last resort for the quick jobs when Flash is overloaded. */
+        const val LITE_MODEL = "gemini-3.5-flash-lite"
+        const val LITE_TTS_MODEL = "gemini-3.8-flash-lite-tts"
+        private const val BUSY_MS = 3 * 60_000L
+
         /** "gemini-3.8-flash" → "Gemini 3.8 Flash", "gemini-3.5-transcribe-live" → "Gemini 3.5 Transcribe Live". */
         fun pretty(model: String): String {
             val id = model.removePrefix("models/")

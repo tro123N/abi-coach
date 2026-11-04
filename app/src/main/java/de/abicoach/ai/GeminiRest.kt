@@ -21,6 +21,12 @@ open class AiException(message: String, val code: Int = 0, val provider: String 
 
     /** True when waiting a little may help. */
     val isTransient: Boolean get() = code == 0 || code == 408 || code == 429 || code >= 500
+
+    /** Google's servers are overloaded ("high demand") or had an internal error: another model may answer at once. */
+    val isOverloaded: Boolean get() = code == 500 || code == 503 || code == 504 || code == 529
+
+    /** No connection at all (no network, the phone's DNS failed, timeout). */
+    val isNetwork: Boolean get() = code == 0
 }
 
 class GeminiException(message: String, code: Int = 0) : AiException(message, code, "Gemini")
@@ -322,16 +328,26 @@ class GeminiRest(private val http: OkHttpClient, private val apiKey: () -> Strin
     }
 }
 
-/** Retries transient errors (network, 429, 5xx) with growing pauses. */
+/**
+ * Retries transient errors (network, 429, 5xx) with growing pauses. A lost connection is always tried at least
+ * twice more (after 1.5 and 3 seconds): a weak network or a DNS hiccup usually passes within seconds.
+ */
 suspend fun <T> withRetry(retries: Int, block: suspend () -> T): T {
     var attempt = 0
     while (true) {
         try {
             return block()
         } catch (e: AiException) {
-            if (!e.isTransient || attempt >= retries) throw e
+            val allowed = if (e.code == 0) maxOf(retries, 2) else retries
+            if (!e.isTransient || attempt >= allowed) throw e
             attempt++
-            delay(if (e.code == 429) 20_000L * attempt else 2_500L * attempt)
+            delay(
+                when (e.code) {
+                    0 -> 1_500L * attempt
+                    429 -> 20_000L * attempt
+                    else -> 2_500L * attempt
+                },
+            )
         }
     }
 }

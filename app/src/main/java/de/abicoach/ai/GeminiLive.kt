@@ -10,6 +10,8 @@ import okio.ByteString
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URLEncoder
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 /** Setup messages for the two kinds of Gemini Live sessions. */
 object GeminiSetup {
@@ -160,15 +162,20 @@ class LiveSocket(
         socket = null
     }
 
+    /**
+     * Opens a new connection after a growing pause (0.5, 1, 2, 4, 8 … seconds): a weak network or a DNS hiccup
+     * usually passes within seconds, and hammering the server does not help. Gives up after about 40 seconds.
+     */
     private fun reconnect(reason: String) {
         if (closedByUser) return
         failedReconnects++
-        if (failedReconnects > 5) {
+        if (failedReconnects > MAX_RECONNECTS) {
             onEvent(LiveEvent.Failed("$name: Verbindung verloren ($reason)"))
             return
         }
-        onEvent(LiveEvent.Info("$name: verbinde neu …"))
-        connect()
+        val wait = minOf(8_000L, 500L shl minOf(failedReconnects - 1, 4))
+        onEvent(LiveEvent.Info("$name: verbinde neu …" + if (wait >= 2_000) " (in ${wait / 1000} s)" else ""))
+        scheduler.schedule(Runnable { if (!closedByUser) connect() }, wait, TimeUnit.MILLISECONDS)
     }
 
     private fun handle(listener: Listener, text: String) {
@@ -240,18 +247,19 @@ class LiveSocket(
         }
 
         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-            ended(webSocket, if (reason.isBlank()) "Code $code" else "$reason (Code $code)")
+            ended(webSocket, if (reason.isBlank()) "Code $code" else "$reason (Code $code)", network = false)
         }
 
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-            ended(webSocket, t.message ?: t.javaClass.simpleName)
+            // No HTTP answer at all: no network, DNS failure or timeout – not a problem of the setup.
+            ended(webSocket, t.message ?: t.javaClass.simpleName, network = response == null && t is java.io.IOException)
         }
 
-        private fun ended(webSocket: WebSocket, why: String) {
+        private fun ended(webSocket: WebSocket, why: String, network: Boolean) {
             if (webSocket !== socket || closedByUser) return
             ready = false
             when {
-                gotSetup -> reconnect(why)
+                gotSetup || network -> reconnect(why)
                 !useMinimalSetup -> {
                     // The full setup was rejected: try once more with the smallest possible setup.
                     useMinimalSetup = true
@@ -261,5 +269,13 @@ class LiveSocket(
                 else -> onEvent(LiveEvent.Failed("$name: $why"))
             }
         }
+    }
+
+    companion object {
+        private const val MAX_RECONNECTS = 8
+
+        /** One small background thread for the delayed reconnects of all live connections. */
+        private val scheduler =
+            Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "live-reconnect").apply { isDaemon = true } }
     }
 }

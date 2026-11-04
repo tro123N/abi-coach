@@ -76,8 +76,12 @@ class AbiCoachApp : Application() {
     /** The worlds of the Abi-Weg; topic fields with the most material come first. */
     fun worlds(): List<World> = Curriculum.worlds(course.coveredTopics().map { it.first })
 
+    /** Name resolution with replacements, for phones with a flaky or filtered DNS. */
+    val dns: de.abicoach.ai.ResilientDns by lazy { de.abicoach.ai.ResilientDns(this) }
+
     val http: OkHttpClient by lazy {
         OkHttpClient.Builder()
+            .dns(dns)
             .connectTimeout(20, TimeUnit.SECONDS)
             .readTimeout(300, TimeUnit.SECONDS)
             .writeTimeout(300, TimeUnit.SECONDS)

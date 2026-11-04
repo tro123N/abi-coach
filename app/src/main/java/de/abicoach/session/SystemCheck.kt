@@ -1,6 +1,7 @@
 package de.abicoach.session
 
 import de.abicoach.AbiCoachApp
+import de.abicoach.ai.AiException
 import de.abicoach.ai.LiveEvent
 import de.abicoach.data.LiveError
 import kotlinx.coroutines.CancellationException
@@ -27,6 +28,7 @@ class SystemCheck(private val app: AbiCoachApp) {
             "examiner" to "Prüfer spricht",
             "coach" to "Coach-Hinweis im Gespräch",
             "memory" to "Suche im Kursmaterial",
+            "net" to "Netz und Namensauflösung",
         )
 
     private val lines = LinkedHashMap<String, CheckLine>()
@@ -46,10 +48,16 @@ class SystemCheck(private val app: AbiCoachApp) {
         titles.forEach { (key, _) -> set(key, CheckState.WAIT) }
 
         set("key", CheckState.RUN)
-        val keyError = if (app.ai.hasGemini) app.ai.gemini.checkKey() else "Es ist kein Schlüssel eingetragen."
+        var keyError = if (app.ai.hasGemini) app.ai.gemini.checkKey() else "Es ist kein Schlüssel eingetragen."
+        if (keyError != null && isNetwork(keyError)) {
+            // A lost connection often comes back within seconds.
+            kotlinx.coroutines.delay(3_000)
+            keyError = app.ai.gemini.checkKey()
+        }
         if (keyError != null) {
-            set("key", CheckState.FAIL, keyError)
-            titles.drop(1).forEach { (key, _) -> set(key, CheckState.WARN, "Übersprungen, solange der Schlüssel nicht funktioniert.") }
+            val network = isNetwork(keyError)
+            set("key", CheckState.FAIL, if (network) NETWORK_HELP else keyError)
+            titles.drop(1).forEach { (key, _) -> set(key, CheckState.WARN, if (network) "Übersprungen – zuerst muss die Verbindung zu Google stehen." else "Übersprungen, solange der Schlüssel nicht funktioniert.") }
             return
         }
         set("key", CheckState.OK, "Der Schlüssel funktioniert.")
@@ -63,18 +71,53 @@ class SystemCheck(private val app: AbiCoachApp) {
         val coach = lines["coach"]?.state
         if (coach == CheckState.WAIT || coach == CheckState.RUN) set("coach", CheckState.WARN, "Nicht geprüft, weil der Prüfer nicht antwortet.")
         guarded("memory") { checkMemory() }
+        val dns = app.dns
+        if (dns.fallbacks > 0 || dns.lastProblem != null) {
+            set(
+                "net",
+                CheckState.WARN,
+                "Die Namensauflösung deines Handys hat zwischendurch versagt (${dns.lastProblem ?: "unbekannt"}). " +
+                    "Die App hat ${dns.fallbacks}× Ersatzwege genutzt. Wenn das oft passiert: " + TIPS,
+            )
+        } else {
+            set("net", CheckState.OK, "Stabil – keine Aussetzer.")
+        }
     }
+
+    private fun isNetwork(message: String): Boolean =
+        listOf("resolve host", "Keine Verbindung", "Netzwerkfehler", "timeout", "timed out", "Unable to", "failed to connect", "UnknownHost").any {
+            message.contains(it, ignoreCase = true)
+        }
 
     private suspend fun <T> guarded(key: String, block: suspend () -> T?): T? {
         set(key, CheckState.RUN)
-        return try {
-            block()
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            set(key, CheckState.FAIL, e.message ?: e.javaClass.simpleName)
-            null
+        repeat(2) { attempt ->
+            try {
+                return block()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                val message = e.message ?: e.javaClass.simpleName
+                val network = (e as? AiException)?.isNetwork == true || isNetwork(message)
+                if (network && attempt == 0) {
+                    // One more try after a short pause: a weak network or a DNS hiccup often passes.
+                    set(key, CheckState.RUN, "Keine Verbindung – neuer Versuch …")
+                    kotlinx.coroutines.delay(3_000)
+                } else {
+                    set(
+                        key,
+                        CheckState.FAIL,
+                        when {
+                            network -> NETWORK_HELP
+                            (e as? AiException)?.isOverloaded == true -> "Google ist gerade überlastet (${message.take(80)}). Das ist vorübergehend – die App weicht beim Üben automatisch auf ein anderes Modell aus."
+                            else -> message
+                        },
+                    )
+                    return null
+                }
+            }
         }
+        return null
     }
 
     private suspend fun checkBrain(): Boolean {
@@ -121,9 +164,10 @@ class SystemCheck(private val app: AbiCoachApp) {
         val start = System.currentTimeMillis()
         try {
             ear.connect()
-            val first = waitFor(events, 12_000) { it is LiveEvent.Ready || it is LiveEvent.Failed }
+            val first = waitFor(events, 25_000) { it is LiveEvent.Ready || it is LiveEvent.Failed }
             if (first !is LiveEvent.Ready) {
-                set("ear", CheckState.FAIL, (first as? LiveEvent.Failed)?.message ?: "Keine Verbindung innerhalb von 12 Sekunden.")
+                val message = (first as? LiveEvent.Failed)?.message
+                set("ear", CheckState.FAIL, if (message == null || isNetwork(message)) NETWORK_HELP else message)
                 return false
             }
             if (speech == null) {
@@ -172,9 +216,10 @@ class SystemCheck(private val app: AbiCoachApp) {
         val start = System.currentTimeMillis()
         try {
             agent.connect()
-            val ready = waitFor(events, 12_000) { it is LiveEvent.Ready || it is LiveEvent.Failed }
+            val ready = waitFor(events, 25_000) { it is LiveEvent.Ready || it is LiveEvent.Failed }
             if (ready !is LiveEvent.Ready) {
-                set("examiner", CheckState.FAIL, (ready as? LiveEvent.Failed)?.message ?: "Keine Verbindung zum Prüfer innerhalb von 12 Sekunden.")
+                val message = (ready as? LiveEvent.Failed)?.message
+                set("examiner", CheckState.FAIL, if (message == null || isNetwork(message)) NETWORK_HELP else message)
                 return null
             }
             val connected = seconds(start)
@@ -237,6 +282,14 @@ class SystemCheck(private val app: AbiCoachApp) {
             }
             found
         }
+
+    companion object {
+        private const val TIPS =
+            "1. WLAN aus- und wieder einschalten oder mobile Daten testen. 2. Einstellungen → Netzwerk → „Privates DNS“ auf „Automatisch“. " +
+                "3. VPN oder Werbeblocker kurz ausschalten. 4. Im Schul-WLAN ist Google-KI manchmal gesperrt – dann mobile Daten nutzen."
+
+        const val NETWORK_HELP = "Keine Verbindung zu Google: Das Handy findet den Server gerade nicht. $TIPS"
+    }
 
     private fun drain(events: Channel<LiveEvent>) {
         while (events.tryReceive().isSuccess) {
