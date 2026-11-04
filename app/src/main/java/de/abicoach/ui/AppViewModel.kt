@@ -754,6 +754,17 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         de.abicoach.session.AnalysisScheduler.enqueue(app, id)
     }
 
+    /** Stops a running evaluation – the background job and the work in the cloud. The session stays and can be evaluated later. */
+    fun cancelAnalysis(id: String) {
+        tap()
+        de.abicoach.session.AnalysisScheduler.cancel(app, id)
+        app.analysis.cancel(id)
+        readyDebrief = null
+        viewModelScope.launch(Dispatchers.IO) { runCatching { de.abicoach.session.CloudAnalysis.cancel(app, id) } }
+        notice = "Auswertung abgebrochen. Die Sitzung bleibt gespeichert – du kannst sie jederzeit über „Zuletzt“ auswerten."
+        if (nav.current == Screen.Analyzing) nav.pop()
+    }
+
     fun openAnalysis(id: String) {
         nav.push(Screen.Analyzing)
         val status = app.analysis.status.value

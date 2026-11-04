@@ -144,6 +144,9 @@ class Settings(context: Context) {
     /** Prepares the next exam text in the background so that "Los geht's" starts at once. */
     var prefetchMaterial by BoolPref("prefetch_material", true)
 
+    /** The evaluation runs in Google's cloud: it goes on when the app is closed or the phone is off. */
+    var cloudAnalysis by BoolPref("cloud_analysis", true)
+
     // ---------- Look and feel ----------
 
     var themeMode: ThemeMode

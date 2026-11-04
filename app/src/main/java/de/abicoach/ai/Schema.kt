@@ -45,6 +45,28 @@ sealed class Sch {
         return o
     }
 
+    /** Standard JSON Schema (lower-case types), for the `response_format` of the Interactions API. */
+    fun jsonSchema(): JSONObject {
+        val o = JSONObject()
+        when (this) {
+            is Str -> {
+                o.put("type", "string")
+                enum?.let { o.put("enum", JSONArray(it)) }
+            }
+            is Integer -> o.put("type", "integer")
+            is Num -> o.put("type", "number")
+            is Bool -> o.put("type", "boolean")
+            is Arr -> o.put("type", "array").put("items", items.jsonSchema())
+            is Obj -> {
+                val properties = JSONObject()
+                props.forEach { (k, v) -> properties.put(k, v.jsonSchema()) }
+                o.put("type", "object").put("properties", properties).put("required", JSONArray(props.map { it.first }))
+            }
+        }
+        description?.let { o.put("description", it) }
+        return o
+    }
+
     /** A readable outline of the expected JSON, used when a model has to be asked for JSON in plain text. */
     fun outline(indent: String = ""): String =
         when (this) {

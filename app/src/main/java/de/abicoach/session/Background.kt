@@ -163,12 +163,31 @@ class AnalysisCenter {
     fun consumeFinished() {
         if (_status.value.finishedId != null) _status.value = AnalysisStatus()
     }
+
+    /** The student stopped the evaluation. */
+    fun cancel(id: String) {
+        if (_status.value.id == id || _status.value.id == null) _status.value = AnalysisStatus()
+    }
 }
 
 /** Evaluates a session and folds the result into the profile, the Abi-Weg and the vocabulary. */
 object AnalysisRunner {
     suspend fun run(app: AbiCoachApp, record: SessionRecord, onProgress: (String) -> Unit): Debrief {
-        val graded = Analyzer(app).analyze(record, onProgress)
+        val graded =
+            if (app.settings.cloudAnalysis || app.cloudJobs.get(record.id) != null) {
+                try {
+                    CloudAnalysis.run(app, record, onProgress)
+                } catch (e: AiException) {
+                    if (!e.isPermanent) throw e
+                    // The cloud way does not work with this key or model: grade directly instead.
+                    app.cloudJobs.remove(record.id)
+                    onProgress("Cloud-Auswertung nicht verfügbar – werte direkt aus …")
+                    app.pendingNotice = "Die Auswertung lief diesmal nicht in der Cloud (${e.message?.take(120)}), sondern direkt über dein Handy."
+                    Analyzer(app).analyze(record, onProgress)
+                }
+            } else {
+                Analyzer(app).analyze(record, onProgress)
+            }
         // The comparison with earlier sessions is made afterwards: the grader itself never sees earlier points.
         val debrief = graded.copy(progress = runCatching { ProgressMaker.make(app, record, graded) }.getOrNull())
         app.store.save(record.copy(debrief = debrief))
@@ -224,6 +243,21 @@ object AnalysisScheduler {
                 .build()
         WorkManager.getInstance(context).enqueueUniqueWork("analyze-$id", ExistingWorkPolicy.REPLACE, request)
     }
+
+    /** Picks up an evaluation that is still running in the cloud (a worker that already runs is kept). */
+    fun resume(context: Context, id: String) {
+        val request =
+            OneTimeWorkRequestBuilder<AnalysisWorker>()
+                .setInputData(Data.Builder().putString(AnalysisWorker.KEY_ID, id).build())
+                .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+                .setBackoffCriteria(BackoffPolicy.LINEAR, 20, TimeUnit.SECONDS)
+                .build()
+        WorkManager.getInstance(context).enqueueUniqueWork("analyze-$id", ExistingWorkPolicy.KEEP, request)
+    }
+
+    fun cancel(context: Context, id: String) {
+        WorkManager.getInstance(context).cancelUniqueWork("analyze-$id")
+    }
 }
 
 /**
@@ -232,7 +266,15 @@ object AnalysisScheduler {
  */
 class AnalysisWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun getForegroundInfo(): ForegroundInfo =
-        Notifications.foreground(applicationContext, "AbiCoach wertet deine Sitzung aus", "Die KI hört zu und bewertet nach dem NRW-Raster …")
+        Notifications.foreground(
+            applicationContext,
+            "AbiCoach wertet deine Sitzung aus",
+            if ((applicationContext as AbiCoachApp).settings.cloudAnalysis) {
+                "Die Bewertung läuft in Googles Cloud – du kannst die App schließen, das Ergebnis kommt trotzdem."
+            } else {
+                "Die KI hört zu und bewertet nach dem NRW-Raster …"
+            },
+        )
 
     override suspend fun doWork(): Result {
         val app = applicationContext as AbiCoachApp
@@ -260,9 +302,13 @@ class AnalysisWorker(context: Context, params: WorkerParameters) : CoroutineWork
             Result.success()
         } catch (e: CancellationException) {
             throw e
+        } catch (e: CloudPending) {
+            // Still running in the cloud: look again in a little while (also when the app is closed).
+            app.analysis.progress(id, "Die Bewertung läuft noch in Googles Cloud – das Ergebnis wird gleich abgeholt …")
+            Result.retry()
         } catch (e: Exception) {
             val temporary = e is IOException || (e as? AiException)?.isTransient == true
-            if (temporary && runAttemptCount < 3) {
+            if (temporary && runAttemptCount < 6) {
                 app.analysis.progress(id, "Die Verbindung wackelt – neuer Versuch gleich …")
                 Result.retry()
             } else {

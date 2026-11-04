@@ -688,6 +688,23 @@ fun AnalyzingScreen(vm: AppViewModel) {
     val status by vm.app.analysis.status.collectAsState()
     val context = androidx.compose.ui.platform.LocalContext.current
     var asked by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    var confirmCancel by remember { mutableStateOf(false) }
+    val cloud = vm.app.settings.cloudAnalysis
+    if (confirmCancel) {
+        PopUp(
+            title = "Auswertung abbrechen?",
+            description = "Die Bewertung wird gestoppt, auch in der Cloud. Deine Aufnahme und die Mitschrift bleiben gespeichert – du kannst die Sitzung später jederzeit auswerten.",
+            confirmText = "Abbrechen",
+            onConfirm = {
+                confirmCancel = false
+                val running = status.id
+                if (running != null) vm.cancelAnalysis(running) else vm.nav.pop()
+            },
+            onDismiss = { confirmCancel = false },
+            cancelText = "Weiter auswerten",
+            confirmColor = red,
+        )
+    }
     val permission = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { }
     // Android 13+: the "Auswertung fertig" notification needs a one-time permission.
     androidx.compose.runtime.LaunchedEffect(Unit) {
@@ -706,13 +723,29 @@ fun AnalyzingScreen(vm: AppViewModel) {
         } else {
             LoadingCard(
                 status.text.ifBlank { "Bitte warten …" },
-                detail = "Die KI hört deine Aufnahme an und bewertet nach dem NRW-Raster. Meist 30–90 Sekunden.",
+                detail = "Die KI hört deine Aufnahme an und bewertet nach dem NRW-Raster. Meist 1–2 Minuten.",
             )
             AbiCard {
-                CardTitle("Du musst nicht warten", icon = R.drawable.notifications_active_24dp, iconTint = green)
-                BodyText("Die Auswertung läuft im Hintergrund weiter, auch wenn du die App schließt oder das Handy sperrst. Sobald sie fertig ist, bekommst du eine Benachrichtigung.")
+                CardTitle(if (cloud) "Läuft in der Cloud weiter" else "Du musst nicht warten", icon = R.drawable.notifications_active_24dp, iconTint = green)
+                BodyText(
+                    if (cloud) {
+                        "Die Bewertung läuft bei Google in der Cloud – auch wenn du die App schließt, das Handy sperrst oder kurz offline bist. Sobald sie fertig ist, holt die App das Ergebnis ab und meldet sich."
+                    } else {
+                        "Die Auswertung läuft im Hintergrund weiter, auch wenn du die App schließt oder das Handy sperrst. Sobald sie fertig ist, bekommst du eine Benachrichtigung."
+                    },
+                )
                 Gap(8.dp)
                 ActionButton("Weiter in der App stöbern", R.drawable.route_24dp, accent, { vm.tap(); vm.nav.openTab(Tab.WEG) }, container = MaterialTheme.colorScheme.background, modifier = Modifier.testTag("analyze_background"))
+                Gap(8.dp)
+                ActionButton(
+                    "Auswertung abbrechen",
+                    R.drawable.close_24dp,
+                    red,
+                    { vm.tap(); confirmCancel = true },
+                    subtitle = "Die Sitzung bleibt gespeichert – du kannst sie später auswerten.",
+                    container = MaterialTheme.colorScheme.background,
+                    modifier = Modifier.testTag("analyze_cancel"),
+                )
             }
         }
         AbiCard {

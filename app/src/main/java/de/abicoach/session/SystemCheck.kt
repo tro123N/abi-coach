@@ -22,6 +22,7 @@ class SystemCheck(private val app: AbiCoachApp) {
         listOf(
             "key" to "Google-Schlüssel",
             "brain" to "Bewertung und Aufgaben",
+            "cloud" to "Auswertung in der Cloud",
             "fast" to "Fehlerprüfung beim Sprechen",
             "tts" to "Vorlesen",
             "ear" to "Wortgetreue Mitschrift",
@@ -63,6 +64,7 @@ class SystemCheck(private val app: AbiCoachApp) {
         set("key", CheckState.OK, "Der Schlüssel funktioniert.")
 
         guarded("brain") { checkBrain() }
+        guarded("cloud") { checkCloud() }
         guarded("fast") { checkFast() }
         var speech: ByteArray? = null
         guarded("tts") { checkTts()?.also { speech = it } }
@@ -130,6 +132,34 @@ class SystemCheck(private val app: AbiCoachApp) {
         } else {
             set("brain", CheckState.OK, "$model antwortet (${seconds(start)}).")
         }
+        return true
+    }
+
+    /** A tiny job in Google's cloud (background mode): started, then fetched again – like the real evaluation. */
+    private suspend fun checkCloud(): Boolean {
+        val start = System.currentTimeMillis()
+        val job =
+            try {
+                app.ai.startCloudQuick("Answer with the single word: ready")
+            } catch (e: AiException) {
+                if (!e.isPermanent) throw e
+                set("cloud", CheckState.WARN, "Für deinen Schlüssel nicht verfügbar (${e.message?.take(90)}). Die App wertet dann direkt über dein Handy aus – das klappt auch, nur muss die App dafür eine Weile laufen.")
+                return true
+            }
+        while (System.currentTimeMillis() - start < 45_000) {
+            kotlinx.coroutines.delay(1_500)
+            val state = app.ai.gemini.cloudState(job.id)
+            if (state.done) {
+                set("cloud", CheckState.OK, "Funktioniert (${seconds(start)}): Die Auswertung läuft bei Google weiter, auch wenn du die App schließt.")
+                return true
+            }
+            if (!state.running) {
+                set("cloud", CheckState.WARN, "Der Cloud-Auftrag endete mit „${state.status}“ ${state.error}. Die App wertet dann direkt aus.".trim())
+                return true
+            }
+        }
+        app.ai.gemini.cancelCloud(job.id)
+        set("cloud", CheckState.WARN, "Gestartet, aber nach 45 s noch nicht fertig – Google ist gerade langsam. Die Auswertung klappt trotzdem, sie dauert nur länger.")
         return true
     }
 

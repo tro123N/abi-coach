@@ -181,6 +181,12 @@ fun SettingsScreen(vm: AppViewModel) {
                 settings.uploadAudio,
                 { settings.uploadAudio = it },
             )
+            SwitchRow(
+                "Auswertung in der Cloud",
+                "Die Bewertung läuft bei Google weiter, auch wenn du die App schließt oder das Handy sperrst. Die App holt das Ergebnis ab, sobald sie wieder online ist.",
+                settings.cloudAnalysis,
+                { settings.cloudAnalysis = it },
+            )
             SwitchRow("Mitschrift beim Vortrag zeigen", "Im Gespräch wird sie immer gezeigt.", settings.showTranscript, { settings.showTranscript = it })
             SwitchRow(
                 "Flüstern auch hörbar",

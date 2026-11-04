@@ -261,6 +261,136 @@ class GeminiRest(private val http: OkHttpClient, private val apiKey: () -> Strin
             }
         }
 
+    // ---------- Work that runs in Google's cloud (Interactions API, background mode) ----------
+
+    /** State of a background job: "in_progress", "completed", "failed", "cancelled" … and, when done, the answer text. */
+    data class CloudState(val status: String, val text: String, val error: String) {
+        val running: Boolean get() = status == "in_progress" || status.isBlank()
+        val done: Boolean get() = status == "completed"
+    }
+
+    /** Models whose background jobs do not accept a separate system instruction: it goes into the input instead. */
+    private val systemInInput = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
+    /**
+     * Starts a model call that runs in the cloud and returns its id at once. It keeps running when the app is closed or
+     * the phone is off; [cloudState] fetches the result later. [parts] use the generateContent format (text, fileData).
+     */
+    suspend fun startCloud(model: String, system: String, parts: List<JSONObject>, schema: Sch?, thinking: String? = null): String {
+        val clean = model.removePrefix("models/")
+        if (system.isNotBlank() && clean !in systemInInput) {
+            try {
+                return startCloudOnce(clean, system, parts, schema, thinking, separateSystem = true)
+            } catch (e: GeminiException) {
+                if (e.code != 400 || !(e.message ?: "").contains("system", ignoreCase = true)) throw e
+                systemInInput += clean
+            }
+        }
+        return startCloudOnce(clean, system, parts, schema, thinking, separateSystem = false)
+    }
+
+    private suspend fun startCloudOnce(model: String, system: String, parts: List<JSONObject>, schema: Sch?, thinking: String?, separateSystem: Boolean): String =
+        withRetry(2) {
+            withContext(Dispatchers.IO) {
+                val input = JSONArray()
+                if (!separateSystem && system.isNotBlank()) input.put(JSONObject().put("type", "text").put("text", "Anweisungen:\n$system"))
+                parts.forEach { input.put(interactionPart(it)) }
+                val body = JSONObject().put("model", model).put("input", input).put("background", true).put("store", true)
+                if (separateSystem && system.isNotBlank()) body.put("system_instruction", system)
+                if (schema != null) {
+                    body.put("response_format", JSONObject().put("type", "text").put("mime_type", "application/json").put("schema", schema.jsonSchema()))
+                }
+                if (thinking != null) body.put("generation_config", JSONObject().put("thinking_level", thinking))
+                val request =
+                    Request.Builder()
+                        .url("$base/interactions")
+                        .header("x-goog-api-key", apiKey())
+                        .header("Api-Revision", API_REVISION)
+                        .post(body.toString().toRequestBody(jsonType))
+                        .build()
+                execute(request) { root -> root.optString("id").ifBlank { throw GeminiException("Google hat keine Auftragsnummer geschickt", 500) } }
+            }
+        }
+
+    /** Where a background job stands; the text of the model's answer once it is completed. */
+    suspend fun cloudState(id: String): CloudState =
+        withRetry(2) {
+            withContext(Dispatchers.IO) {
+                val request =
+                    Request.Builder()
+                        .url("$base/interactions/$id")
+                        .header("x-goog-api-key", apiKey())
+                        .header("Api-Revision", API_REVISION)
+                        .get()
+                        .build()
+                execute(request) { root -> parseInteraction(root) }
+            }
+        }
+
+    /** Stops a background job (best effort: it may already be finished). */
+    suspend fun cancelCloud(id: String) {
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val request =
+                    Request.Builder()
+                        .url("$base/interactions/$id/cancel")
+                        .header("x-goog-api-key", apiKey())
+                        .header("Api-Revision", API_REVISION)
+                        .post("{}".toRequestBody(jsonType))
+                        .build()
+                http.newCall(request).execute().use { }
+            }
+        }
+    }
+
+    private fun parseInteraction(root: JSONObject): CloudState {
+        val text = StringBuilder()
+        val steps = root.optJSONArray("steps")
+        if (steps != null) {
+            for (i in 0 until steps.length()) {
+                val step = steps.optJSONObject(i) ?: continue
+                if (step.optString("type") != "model_output") continue
+                val content = step.optJSONArray("content") ?: continue
+                for (j in 0 until content.length()) {
+                    val c = content.optJSONObject(j) ?: continue
+                    if (c.optString("type") == "text") text.append(c.optString("text"))
+                }
+            }
+        }
+        // The older answer format ("outputs") just in case.
+        if (text.isEmpty()) {
+            root.optJSONArray("outputs")?.let { outputs ->
+                for (i in 0 until outputs.length()) {
+                    val o = outputs.optJSONObject(i) ?: continue
+                    if (o.optString("type") == "text") text.append(o.optString("text"))
+                }
+            }
+        }
+        val errors =
+            root.optJSONArray("errors")?.let { e -> (0 until e.length()).mapNotNull { e.optJSONObject(it)?.optString("message")?.ifBlank { null } }.joinToString("; ") }.orEmpty()
+        return CloudState(root.optString("status"), text.toString(), errors)
+    }
+
+    /** generateContent parts → Interactions API content (text, audio/image/video/document by URI or inline). */
+    private fun interactionPart(p: JSONObject): JSONObject {
+        fun kind(mime: String): String =
+            when {
+                mime.startsWith("audio/") -> "audio"
+                mime.startsWith("image/") -> "image"
+                mime.startsWith("video/") -> "video"
+                else -> "document"
+            }
+        p.optJSONObject("fileData")?.let { f ->
+            val mime = f.optString("mimeType")
+            return JSONObject().put("type", kind(mime)).put("uri", f.optString("fileUri")).put("mime_type", mime)
+        }
+        p.optJSONObject("inlineData")?.let { d ->
+            val mime = d.optString("mimeType")
+            return JSONObject().put("type", kind(mime)).put("data", d.optString("data")).put("mime_type", mime)
+        }
+        return JSONObject().put("type", "text").put("text", p.optString("text"))
+    }
+
     /** Returns null when the key works, otherwise a readable error. */
     suspend fun checkKey(): String? =
         withContext(Dispatchers.IO) {
@@ -299,6 +429,9 @@ class GeminiRest(private val http: OkHttpClient, private val apiKey: () -> Strin
     }
 
     companion object {
+        /** The schema version of the Interactions API the app speaks ("steps" in the answer). */
+        const val API_REVISION = "2026-05-20"
+
         /** Accepts JSON even if the model wrapped it in a code fence or added text around it. */
         fun parseJsonLoose(text: String): JSONObject {
             val start = text.indexOf('{')

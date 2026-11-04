@@ -69,6 +69,10 @@ class AbiCoachApp : Application() {
     lateinit var insights: de.abicoach.learn.InsightStore
         private set
 
+    /** Evaluations that run in Google's cloud and are not picked up yet. */
+    lateinit var cloudJobs: de.abicoach.session.CloudJobStore
+        private set
+
     /** A message from background work (e.g. "Gemini hat übernommen") that the app shows once. */
     @Volatile var pendingNotice: String? = null
 
@@ -104,6 +108,7 @@ class AbiCoachApp : Application() {
         dossiers = de.abicoach.memory.DossierStore(this)
         errorMemory = de.abicoach.learn.ErrorMemoryStore(this)
         insights = de.abicoach.learn.InsightStore(this)
+        cloudJobs = de.abicoach.session.CloudJobStore(this)
         course = CourseContext(memory, Retriever(memory, ai), settings, profiles, dossiers)
         feedback = Feedback(this, { settings.sound }, { settings.vibration })
         path = PathStore(this)
@@ -139,6 +144,8 @@ class AbiCoachApp : Application() {
         resumeReading()
         // Renews dossiers whose material changed (the job checks this itself and is cheap when nothing changed).
         if (settings.geminiKey.isNotBlank()) de.abicoach.memory.DossierScheduler.kick(this)
+        // Evaluations that went on in the cloud while the app was closed: fetch their results.
+        if (settings.geminiKey.isNotBlank()) cloudJobs.all().forEach { de.abicoach.session.AnalysisScheduler.resume(this, it.sessionId) }
     }
 
     /** Continues reading material that is not finished yet (e.g. after a restart or a new key). */

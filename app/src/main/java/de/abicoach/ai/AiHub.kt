@@ -163,6 +163,29 @@ class AiHub(private val http: OkHttpClient, private val settings: Settings) {
             "${pretty(model)} ist für deinen Schlüssel gerade nicht nutzbar (${e.message}). ${pretty(settings.geminiTextModel)} hat übernommen – etwas weniger genau."
         }
 
+    /** A cloud job of the brain (grading): the job id and the model that took it. */
+    data class CloudJobStart(val id: String, val model: String)
+
+    /**
+     * Starts a grading job in Google's cloud (background interaction) with the brain; if it is overloaded or not
+     * usable, with the normal model. The phone can be switched off while it runs.
+     */
+    suspend fun startCloudBrain(system: String, parts: List<JSONObject>, schema: Sch): CloudJobStart {
+        val primary = bestGemini
+        val fallback = settings.geminiTextModel
+        return try {
+            CloudJobStart(gemini.startCloud(primary, system, parts, schema), primary)
+        } catch (e: AiException) {
+            if (primary == fallback || !shouldFallBack(primary, e)) throw e
+            lastNotice = fallbackNotice(primary, e)
+            CloudJobStart(gemini.startCloud(fallback, system, parts, schema), fallback)
+        }
+    }
+
+    /** A tiny cloud job with the quick model (system test). */
+    suspend fun startCloudQuick(prompt: String): CloudJobStart =
+        CloudJobStart(gemini.startCloud(settings.geminiFastModel, "", listOf(GeminiRest.textPart(prompt)), null), settings.geminiFastModel)
+
     private suspend fun geminiJson(
         primary: String,
         fallback: String,

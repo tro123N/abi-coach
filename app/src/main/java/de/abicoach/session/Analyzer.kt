@@ -161,26 +161,10 @@ class Analyzer(private val app: AbiCoachApp) {
     suspend fun analyze(record: SessionRecord, onProgress: (String) -> Unit): Debrief {
         val hub = app.ai
         onProgress("Sammle dein Kursmaterial zum Thema …")
-        val courseContext = if (record.topicId >= 0) runCatching { app.course.forTopic(record.topicId, maxChars = 4_000) }.getOrDefault("") else ""
+        val courseContext = courseContext(app, record)
         val teacherNotes = app.course.teacherNotes()
-        val profileNote = profileNote()
-
-        val audioParts = mutableListOf<JSONObject>()
-        if (app.settings.uploadAudio && hub.hasGemini) {
-            for (part in listOf(1, 2, 0)) {
-                val file = app.store.audioFile(record.id, part)
-                if (!file.exists() || file.length() < 64_000) continue
-                val label = when (part) { 1 -> "Teil 1"; 2 -> "Teil 2"; else -> "Training" }
-                onProgress("Lade die Aufnahme hoch ($label) …")
-                try {
-                    val uri = hub.gemini.uploadFile(file, "audio/wav", "abicoach-${record.id}-$part")
-                    audioParts += GeminiRest.textPart("Audioaufnahme des Prüflings ($label), nur sein Mikrofon:")
-                    audioParts += GeminiRest.filePart("audio/wav", uri)
-                } catch (e: Exception) {
-                    onProgress("Aufnahme übersprungen: ${e.message}")
-                }
-            }
-        }
+        val profileNote = profileNote(app)
+        val audioParts = uploadAudio(app, record, onProgress)
 
         var listening: JSONObject? = null
         var listenedBy = ""
@@ -200,9 +184,8 @@ class Analyzer(private val app: AbiCoachApp) {
         val context = Prompts.analysisContext(record, courseContext, teacherNotes, listened, profileNote, app.insights.knownTexts())
         val answer = hub.brainJson(Prompts.ANALYSIS_SYSTEM, context, Prompts.analysisSchema)
         val parsed = Prompts.parseDebrief(answer.json, record.studentText, listening != null, listening, answer.by, listenedBy)
-        val goalIds = record.goals.map { it.id }.toSet()
-        val first = parsed.copy(goalResults = parsed.goalResults.filter { it.id in goalIds })
-        if (!needsSecondOpinion(record)) return first
+        val first = keepOwnGoals(record, parsed)
+        if (!needsSecondOpinion(app, record)) return first
         // Like the committee in the Abitur: an independent second grading, the result is the mean of both.
         onProgress("Zweitbewertung: eine zweite Prüferin bewertet unabhängig …")
         return try {
@@ -217,57 +200,92 @@ class Analyzer(private val app: AbiCoachApp) {
         }
     }
 
-    /** Sessions that weigh much in the profile and are long enough for a fair second look. */
-    private fun needsSecondOpinion(record: SessionRecord): Boolean {
-        val words = record.studentText.split(Regex("\\s+")).count { it.isNotBlank() }
-        if (words < 150 || !app.ai.hasGemini) return false
-        return when (record.kind) {
-            de.abicoach.data.SessionKind.SIMULATION, de.abicoach.data.SessionKind.PLACEMENT -> true
-            de.abicoach.data.SessionKind.PART1 -> record.focusTask == 0 && record.retryOf.isBlank()
-            de.abicoach.data.SessionKind.PART2 -> record.durationSec >= 300
-            de.abicoach.data.SessionKind.TRAINING -> false
-        }
-    }
+    companion object {
+        /** What the course says about the topic field of the session (empty for a free session). */
+        suspend fun courseContext(app: AbiCoachApp, record: SessionRecord): String =
+            if (record.topicId >= 0) runCatching { app.course.forTopic(record.topicId, maxChars = 4_000) }.getOrDefault("") else ""
 
-    /** Averages both gradings (points and skills); the reasons of the first grading stay, the second is kept for display. */
-    private fun combine(first: Debrief, o: JSONObject, by: String): Debrief {
-        val inhalt = o.optJSONObject("inhalt")
-        val darstellung = o.optJSONObject("darstellung")
-        val i2 = inhalt?.optInt("points", -1) ?: -1
-        val d2 = darstellung?.optInt("points", -1) ?: -1
-        if (i2 !in 0..15 || d2 !in 0..15) return first
-        val total2 = Math.round(0.4 * i2 + 0.6 * d2).toInt().coerceIn(0, 15)
-        val i = Math.round((first.inhaltPoints + i2) / 2.0).toInt().coerceIn(0, 15)
-        val d = Math.round((first.darstellungPoints + d2) / 2.0).toInt().coerceIn(0, 15)
-        val total = Math.round(0.4 * i + 0.6 * d).toInt().coerceIn(0, 15)
-        val skillsJson = o.optJSONObject("skills") ?: JSONObject()
-        val skills = first.skills.toMutableMap()
-        Skill.entries.forEach { s ->
-            val v = skillsJson.optInt(s.key, -1)
-            // Pronunciation comes from listening to the recording: that measurement stays.
-            if (v in 0..15 && s != Skill.AUSSPRACHE) skills[s] = skills[s]?.let { Math.round((it + v) / 2.0).toInt() } ?: v
+        /** Uploads the recordings of the session (Files API) and returns them as parts for the model. */
+        suspend fun uploadAudio(app: AbiCoachApp, record: SessionRecord, onProgress: (String) -> Unit): List<JSONObject> {
+            val hub = app.ai
+            val audioParts = mutableListOf<JSONObject>()
+            if (!app.settings.uploadAudio || !hub.hasGemini) return audioParts
+            for (part in listOf(1, 2, 0)) {
+                val file = app.store.audioFile(record.id, part)
+                if (!file.exists() || file.length() < 64_000) continue
+                val label = when (part) { 1 -> "Teil 1"; 2 -> "Teil 2"; else -> "Training" }
+                onProgress("Lade die Aufnahme hoch ($label) …")
+                try {
+                    val uri = hub.gemini.uploadFile(file, "audio/wav", "abicoach-${record.id}-$part")
+                    audioParts += GeminiRest.textPart("Audioaufnahme des Prüflings ($label), nur sein Mikrofon:")
+                    audioParts += GeminiRest.filePart("audio/wav", uri)
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    onProgress("Aufnahme übersprungen: ${e.message}")
+                }
+            }
+            return audioParts
         }
-        val reason = listOf(inhalt?.optString("reason").orEmpty(), darstellung?.optString("reason").orEmpty()).filter { it.isNotBlank() }.joinToString(" ").take(500)
-        return first.copy(
-            inhaltPoints = i,
-            darstellungPoints = d,
-            totalPoints = total,
-            skills = skills,
-            secondOpinion = de.abicoach.data.SecondOpinion(i2, d2, total2, by, first.totalPoints, reason),
-        )
-    }
 
-    /**
-     * What the grader may know about the student: only the weak areas (to make the tips personal), never scores.
-     * Earlier points would anchor the new grade; the progress is compared afterwards, outside the grading.
-     */
-    private fun profileNote(): String {
-        val profile = app.profiles.profile.value
-        if (profile.skills.isEmpty()) return ""
-        val weak = profile.levers(3).joinToString(", ") { it.label }
-        val strong = profile.strengths(2).joinToString(", ") { it.label }
-        return "Aus früheren Sitzungen bekannte Schwerpunkte (nur für Hebel und Tipps nutzen, nie für die Punkte): Schwächer: $weak" +
-            if (strong.isNotBlank()) ". Stärker: $strong." else "."
+        /** Only the goal results for goals this session really had. */
+        fun keepOwnGoals(record: SessionRecord, d: Debrief): Debrief {
+            val ids = record.goals.map { it.id }.toSet()
+            return d.copy(goalResults = d.goalResults.filter { it.id in ids })
+        }
+
+        /** Sessions that weigh much in the profile and are long enough for a fair second look. */
+        fun needsSecondOpinion(app: AbiCoachApp, record: SessionRecord): Boolean {
+            val words = record.studentText.split(Regex("\\s+")).count { it.isNotBlank() }
+            if (words < 150 || !app.ai.hasGemini) return false
+            return when (record.kind) {
+                de.abicoach.data.SessionKind.SIMULATION, de.abicoach.data.SessionKind.PLACEMENT -> true
+                de.abicoach.data.SessionKind.PART1 -> record.focusTask == 0 && record.retryOf.isBlank()
+                de.abicoach.data.SessionKind.PART2 -> record.durationSec >= 300
+                de.abicoach.data.SessionKind.TRAINING -> false
+            }
+        }
+
+        /** Averages both gradings (points and skills); the reasons of the first grading stay, the second is kept for display. */
+        fun combine(first: Debrief, o: JSONObject, by: String): Debrief {
+            val inhalt = o.optJSONObject("inhalt")
+            val darstellung = o.optJSONObject("darstellung")
+            val i2 = inhalt?.optInt("points", -1) ?: -1
+            val d2 = darstellung?.optInt("points", -1) ?: -1
+            if (i2 !in 0..15 || d2 !in 0..15) return first
+            val total2 = Math.round(0.4 * i2 + 0.6 * d2).toInt().coerceIn(0, 15)
+            val i = Math.round((first.inhaltPoints + i2) / 2.0).toInt().coerceIn(0, 15)
+            val d = Math.round((first.darstellungPoints + d2) / 2.0).toInt().coerceIn(0, 15)
+            val total = Math.round(0.4 * i + 0.6 * d).toInt().coerceIn(0, 15)
+            val skillsJson = o.optJSONObject("skills") ?: JSONObject()
+            val skills = first.skills.toMutableMap()
+            Skill.entries.forEach { s ->
+                val v = skillsJson.optInt(s.key, -1)
+                // Pronunciation comes from listening to the recording: that measurement stays.
+                if (v in 0..15 && s != Skill.AUSSPRACHE) skills[s] = skills[s]?.let { Math.round((it + v) / 2.0).toInt() } ?: v
+            }
+            val reason = listOf(inhalt?.optString("reason").orEmpty(), darstellung?.optString("reason").orEmpty()).filter { it.isNotBlank() }.joinToString(" ").take(500)
+            return first.copy(
+                inhaltPoints = i,
+                darstellungPoints = d,
+                totalPoints = total,
+                skills = skills,
+                secondOpinion = de.abicoach.data.SecondOpinion(i2, d2, total2, by, first.totalPoints, reason),
+            )
+        }
+
+        /**
+         * What the grader may know about the student: only the weak areas (to make the tips personal), never scores.
+         * Earlier points would anchor the new grade; the progress is compared afterwards, outside the grading.
+         */
+        fun profileNote(app: AbiCoachApp): String {
+            val profile = app.profiles.profile.value
+            if (profile.skills.isEmpty()) return ""
+            val weak = profile.levers(3).joinToString(", ") { it.label }
+            val strong = profile.strengths(2).joinToString(", ") { it.label }
+            return "Aus früheren Sitzungen bekannte Schwerpunkte (nur für Hebel und Tipps nutzen, nie für die Punkte): Schwächer: $weak" +
+                if (strong.isNotBlank()) ". Stärker: $strong." else "."
+        }
     }
 }
 
