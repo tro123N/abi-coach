@@ -174,7 +174,9 @@ object AnalysisRunner {
         app.store.save(record.copy(debrief = debrief))
         app.vocab.addAll(de.abicoach.practice.PracticeFeed.fromDebrief(debrief, record.topicId))
         // A second attempt at the same text counts less for the profile, so it does not inflate the forecast.
-        val weight = record.kind.profileWeight * (if (record.retryOf.isNotBlank()) 0.4 else 1.0)
+        // Two independent gradings that agree make the rating more reliable; a clear disagreement makes it count less.
+        val reliability = debrief.secondOpinion?.let { if (it.agrees) 1.15 else 0.8 } ?: 1.0
+        val weight = (record.kind.profileWeight * (if (record.retryOf.isNotBlank()) 0.4 else 1.0) * reliability).coerceAtMost(1.0)
         val now = System.currentTimeMillis()
         // Content knowledge counts for the topic field of the session (and, in a simulation, for the part-2 topics).
         val topicPoints = debrief.skills[de.abicoach.profile.Skill.SACHWISSEN] ?: debrief.inhaltPoints

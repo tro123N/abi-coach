@@ -155,6 +155,9 @@ class SmokeTest {
         val vm = compose.activity.vm
         ui { vm.nav.openTab(Tab.WEG) }
         shot("abiweg")
+        scrollShot("list_weg", 4, "abiweg_heute_dran")
+        ui { vm.nav.openTab(Tab.TRAINING); vm.nav.openTab(Tab.WEG) }
+        runCatching { compose.onNodeWithTag("list_weg").performScrollToIndex(0) }
         swipeShot("list_weg", "abiweg_weg", 1)
         swipeShot("list_weg", "abiweg_welten", 1)
         swipeShot("list_weg", "abiweg_unten", 3)
@@ -465,8 +468,10 @@ object Demo {
             utterances = utterances,
             interim = if (part == 2) "Well, on the one hand the UK profits from" else "",
             liveErrors = listOf(LiveError("the author describe", "the author describes", "3. Person Singular: -s", "SVA", "major")),
-            lastAlert = LiveError("in the class", "in class", "„in class“ ohne Artikel", "DET", "minor"),
-            alertAt = if (part == 2) System.currentTimeMillis() + 600_000 else 0,
+            lastAlert =
+                if (part == 2) LiveError("in the class", "in class", "„in class“ ohne Artikel", "DET", "minor") else LiveError("the author describe", "the author describes", "3. Person Singular: -s", "SVA", "major", "third person -s"),
+            alertGoal = part == 1,
+            alertAt = System.currentTimeMillis() + 600_000,
             elapsedSec = if (part == 2) 214 else 95,
             micLevel = 0.45f,
             examinerSpeaking = false,

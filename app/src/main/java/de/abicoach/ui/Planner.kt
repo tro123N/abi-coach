@@ -118,7 +118,13 @@ object Planner {
     }
 
     /** One step of the learning brain as a button. */
-    fun recommendation(app: AbiCoachApp, step: PlanStep, feedback: FeedbackMode = app.settings.defaultFeedback): Recommendation {
+    fun recommendation(app: AbiCoachApp, step: PlanStep, defaultFeedback: FeedbackMode = app.settings.defaultFeedback): Recommendation {
+        // Shortly before the exam, whole presentations and conversations are practised under exam conditions.
+        val phase = LearningBrain.phase(app)
+        val examConditions =
+            (phase == de.abicoach.learn.Phase.GENERALPROBE || phase == de.abicoach.learn.Phase.ENDSPURT) &&
+                step.kind in setOf(ActivityKind.PRESENTATION, ActivityKind.CONVERSATION, ActivityKind.REAL_TASK)
+        val feedback = if (examConditions) FeedbackMode.PRUEFUNG else defaultFeedback
         val target =
             when (step.kind) {
                 ActivityKind.PLACEMENT -> Target.Placement
@@ -142,7 +148,8 @@ object Planner {
                 ActivityKind.DRILLS, ActivityKind.VOCAB -> Tint.YELLOW
                 else -> Tint.ACCENT
             }
-        return Recommendation(step.title, step.reason + " · ca. ${step.minutes} Min.", step.kind.icon, tint, target)
+        val conditions = if (examConditions) " · unter Prüfungsbedingungen" else ""
+        return Recommendation(step.title, step.reason + " · ca. ${step.minutes} Min.$conditions", step.kind.icon, tint, target)
     }
 
     fun milestones(app: AbiCoachApp): List<Milestone> {

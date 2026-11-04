@@ -63,8 +63,11 @@ object Reminder {
         val profile = app.profiles.profile.value
         val due = PathEngine.due(worlds, progress).firstOrNull()
         val next = PathEngine.next(worlds, progress, profile)
+        // The step the learning brain computed as the most valuable for today comes first.
+        val best = runCatching { de.abicoach.learn.LearningBrain.plan(app).steps.firstOrNull() }.getOrNull()
         val step =
             when {
+                best != null -> "Heute dran: ${best.title} (ca. ${best.minutes} Min.)" + (due?.let { " · danach auffrischen: ${it.level.title}" } ?: "")
                 due != null -> "Auffrischen: ${due.level.title}"
                 next != null -> "Weiterklettern: ${next.level.title}"
                 else -> Planner.today(app).firstOrNull()?.title ?: "Eine Übung nach Wahl"

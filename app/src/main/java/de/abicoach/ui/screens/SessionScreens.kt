@@ -576,6 +576,9 @@ private fun WhisperBar(state: LiveUiState, mode: FeedbackMode) {
                 color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.75f),
             )
         } else {
+            if (state.alertGoal) {
+                Text("Dein Ziel heute – genau dieser Fehler:", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = if (fresh) ink else accent)
+            }
             Text(
                 "„${alert.quote}“",
                 fontSize = 17.sp,

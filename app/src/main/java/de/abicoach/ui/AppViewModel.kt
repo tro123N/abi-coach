@@ -498,6 +498,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         switchTopic = second,
                         elicit = if (s.feedback != FeedbackMode.PRUEFUNG) app.errorMemory.examinerLines(4) else emptyList(),
                         monologueSec = if (s.isSprint) 0 else 100,
+                        goalPattern = goalPattern(record),
                     ),
                 )
             live = conversation
@@ -532,6 +533,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     wavFile = app.store.audioFile(current.id, 1),
                     checkerContext = "Presentation on the text \"${t.title}\" (${Knowledge.topic(t.topicId)?.english ?: ""})",
                     targetSeconds = target,
+                    goalPattern = goalPattern(current),
                 ),
             )
         live = conversation
@@ -586,6 +588,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                             directed = true,
                             switchTopic = t.part2.getOrNull(1)?.let { "${Knowledge.topic(it.topicId)?.english ?: "another topic field"} – ${it.question}" }.orEmpty(),
                             elicit = if (updated.feedback != FeedbackMode.PRUEFUNG) app.errorMemory.examinerLines(4) else emptyList(),
+                            goalPattern = goalPattern(updated),
                         ),
                     )
                 live = next
@@ -1177,6 +1180,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun joinTech(a: String, b: String): String = listOf(a, b).filter { it.isNotBlank() }.joinToString("\n\n")
+
+    /** The error pattern the student set out to avoid in this session (the live hints give it priority). */
+    private fun goalPattern(record: SessionRecord): String = record.goals.firstOrNull { it.kind == "pattern" }?.target.orEmpty()
 
     /** The exercises of the current speaking training. */
     val drills = mutableStateListOf<Drill>()

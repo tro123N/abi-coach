@@ -70,6 +70,8 @@ data class LiveUiState(
     val lastAlert: LiveError? = null,
     /** Counts the hints, so the screen can tell a new hint from the old one. */
     val alertSeq: Int = 0,
+    /** The current hint is the mistake the student set out to avoid in this session (a session goal). */
+    val alertGoal: Boolean = false,
     val alertAt: Long = 0,
     val elapsedSec: Int = 0,
     val targetSec: Int = 600,
@@ -115,6 +117,8 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
         val elicit: List<String> = emptyList(),
         /** After this many seconds of uninterrupted talking the examiner cuts in (0 = never, e.g. in a sprint). */
         val monologueSec: Int = 100,
+        /** The error pattern (key in the error memory) that is a goal of this session: it gets priority in hints. */
+        val goalPattern: String = "",
     )
 
     data class Result(
@@ -690,9 +694,16 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
 
     private fun ruleKey(e: LiveError): String = ErrorMemoryStore.keyOf(e.category, e.rule)
 
+    /** The mistake belongs to the error pattern the student set out to avoid in this session. */
+    private fun isGoal(e: LiveError): Boolean {
+        val goal = config.goalPattern
+        if (goal.isBlank()) return false
+        return ruleKey(e) == goal || app.errorMemory.matching(e)?.key == goal
+    }
+
     /** Worth an interruption: a serious mistake, one of the student's known patterns, or one that keeps coming back today. */
     private fun coachWorthy(e: LiveError, now: Long): Boolean {
-        if (e.severity == "major" || e.severity == "content") return true
+        if (e.severity == "major" || e.severity == "content" || isGoal(e)) return true
         if (app.errorMemory.isActive(e, now)) return true
         return (synchronized(lock) { sessionRules[ruleKey(e)] } ?: 0) >= 2
     }
@@ -703,8 +714,10 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
         val now = System.currentTimeMillis()
         synchronized(lock) { errors.forEach { e -> val k = ruleKey(e); sessionRules[k] = (sessionRules[k] ?: 0) + 1 } }
         val worthy = errors.filter { coachWorthy(it, now) }
-        val alert = worthy.firstOrNull() ?: errors.first()
-        _state.update { it.copy(lastAlert = alert, alertSeq = it.alertSeq + 1, alertAt = now, diag = it.diag.copy(hints = it.diag.hints + errors.size)) }
+        // The mistake of the session goal comes first: that is what the student is working on today.
+        val goal = errors.firstOrNull { isGoal(it) }
+        val alert = goal ?: worthy.firstOrNull() ?: errors.first()
+        _state.update { it.copy(lastAlert = alert, alertGoal = goal != null, alertSeq = it.alertSeq + 1, alertAt = now, diag = it.diag.copy(hints = it.diag.hints + errors.size)) }
         log("Hinweis: „${alert.quote}“ → „${alert.correction}“" + if (alert.rule.isNotBlank()) " (${alert.rule})" else "")
         if (now - lastBuzzAt > 3_000) {
             lastBuzzAt = now
@@ -712,7 +725,7 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
         }
         if (config.feedback == FeedbackMode.FLUESTERN) whisperAloud(alert, now)
         if (config.feedback == FeedbackMode.COACH && worthy.isNotEmpty()) {
-            val pick = worthy.minByOrNull { severityRank(it.severity) } ?: worthy.first()
+            val pick = goal ?: worthy.minByOrNull { severityRank(it.severity) } ?: worthy.first()
             if (pendingCoach == null) pendingSince = now
             pendingCoach = pick
             diag { it.copy(coachDue = it.coachDue + 1) }

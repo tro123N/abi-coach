@@ -13,6 +13,7 @@ import kotlin.math.ln
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
+import kotlin.math.tanh
 import kotlin.random.Random
 
 /** Where the student is on the way to the exam; the brain plans differently in each phase. */
@@ -566,7 +567,8 @@ object LearningBrain {
         val profile = app.profiles.profile.value
         val current = profile.prognosis() ?: return null
         val history = profile.history.filter { now - it.at <= 45 * DAY }
-        if (history.size < 3) return null
+        // Too early for a trend: fewer than three ratings or all within a few days.
+        if (history.size < 3 || history.last().at - history.first().at < 4 * DAY) return null
         val xs = history.map { (it.at - now) / DAY.toDouble() }
         val ys = history.map { it.total }
         val ws = history.indices.map { 0.5 + it.toDouble() / history.size }
@@ -582,7 +584,10 @@ object LearningBrain {
         // Points that all lie on one day say nothing about a trend.
         val slope = if (den < 0.5) 0.0 else num / den
         val perWeek = (slope * 7).coerceIn(-1.5, 1.5)
-        val gain = (slope * days * 0.6).coerceIn(-3.0, 4.0)
+        // Learning slows down near the top: the trend is halved and flattens out (at most +3.5 or −3 points).
+        val raw = slope * days * 0.5
+        val cap = if (raw >= 0) min(3.5, 15.0 - current.total) else 3.0
+        val gain = if (cap <= 0.0) 0.0 else cap * tanh(raw / cap)
         val points = (current.total + gain).coerceIn(0.0, 15.0)
         val spread = (current.high - current.low) / 2.0 + min(2.0, days / 60.0)
         return Projection(days, points, (points - spread).coerceAtLeast(0.0), (points + spread).coerceAtMost(15.0), perWeek)

@@ -140,7 +140,7 @@ private fun OverviewCard(vm: AppViewModel, profile: Profile) {
                 }
             }
         }
-        if (prognosis != null) ProjectionBlock(vm)
+        if (prognosis != null) ProjectionBlock(vm, showPhase = false)
         Gap(14.dp)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.height(androidx.compose.foundation.layout.IntrinsicSize.Min)) {
             StatTile(days?.toString() ?: "?", if (days == 1L) "Tag bis zum Abi" else "Tage bis zum Abi", Modifier.weight(1f).fillMaxHeight(), icon = R.drawable.event_24dp, color = accent)

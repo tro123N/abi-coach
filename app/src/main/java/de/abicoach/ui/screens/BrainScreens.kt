@@ -131,12 +131,12 @@ fun SecondOpinionLine(d: Debrief) {
 
 /** The phase and the projection to the exam day, for the forecast cards. */
 @Composable
-fun ProjectionBlock(vm: AppViewModel) {
+fun ProjectionBlock(vm: AppViewModel, showPhase: Boolean = true) {
     val app = vm.app
     val profile by app.profiles.profile.collectAsState()
     val projection = remember(profile) { LearningBrain.projection(app) }
     val phase = remember(profile) { LearningBrain.phase(app) }
-    if (projection == null && phase == Phase.START) return
+    if (projection == null && (phase == Phase.START || !showPhase)) return
     Gap(10.dp)
     if (projection != null) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.testTag("projection")) {
@@ -156,7 +156,7 @@ fun ProjectionBlock(vm: AppViewModel) {
             }
         CaptionText("$pace Spanne ${"%.0f".format(projection.low)}–${"%.0f".format(projection.high)} Punkte in ${projection.days} Tagen, wenn du so weitermachst.")
     }
-    CaptionText("Phase: ${phase.label} – ${phase.text}", color = accent)
+    if (showPhase && phase != Phase.START) CaptionText("Phase: ${phase.label} – ${phase.text}", color = accent)
 }
 
 /** What the app has learned about the student (statistics): habits, strengths and what he has overcome. */
