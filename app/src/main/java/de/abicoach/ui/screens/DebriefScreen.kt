@@ -101,6 +101,7 @@ fun DebriefScreen(vm: AppViewModel, id: String) {
             return@DetailScaffold
         }
         SummaryCard(record, d)
+        GoalResultsCard(record, d)
         d.progress?.let { ProgressCard(it, d) }
         if (record.levelId.isNotBlank()) {
             de.abicoach.path.Curriculum.level(record.levelId)?.let { level ->
@@ -113,12 +114,14 @@ fun DebriefScreen(vm: AppViewModel, id: String) {
                 d.levers.forEach { BulletText(it) }
             }
         }
+        NextStepCard(vm)
         if (d.strengths.isNotEmpty()) {
             AbiCard {
                 CardTitle("Das war stark", icon = R.drawable.thumb_up_24dp, iconTint = green)
                 d.strengths.forEach { BulletText(it, bulletColor = green) }
             }
         }
+        ObservationsCard(d)
         if (d.taskReviews.isNotEmpty()) TaskReviewCard(record, d)
         if (record.task != null && record.kind.hasPart1 && d.taskReviews.isNotEmpty()) {
             val weakest = d.taskReviews.minByOrNull { it.points }
@@ -278,6 +281,7 @@ private fun SummaryCard(record: SessionRecord, d: Debrief) {
         Gap(10.dp)
         BarRow("Darstellungsleistung (60 %)", d.darstellungPoints / 15f, "${d.darstellungPoints} P.", pointsColor(d.darstellungPoints.toDouble()))
         if (d.darstellungReason.isNotBlank()) CaptionText(d.darstellungReason, modifier = Modifier.padding(top = 4.dp))
+        SecondOpinionLine(d)
         Gap(10.dp)
         val by =
             listOfNotNull(

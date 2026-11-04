@@ -188,6 +188,13 @@ object AnalysisRunner {
         val words = record.studentText.split(Regex("\\s+")).count { it.isNotBlank() }
         val mistakes = (debrief.errors + record.liveErrors).distinctBy { Prompts.normalize(it.quote) + "|" + Prompts.normalize(it.correction) }
         runCatching { app.errorMemory.ingest(mistakes, record.id, de.abicoach.learn.ErrorMemoryStore.SOURCE_SESSION, record.startedAt, words) }
+        // The learner memory: a habit the student worked on (session goal) and what the grader noticed this time.
+        runCatching {
+            record.goals.filter { it.kind == "habit" && it.target.isNotBlank() }.forEach { g ->
+                debrief.goalResults.firstOrNull { it.id == g.id }?.let { r -> app.insights.resolve(g.target, r.result, now) }
+            }
+            app.insights.add(debrief.observations, now)
+        }
         // The student's good ideas on this topic go into its dossier the next time it is renewed.
         if (record.topicId in 0..13 && app.dossiers.get(record.topicId) == null) de.abicoach.memory.DossierScheduler.kick(app)
         if (record.levelId.isNotBlank()) {

@@ -658,7 +658,7 @@ Lieber umschreiben als ins Deutsche wechseln oder abbrechen.
             id = "t$topicId",
             number = number,
             title = t.short,
-            subtitle = "Themenfeld",
+            subtitle = "Topic field",
             icon = R.drawable.hub_24dp,
             topicId = topicId,
             free = true,
@@ -670,7 +670,7 @@ Lieber umschreiben als ins Deutsche wechseln oder abbrechen.
                         method = "Aus deinem Material",
                         type = LevelType.LEARN,
                         topicId = topicId,
-                        learn = "**${t.german}**\n\nHier zeigt dir die App, was in deinem Material zu diesem Themenfeld steht: wichtige Inhalte und Wortschatz.",
+                        learn = "**${t.english}**\n\nHier zeigt dir die App, was in deinem Material zu diesem Themenfeld steht: wichtige Inhalte und Wortschatz.",
                     ),
                     Level(
                         id = "t$topicId.gespraech",
@@ -681,7 +681,7 @@ Lieber umschreiben als ins Deutsche wechseln oder abbrechen.
                         topicId = topicId,
                         minutes = 8,
                         goal = 10,
-                        learn = "Ein Gespräch wie im zweiten Prüfungsteil zu **${t.german}**. Der Prüfer kennt euer Unterrichtsmaterial und fragt danach.",
+                        learn = "Ein Gespräch wie im zweiten Prüfungsteil zu **${t.english}**. Der Prüfer kennt euer Unterrichtsmaterial und fragt danach.",
                     ),
                     Level(
                         id = "t$topicId.vortrag",
@@ -691,7 +691,7 @@ Lieber umschreiben als ins Deutsche wechseln oder abbrechen.
                         topicId = topicId,
                         minutes = 25,
                         goal = 10,
-                        learn = "Ein neuer Text zu **${t.german}**, passend zu deinem Kurs, mit den drei typischen Aufgaben.",
+                        learn = "Ein neuer Text zu **${t.english}**, passend zu deinem Kurs, mit den drei typischen Aufgaben.",
                     ),
                 ),
         )

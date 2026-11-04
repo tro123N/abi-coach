@@ -3,11 +3,11 @@ package de.abicoach.data
 /** One of the 14 topic fields of the Abiturvorgaben 2027 (Englisch, Grundkurs, NRW). */
 data class TopicField(
     val id: Int,
-    /** Short German name for chips and lists. */
+    /** Short English name for chips and lists. */
     val short: String,
-    /** Full German name as in the Abiturvorgaben. */
+    /** The official German wording of the Abiturvorgaben 2027. */
     val german: String,
-    /** English name for the prompts. */
+    /** The full English name, shown in the app and used in the prompts. */
     val english: String,
 )
 
@@ -20,25 +20,25 @@ object Knowledge {
 
     val TOPICS =
         listOf(
-            TopicField(0, "UK – Wandel & Tradition", "UK: Politik, Kultur, Gesellschaft – zwischen Wandel und Tradition", "The UK: politics, culture and society – between change and tradition"),
-            TopicField(1, "UK – Selbstbild & Empire", "UK: Nationale Selbstkonzepte – koloniales Erbe und europäische Verortung", "The UK: national self-concepts – colonial legacy and its place in Europe"),
-            TopicField(2, "USA – Wandel & Tradition", "USA: Politik, Kultur, Gesellschaft – zwischen Wandel und Tradition", "The USA: politics, culture and society – between change and tradition"),
-            TopicField(3, "USA – Ideale & Realität", "USA: Amerikanische Ideale und Realitäten – Freiheit, Gleichheit, Streben nach Glück", "The USA: American ideals and realities – freedom, equality, the pursuit of happiness"),
-            TopicField(4, "Nigeria", "Nigeria: Politik, Kultur, Gesellschaft – zwischen Wandel und Tradition", "Nigeria: politics, culture and society – between change and tradition"),
-            TopicField(5, "Identität", "Identität: Ambitionen und Hindernisse, Konformität vs. Individualismus", "Identity: ambitions and obstacles, conformity vs. individualism"),
-            TopicField(6, "Vielfalt", "Vielfalt: ethnische, kulturelle, soziale, sexuelle und geschlechtliche Vielfalt", "Diversity: ethnic, cultural, social, sexual and gender diversity"),
-            TopicField(7, "Journalismus", "Medien: Journalismus zwischen Information und Unterhaltung", "Media: journalism between information and entertainment"),
-            TopicField(8, "Soziale Medien", "Medien: soziale Medien und digitale Plattformen – Teilhabe und Manipulation", "Media: social media and digital platforms – participation and manipulation"),
-            TopicField(9, "Literaturformate", "Literatur: klassische und multimodale Literaturformate", "Literature: classic and multimodal literary formats"),
-            TopicField(10, "Globalisierung & Migration", "Globalisierung: Nachhaltigkeit (sozial, ökologisch, wirtschaftlich) und Migration", "Globalisation: sustainability (social, ecological, economic) and migration"),
-            TopicField(11, "Arbeitsmarkt", "Globaler Arbeitsmarkt: Chancengleichheit, Wettbewerb, Kooperation", "The global job market: equal opportunities, competition, cooperation"),
-            TopicField(12, "Fortschritt", "Wissenschaftlicher und technischer Fortschritt: Chancen und Herausforderungen", "Scientific and technological progress: opportunities and challenges"),
-            TopicField(13, "Utopie & Dystopie", "Zukunftsvisionen: utopische und dystopische Narrative", "Visions of the future: utopian and dystopian narratives"),
+            TopicField(0, "UK – Change & Tradition", "Das Vereinigte Königreich: Politik, Kultur, Gesellschaft – zwischen Wandel und Tradition", "The United Kingdom: politics, culture and society – between change and tradition"),
+            TopicField(1, "UK – Self-Concepts & Empire", "Das Vereinigte Königreich: Nationale Selbstkonzepte im Spiegel kolonialen Erbes und europäischer Verortung", "The United Kingdom: national self-concepts in the light of the colonial legacy and its place in Europe"),
+            TopicField(2, "USA – Change & Tradition", "Die Vereinigten Staaten von Amerika: Politik, Kultur, Gesellschaft – zwischen Wandel und Tradition", "The United States of America: politics, culture and society – between change and tradition"),
+            TopicField(3, "USA – Ideals & Realities", "Die Vereinigten Staaten von Amerika: Amerikanische Ideale und Realitäten – Freiheit, Gleichheit und das Streben nach Glück", "The United States of America: American ideals and realities – freedom, equality and the pursuit of happiness"),
+            TopicField(4, "Nigeria", "Eine weitere englischsprachige Bezugskultur: Nigeria – Politik, Kultur, Gesellschaft – zwischen Wandel und Tradition", "Nigeria: politics, culture and society – between change and tradition"),
+            TopicField(5, "Identity", "Das Individuum und die Gesellschaft im Wandel: Fragen der Identität – Ambitionen und Hindernisse, Konformität vs. Individualismus", "The individual and society in transition: questions of identity – ambitions and obstacles, conformity vs. individualism"),
+            TopicField(6, "Diversity", "Das Individuum und die Gesellschaft im Wandel: Chancen und Herausforderungen für die Gesellschaft – ethnische, kulturelle, soziale, sexuelle und geschlechtliche Vielfalt", "The individual and society in transition: opportunities and challenges for society – ethnic, cultural, social, sexual and gender diversity"),
+            TopicField(7, "Journalism", "Medien und Literatur im Wandel: Journalismus im Spannungsfeld von Information und Unterhaltung", "Media and literature in transition: journalism between information and entertainment"),
+            TopicField(8, "Social Media", "Medien und Literatur im Wandel: soziale Medien und digitale Plattformen – Teilhabe und Manipulation", "Media and literature in transition: social media and digital platforms – participation and manipulation"),
+            TopicField(9, "Literary Formats", "Medien und Literatur im Wandel: Möglichkeiten und Herausforderungen klassischer und multimodaler Literaturformate", "Media and literature in transition: possibilities and challenges of classic and multimodal literary formats"),
+            TopicField(10, "Globalisation & Migration", "Welt im Wandel: Chancen und Herausforderungen der Globalisierung – soziale, ökologische und wirtschaftliche Nachhaltigkeit; Migration", "A world in transition: opportunities and challenges of globalisation – social, ecological and economic sustainability; migration"),
+            TopicField(11, "Global Job Market", "Welt im Wandel: der globale Arbeitsmarkt – Chancengleichheit, Wettbewerb und Kooperation", "A world in transition: the global job market – equal opportunities, competition and cooperation"),
+            TopicField(12, "Scientific Progress", "Welt im Wandel: wissenschaftlicher und technischer Fortschritt als Chance und Herausforderung für die Gesellschaft", "A world in transition: scientific and technological progress as an opportunity and a challenge for society"),
+            TopicField(13, "Utopia & Dystopia", "Welt im Wandel: Zukunftsvisionen – utopische und dystopische Narrative", "A world in transition: visions of the future – utopian and dystopian narratives"),
         )
 
     fun topic(id: Int): TopicField? = TOPICS.getOrNull(id)
 
-    fun topicShort(id: Int): String = topic(id)?.short ?: "Gemischt"
+    fun topicShort(id: Int): String = topic(id)?.short ?: "Mixed"
 
     val HALBJAHRE = listOf("EF", "Q1.1", "Q1.2", "Q2.1", "Q2.2", "unbekannt")
 

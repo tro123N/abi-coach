@@ -86,6 +86,7 @@ fun StatsScreen(vm: AppViewModel) {
                             CaptionText("Spanne ${prognosis.lowPoints}–${prognosis.highPoints} · Sicherheit ${(prognosis.confidence * 100).toInt()} %")
                         }
                     }
+                    ProjectionBlock(vm)
                     if (profile.history.size >= 2) {
                         Gap(12.dp)
                         LineChart(
@@ -126,6 +127,7 @@ fun StatsScreen(vm: AppViewModel) {
             }
             item { ReadinessCard(profile) }
         }
+        item { InsightsCard(vm) }
         item { ErrorMemoryCard(vm) }
         item {
             AbiCard {

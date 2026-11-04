@@ -5,10 +5,11 @@ import de.abicoach.R
 import de.abicoach.data.FeedbackMode
 import de.abicoach.data.Knowledge
 import de.abicoach.data.SessionKind
-import de.abicoach.profile.Skill
+import de.abicoach.learn.ActivityKind
+import de.abicoach.learn.LearningBrain
+import de.abicoach.learn.PlanStep
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
-import kotlin.math.roundToInt
 
 /** Where a recommendation leads. */
 sealed interface Target {
@@ -24,6 +25,8 @@ sealed interface Target {
 
     /** The speaking training of the student's own error patterns. */
     data object Drills : Target
+
+    data object Pronunciation : Target
 
     data class Dossier(val topic: Int) : Target
 
@@ -101,95 +104,45 @@ object Planner {
         if (docs.isEmpty()) {
             out += Recommendation("Kursmaterial hochladen", "Schulbuch, Klausuren, Arbeitsblätter – damit alles zu deinem Kurs passt.", R.drawable.cloud_upload_24dp, Tint.YELLOW, Target.Course)
         }
-        if (!profile.placementDone) {
+        if (LearningBrain.phase(app) == de.abicoach.learn.Phase.START) {
             out += Recommendation("Einstufung machen", "12 Minuten: kurzer Vortrag und Gespräch – danach kennt die App deinen Stand.", R.drawable.flag_24dp, Tint.GREEN, Target.Placement)
             return out.take(3)
         }
-
-        // The biggest lever of the profile, turned into the matching exercise.
-        profile.levers(2).forEach { skill ->
-            val score = profile.skills[skill]?.score?.roundToInt()
-            val sub = "Dein größter Hebel: ${skill.label}" + (score?.let { " ($it P.)" } ?: "")
-            out +=
-                when (skill) {
-                    Skill.ZUSAMMENFASSEN -> Recommendation("Aufgabe 1 üben: Zusammenfassen", sub, R.drawable.summarize_24dp, Tint.ACCENT, Target.Setup(SessionSetup.defaults(SessionKind.PART1, 1, feedback)))
-                    Skill.ANALYSE -> Recommendation("Aufgabe 2 üben: Analysieren", sub, R.drawable.insights_24dp, Tint.ACCENT, Target.Setup(SessionSetup.defaults(SessionKind.PART1, 2, feedback)))
-                    Skill.KOMMENTAR -> Recommendation("Aufgabe 3 üben: Kommentieren", sub, R.drawable.rate_review_24dp, Tint.ACCENT, Target.Setup(SessionSetup.defaults(SessionKind.PART1, 3, feedback)))
-                    Skill.AUFGABENBEZUG, Skill.STRUKTUR -> Recommendation("Ganzen Vortrag üben", sub, R.drawable.co_present_24dp, Tint.ACCENT, Target.Setup(SessionSetup.defaults(SessionKind.PART1, 0, feedback)))
-                    Skill.SACHWISSEN -> {
-                        val topic = leastPractisedTopic(app)
-                        Recommendation(
-                            "Gespräch: ${Knowledge.topicShort(topic)}",
-                            sub,
-                            R.drawable.forum_24dp,
-                            Tint.ACCENT,
-                            Target.Setup(SessionSetup.defaults(SessionKind.PART2, 0, feedback).copy(topicChoice = topic)),
-                        )
-                    }
-                    Skill.INTERAKTION, Skill.FLUESSIGKEIT ->
-                        Recommendation("Prüfungsgespräch üben", sub, R.drawable.forum_24dp, Tint.ACCENT, Target.Setup(SessionSetup.defaults(SessionKind.PART2, 0, feedback)))
-                    Skill.WORTSCHATZ, Skill.GRAMMATIK -> {
-                        val categories = topErrorCategories(app, 2)
-                        Recommendation(
-                            "Gesprächstraining mit Coach",
-                            sub + if (categories.isNotEmpty()) " · Fokus: " + categories.joinToString(", ") { Knowledge.categoryLabel(it) } else "",
-                            R.drawable.spellcheck_24dp,
-                            Tint.ACCENT,
-                            Target.Setup(SessionSetup.defaults(SessionKind.TRAINING, 0, FeedbackMode.COACH).copy(focusCategories = categories)),
-                        )
-                    }
-                    Skill.AUSSPRACHE -> Recommendation("Gesprächstraining (Aussprache)", sub, R.drawable.graphic_eq_24dp, Tint.ACCENT, Target.Setup(SessionSetup.defaults(SessionKind.TRAINING, 0, feedback)))
-                }
-        }
-
-        val lastSimulation = sessions.filter { it.kind == SessionKind.SIMULATION && it.debrief != null }.maxOfOrNull { it.startedAt }
-        val daysSince = lastSimulation?.let { (System.currentTimeMillis() - it) / 86_400_000L }
-        if (daysSince == null || daysSince >= 7) {
-            out.add(
-                0,
-                Recommendation(
-                    "Prüfungssimulation",
-                    if (daysSince == null) "Einmal komplett wie im Abi: 30 Min. Vorbereitung, Vortrag, Gespräch." else "Die letzte ist $daysSince Tage her.",
-                    R.drawable.workspace_premium_24dp,
-                    Tint.GREEN,
-                    Target.Setup(SessionSetup.defaults(SessionKind.SIMULATION, 0, feedback)),
-                ),
-            )
-        }
-        // Mistakes that are due again: short, and the most direct way to points in the Darstellungsleistung.
-        val duePatterns = app.errorMemory.due()
-        if (duePatterns.size >= 2) {
-            out.add(
-                minOf(1, out.size),
-                Recommendation(
-                    "Sprech-Training: ${duePatterns.size} Fehler fällig",
-                    "Ca. 5 Min. · z. B. " + duePatterns.take(2).joinToString(", ") { it.title },
-                    R.drawable.spellcheck_24dp,
-                    Tint.YELLOW,
-                    Target.Drills,
-                ),
-            )
-        }
-        // Original exam tasks from the uploaded Abitur material that were not practised yet.
-        val realOpen = de.abicoach.memory.ExamUnits.all(app).count { it.id !in de.abicoach.memory.ExamUnits.used(app) }
-        if (realOpen > 0) {
-            out +=
-                Recommendation(
-                    "Echte Prüfungsaufgabe",
-                    "$realOpen Original-Aufgaben aus deinem Abi-Material – mit Original-Erwartungshorizont",
-                    R.drawable.workspace_premium_24dp,
-                    Tint.GREEN,
-                    Target.Setup(SessionSetup.defaults(SessionKind.PART1, 0, feedback).copy(source = Knowledge.Source.REAL, prepMinutes = 20)),
-                )
-        }
-        val dueCards = app.vocab.due().size
-        if (dueCards >= 5) {
-            out += Recommendation("Wortschatz wiederholen", "$dueCards Karten sind fällig – dauert etwa ${(dueCards + 5) / 6} Min.", R.drawable.note_stack_24dp, Tint.YELLOW, Target.Vocab)
-        }
+        // The learning brain: what brings the most points per minute today.
+        LearningBrain.plan(app).steps.forEach { out += recommendation(app, it, feedback) }
         if (daysUntilExam(app) == null) {
-            out += Recommendation("Prüfungstermin eintragen", "Dann plant die App bis zum Tag der Prüfung.", R.drawable.event_24dp, Tint.NEUTRAL, Target.ExamDate)
+            out += Recommendation("Prüfungstermin eintragen", "Dann plant die App bis zum Tag der Prüfung – mit Generalprobe und Endspurt.", R.drawable.event_24dp, Tint.NEUTRAL, Target.ExamDate)
         }
-        return out.distinctBy { it.title }.take(3)
+        if (sessions.isEmpty() && profile.skills.isEmpty()) return out.take(3)
+        return out.distinctBy { it.title }.take(4)
+    }
+
+    /** One step of the learning brain as a button. */
+    fun recommendation(app: AbiCoachApp, step: PlanStep, feedback: FeedbackMode = app.settings.defaultFeedback): Recommendation {
+        val target =
+            when (step.kind) {
+                ActivityKind.PLACEMENT -> Target.Placement
+                ActivityKind.DRILLS -> Target.Drills
+                ActivityKind.TASK1 -> Target.Setup(SessionSetup.defaults(SessionKind.PART1, 1, feedback))
+                ActivityKind.TASK2 -> Target.Setup(SessionSetup.defaults(SessionKind.PART1, 2, feedback))
+                ActivityKind.TASK3 -> Target.Setup(SessionSetup.defaults(SessionKind.PART1, 3, feedback))
+                ActivityKind.PRESENTATION -> Target.Setup(SessionSetup.defaults(SessionKind.PART1, 0, feedback))
+                ActivityKind.CONVERSATION ->
+                    Target.Setup(SessionSetup.defaults(SessionKind.PART2, 0, feedback).copy(topicChoice = if (step.topic in 0..13) step.topic else Knowledge.FROM_COURSE))
+                ActivityKind.SIMULATION -> Target.Setup(SessionSetup.defaults(SessionKind.SIMULATION, 0, feedback))
+                ActivityKind.REAL_TASK -> Target.Setup(SessionSetup.defaults(SessionKind.PART1, 0, feedback).copy(source = Knowledge.Source.REAL, prepMinutes = 20))
+                ActivityKind.VOCAB -> Target.Vocab
+                ActivityKind.PRONUNCIATION -> Target.Pronunciation
+                ActivityKind.DOSSIER -> Target.Dossier(step.topic)
+                ActivityKind.SPRINT -> Target.Setup(SessionSetup.sprint(feedback))
+            }
+        val tint =
+            when (step.kind) {
+                ActivityKind.SIMULATION, ActivityKind.REAL_TASK, ActivityKind.PLACEMENT -> Tint.GREEN
+                ActivityKind.DRILLS, ActivityKind.VOCAB -> Tint.YELLOW
+                else -> Tint.ACCENT
+            }
+        return Recommendation(step.title, step.reason + " · ca. ${step.minutes} Min.", step.kind.icon, tint, target)
     }
 
     fun milestones(app: AbiCoachApp): List<Milestone> {

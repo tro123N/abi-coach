@@ -138,11 +138,11 @@ class LiveSocket(
      * Sends a text turn (used to start the examiner and for coach instructions). With Gemini 3.8 Live a finished
      * client turn is answered at once, even in the middle of the conversation. Returns false if the connection is not ready.
      */
-    fun sendUserTurn(text: String): Boolean {
+    fun sendUserTurn(text: String, complete: Boolean = true): Boolean {
         val current = socket
         if (!ready || current == null) return false
         val turn = JSONObject().put("role", "user").put("parts", JSONArray().put(JSONObject().put("text", text)))
-        val message = JSONObject().put("clientContent", JSONObject().put("turns", JSONArray().put(turn)).put("turnComplete", true))
+        val message = JSONObject().put("clientContent", JSONObject().put("turns", JSONArray().put(turn)).put("turnComplete", complete))
         return current.send(message.toString())
     }
 

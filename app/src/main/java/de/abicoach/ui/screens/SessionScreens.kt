@@ -133,7 +133,7 @@ fun SetupScreen(vm: AppViewModel, initial: SessionSetup) {
         AreaIntro(if (s.isSprint) R.drawable.speed_24dp else de.abicoach.ui.screens.kindIcon(s.kind), if (s.isSprint) "Gesprächs-Sprint" else s.kind.label, kindDescription(s))
         MessageBanners(vm)
         AbiCard {
-            CardTitle("Themenfeld", icon = R.drawable.hub_24dp)
+            CardTitle("Topic field", icon = R.drawable.hub_24dp)
             ChoiceChips(
                 options = topicOptions,
                 selected = s.topicChoice,
@@ -146,6 +146,14 @@ fun SetupScreen(vm: AppViewModel, initial: SessionSetup) {
                 },
                 onSelect = { vm.tap(); s = s.copy(topicChoice = it) },
                 tagPrefix = "topic",
+            )
+            Gap(6.dp)
+            CaptionText(
+                when (s.topicChoice) {
+                    Knowledge.FROM_COURSE -> "Die App wählt ein Themenfeld aus deinem Kurs, das du am nötigsten hast – schwach, unsicher oder noch nie geübt."
+                    Knowledge.RANDOM -> "Irgendein Themenfeld der Abiturvorgaben."
+                    else -> Knowledge.topic(s.topicChoice)?.english.orEmpty()
+                },
             )
             if (!hasMaterial) {
                 Gap(8.dp)
@@ -328,11 +336,13 @@ fun PrepScreen(vm: AppViewModel) {
                 }
             }
         }
+        GoalsCard(draft.goals)
         AbiCard(modifier = Modifier.testTag("prep_text")) {
             PillRow(listOfNotNull(Knowledge.topicShort(task.topicId), task.textType.ifBlank { null }, "${task.wordCount} Wörter"))
             Gap(10.dp)
             Text(task.title, fontSize = dimens.fonts.label, lineHeight = dimens.fonts.label * 1.2f, color = MaterialTheme.colorScheme.onPrimary)
             if (task.sourceNote.isNotBlank()) CaptionText(task.sourceNote)
+            if (task.adapted.isNotBlank()) CaptionText("Für dich angepasst – ${task.adapted}", color = accent)
             Gap(10.dp)
             SelectionContainer {
                 Text(task.text, fontSize = dimens.fonts.reading, lineHeight = dimens.fonts.reading * 1.5f, color = MaterialTheme.colorScheme.onPrimary)
@@ -505,6 +515,12 @@ fun LiveScreen(vm: AppViewModel) {
                 ExpandableCard("Deine Notizen", icon = R.drawable.edit_note_24dp, initiallyOpen = true) {
                     Text(vm.notes, fontSize = dimens.fonts.reading, lineHeight = dimens.fonts.reading * 1.4f, color = MaterialTheme.colorScheme.onPrimary)
                 }
+            }
+        }
+        val goals = draft?.goals.orEmpty()
+        if (goals.isNotEmpty()) {
+            ExpandableCard("Deine Ziele", subtitle = "${goals.size} Ziele aus deinem Lernstand", icon = R.drawable.target_24dp, initiallyOpen = state.part != 1, modifier = Modifier.testTag("live_goals")) {
+                goals.forEach { BulletText(it.text) }
             }
         }
         if (draft?.feedback != FeedbackMode.PRUEFUNG) {

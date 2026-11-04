@@ -9,7 +9,8 @@ Android-App zur Vorbereitung auf die **mündliche Abiturprüfung Englisch in NRW
 ### Abi-Weg
 - **Kletterweg wie in Mental Math Plus:** 6 Welten zu Format und Aufgaben (Startklar, Zusammenfassen, Analysieren, Kommentieren, Vortrag, Prüfungsgespräch), je eine Welt pro Themenfeld (die mit dem meisten Material zuerst) und die Generalprobe mit drei Simulationen. Jedes Level: Erklärung mit Beispiel zum Anhören, dann die Übung; Sterne nach Punkten; Wiederholen nach 1, 3, 7, 14 und 30 Tagen; eingerostete Levels werden aufgefrischt.
 - **Punktprognose** mit Spanne, Countdown bis zur Prüfung, Tage in Folge, Übungszeit heute.
-- **Heute dran:** Die App wählt aus deinem Lernprofil die Übung, die am meisten Punkte bringt (z. B. „Aufgabe 2 üben: Analysieren – dein größter Hebel“).
+- **Heute dran – das Lern-Gehirn:** Die App rechnet für jede mögliche Übung aus, wie viele Punkte sie dir *pro Minute* gerade bringt – aus allen Daten zusammen: jede Kompetenz mit ihrer Unsicherheit und wie lange sie nicht geübt wurde, Trends, Punkte je Aufgabe, Themen-Kompass, Fehlergedächtnis, Lerner-Gedächtnis, Wortschatz, Aussprache, Abwechslung und Tage bis zur Prüfung. Daraus wird der Tagesplan (kurzes Warm-up, Hauptübung, kurzer Abschluss) mit Begründung. Je nach **Phase** (Aufbau → Vertiefung → Generalprobe → Endspurt) plant sie anders, z. B. mehr ganze Prüfungen kurz vor dem Abi.
+- **Hochrechnung:** Aus dem Verlauf deiner Prognose rechnet die App hoch, wo du am Prüfungstag voraussichtlich stehst, und zeigt dein Tempo pro Woche.
 - **Meilensteine** bis zur Prognose von 13 Punkten.
 - **Einstufung** (ca. 15 Min.): kurzer Text, Vortrag und Gespräch – danach kennt die App deinen Stand und öffnet Welten, die du schon kannst.
 - **Tägliche Erinnerung** zur gewählten Uhrzeit mit dem nächsten Schritt – nur, wenn du an dem Tag noch nicht genug geübt hast.
@@ -19,7 +20,12 @@ Android-App zur Vorbereitung auf die **mündliche Abiturprüfung Englisch in NRW
 - **Einzelne Aufgaben** üben (nur Zusammenfassen, nur Analysieren, nur Kommentieren), **Prüfungsgespräch** und **freies Gesprächstraining**.
 - Drei Rückmelde-Stufen: *Prüfung* (keine Unterbrechung), *Flüstern* (starke Vibration, die Korrektur steht groß in einer Leiste am Bildschirm, mit Kopfhörern sagt sie eine leise Stimme), *Coach* (im Gespräch korrigiert dich der Prüfer selbst mit Stimme und lässt dich den Satz wiederholen; im Vortrag flüstert der Coach nur).
 - **Gezielt trainieren:** *Gesprächs-Sprint* (3 Minuten, so viel wie möglich sprechen), *Wortschatz* mit Wiederholung nach Plan (Redemittel, 15-Punkte-Sätze, deine Fehler und der Wortschatz aus deinem Kurs), *Aussprache-Labor* (anhören, nachsprechen, Bewertung pro Wort) und der *KI-Coach*, der dir passende Übungen als Knöpfe vorschlägt.
-- **KI-Tagesplan:** Ganz oben auf dem Abi-Weg plant der Coach (Gemini 4 Argon) jeden Tag drei Schritte aus deinem Stand: Kompetenzen, letzte Auswertung, Fehler, Lehrkraft-Kommentare, Prüfungstermin. Jeder Schritt startet mit einem Tipp.
+- **KI-Tagesplan:** Ganz oben auf dem Abi-Weg formuliert der Coach (Gemini 4 Argon) den berechneten Plan des Lern-Gehirns persönlich aus – mit deinen Zahlen, Fehlern, Gewohnheiten und Lehrkraft-Kommentaren. Jeder Schritt startet mit einem Tipp.
+- **Ziele für jede Übung:** Vor jeder Übung setzt die App dir bis zu drei konkrete Ziele (ein Fehlermuster vermeiden, die schwächste Kompetenz dieser Aufgabe, eine Gewohnheit ablegen). Die Auswertung sagt dir, ob du sie erreicht hast – mit Beleg aus deinem Gesagten.
+- **Lerner-Gedächtnis:** Die KI merkt sich nach jeder Sitzung deine Gewohnheiten (z. B. „antwortet im Gespräch oft nur mit einem Satz“) und Stärken, zählt, wie oft sie vorkommen, und streicht sie, wenn du das Ziel dagegen zweimal erreicht hast. Prüfer, Ziele, Plan und Coach richten sich danach.
+- **Gesprächsregie:** Während des Gesprächs achtet die App wie eine Prüfungsvorsitzende auf Zeit und Antworten und gibt dem Prüfer unhörbar kurze Hinweise: Themenwechsel nach etwa der Hälfte, tiefer nachfragen nach mehreren kurzen Antworten, in Übungen Fragen, die deine Fehlermuster provozieren, eine wertende Schlussfrage in der letzten Minute; bei sehr langen Monologen hakt er ein.
+- **Für dich angepasstes Material:** Neue Prüfungstexte wählen Textart, Operatoren (die du am wenigsten geübt hast) und Niveau passend zu dir; das Prüfungsgespräch geht zu den Themenfeldern, die du am nötigsten hast.
+- **Zweitbewertung:** Ganze Prüfungen, Einstufung, ganze Vorträge und lange Gespräche bewertet eine zweite, unabhängige Prüferin; die Note ist der Mittelwert – wie im Prüfungsausschuss. So wird dein Lernprofil verlässlicher.
 - **Alles läuft im Hintergrund weiter:** Auswertung, Einlesen von Kursmaterial und das Schreiben des Prüfungstexts laufen weiter, wenn du die App schließt oder das Handy sperrst, und melden sich mit einer Benachrichtigung. Der nächste Prüfungstext wird auf Wunsch schon vorab erstellt, damit der Start sofort geht.
 - **Vorbereitung geht nicht verloren:** Text, Aufgaben und deine Notizen werden gespeichert; wenn die Vorbereitungszeit zu Ende ist, klingelt eine Benachrichtigung – auch bei gesperrtem Handy.
 - **Live bleibt zuverlässig:** Während des Gesprächs bleibt der Bildschirm an und ein Mikrofon-Dienst („AbiCoach hört zu“) hält die Verbindung am Leben, auch wenn du kurz in eine andere App wechselst.
@@ -44,7 +50,7 @@ Android-App zur Vorbereitung auf die **mündliche Abiturprüfung Englisch in NRW
 - **Echte Abi-Prüfungsaufgaben:** Lädst du echtes Abi-Material hoch (Art „Echte Abi-Prüfungsaufgaben“ oder „Abi-Vorbereitung“), findet die App darin Text, Original-Aufgaben, Erwartungshorizont und Lösungsvorschlag. Du übst genau diese Aufgaben und wirst nach dem Original bewertet; neue Texte richten sich nach ihrem Stil.
 
 ### Statistik
-- **Prüfungsbereitschaft** je Prüfungsteil, **Trends** je Kompetenz (↑/↓), **Fehlergedächtnis** und **Themen-Kompass** (wie gut jedes Themenfeld sitzt, welche du noch nie geübt hast). Lange nicht geübte Kompetenzen werden mit der Zeit wieder unsicherer und kommen zurück in den Plan.
+- **Hochrechnung** auf den Prüfungstag und die aktuelle Phase, **Das weiß die App über dich** (Gewohnheiten, Stärken, Überwundenes), **Prüfungsbereitschaft** je Prüfungsteil, **Trends** je Kompetenz (↑/↓), **Fehlergedächtnis** und **Themen-Kompass** (wie gut jedes Themenfeld sitzt, welche du noch nie geübt hast). Lange nicht geübte Kompetenzen werden mit der Zeit wieder unsicherer und kommen zurück in den Plan.
 - **So bewertet deine Lehrkraft:** Kommentare und häufigste Anstreichungen aus deinen Klausuren.
 - Verlauf der Prognose, alle Kompetenzen, Übungszeit pro Tag, häufigste Fehler (Übungen und Klausuren) mit „Gezielt üben“, Themenfelder (geübt und Material), alle Sitzungen.
 
@@ -86,7 +92,7 @@ Den Schlüssel gibt es kostenlos zu erstellen unter aistudio.google.com/apikey. 
 - `profile/` – Lernprofil nach dem NRW-Raster, Prognose, Hebel
 - `path/` – Abi-Weg: Welten und Levels (`Curriculum`), Freischalten, Sterne und Wiederholungsplan (`PathEngine`), Erinnerung
 - `practice/` – Wortschatz-Karten mit Wiederholungsplan, Vortrags-Kennzahlen, Aussprache-Labor, „Sag es richtig“
-- `learn/` – Fehlergedächtnis (Fehlermuster mit Zustand und Wiederholplan) und Sprech-Training
+- `learn/` – Lern-Gehirn (`Brain.kt`: Tagesplan nach erwartetem Punktgewinn, Phasen, Ziele, angepasstes Material, Hochrechnung), Lerner-Gedächtnis (`Insights.kt`), Fehlergedächtnis (Fehlermuster mit Zustand und Wiederholplan) und Sprech-Training
 - `memory/` zusätzlich: Themen-Dossiers (`Dossier.kt`) und echte Prüfungsaufgaben (`ExamUnits.kt`)
 - `session/` – Prompts, Live-Gespräch (mit Mikrofon-Dienst), Live-Fehlerprüfung, Material im Hintergrund, gespeicherte Vorbereitung und Alarm, Auswertung und Fortschritt, Systemprüfung
 - `ui/` – Oberfläche im Stil von Mental Math Plus (Farbthemen, Karten, Sterne, Töne)

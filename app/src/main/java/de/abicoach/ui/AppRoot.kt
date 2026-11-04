@@ -26,6 +26,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -57,11 +60,23 @@ fun AppRoot(vm: AppViewModel) {
         if (!vm.back()) (context as? Activity)?.moveTaskToBack(true)
     }
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        // Every screen keeps its scroll position: going back shows the list exactly where you left it.
+        val saved = rememberSaveableStateHolder()
+        // A screen that left the back stack starts at the top the next time it is opened; the four main areas always
+        // keep their position.
+        val keys = vm.nav.stack.filter { it !is Screen.Root }.map { it.toString() }.toSet()
+        val known = remember { mutableSetOf<String>() }
+        LaunchedEffect(keys) {
+            (known - keys).forEach { saved.removeState(it) }
+            known.retainAll(keys)
+            known.addAll(keys)
+        }
         AnimatedContent(
             targetState = vm.nav.current,
             transitionSpec = { fadeIn(tween(160)) togetherWith fadeOut(tween(120)) },
             label = "screen",
         ) { screen ->
+            saved.SaveableStateProvider(screen.toString()) {
             when (screen) {
                 is Screen.Root ->
                     when (screen.tab) {
@@ -89,6 +104,7 @@ fun AppRoot(vm: AppViewModel) {
                 Screen.Errors -> de.abicoach.ui.screens.ErrorsScreen(vm)
                 is Screen.Dossier -> de.abicoach.ui.screens.DossierScreen(vm, screen.topic)
                 Screen.RealTasks -> de.abicoach.ui.screens.RealTasksScreen(vm)
+            }
             }
         }
     }

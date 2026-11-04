@@ -127,6 +127,7 @@ class SmokeTest {
         ui {
             app.store.deleteAll()
             app.profiles.reset()
+            app.insights.reset()
             app.path.reset()
             app.briefings.clear()
             app.memory.docs.value.forEach { app.memory.delete(it.id) }
@@ -234,10 +235,17 @@ class SmokeTest {
         ui { vm.nav.openTab(Tab.STATS) }
         shot("statistik")
         swipeShot("list_stats", "statistik_mitte", 1)
+        scrollShot("list_stats", 4, "statistik_lerner_gedaechtnis")
         swipeShot("list_stats", "statistik_unten", 2)
 
         ui { vm.nav.push(Screen.Debrief(Demo.SIMULATION)) }
         shot("auswertung")
+        runCatching { compose.onNodeWithTag("debrief_goals").performScrollTo() }
+        shot("auswertung_ziele")
+        runCatching { compose.onNodeWithTag("debrief_next").performScrollTo() }
+        shot("auswertung_naechster_schritt")
+        runCatching { compose.onNodeWithTag("debrief_observations").performScrollTo() }
+        shot("auswertung_beobachtungen")
         runCatching { compose.onNodeWithTag("debrief_talk").performScrollTo() }
         shot("auswertung_vortrags_coach")
         swipeShot("debrief", "auswertung_2", 1)
@@ -260,6 +268,14 @@ class SmokeTest {
         ui { vm.nav.openTab(Tab.TRAINING); vm.demoPrep(Demo.task(), SessionKind.SIMULATION) }
         shot("vorbereitung")
         swipeShot("prep", "vorbereitung_unten", 2)
+
+        // Going back keeps the scroll position: the training list stays where it was.
+        ui { vm.demoClear(); vm.nav.openTab(Tab.TRAINING) }
+        swipeShot("list_training", "zurueck_vorher", 2)
+        ui { vm.nav.push(Screen.Setup(SessionSetup.defaults(SessionKind.PART1, 1, FeedbackMode.FLUESTERN))) }
+        shot("zurueck_einrichten")
+        ui { vm.back() }
+        shot("zurueck_nachher_gleiche_stelle")
 
         ui { vm.demoClear(); vm.demoLive(Demo.liveState(part = 2), part = 2, withExaminer = true) }
         shot("gespraech_live")
@@ -369,6 +385,15 @@ object Demo {
                 ),
             source = "course",
             courseLinks = listOf("TED Talk „The danger of a single story“ (Green Line, S. 142)", "Klausur Q1.2: Arbeitsmarkt und Jugendarbeitslosigkeit"),
+            adapted = "Text: Sachtext · Aufgabe 2: „examine how …“ · Aufgabe 3: „comment on“ · Niveau B2/C1",
+        )
+
+    /** The goals the learning brain would set for the demo simulation. */
+    val goals =
+        listOf(
+            de.abicoach.data.SessionGoal("pattern", "Fehler vermeiden: third person -s – also „the author describes“", "", "pattern", "SVA:third person s"),
+            de.abicoach.data.SessionGoal("skill", "Aufgabe 2: jede Beobachtung mit Zitat oder Textverweis belegen und die Wirkung erklären", "", "skill", "analysis"),
+            de.abicoach.data.SessionGoal("habit", "Daran arbeiten: antwortet im Gespräch oft nur mit einem Satz", "", "habit", "antwortet im Gespräch oft nur mit einem Satz"),
         )
 
     /** A realistic presentation: three tasks over about ten minutes, with some fillers and one long pause. */
@@ -556,6 +581,18 @@ object Demo {
                         fixed = listOf("Zeitform: diesmal kein Fehler dieser Art.", "Präposition: diesmal kein Fehler dieser Art."),
                         still = listOf("Subjekt-Verb-Übereinstimmung: kam wieder vor (2×) – schon in 3 Sitzungen in Folge."),
                     ),
+                goalResults =
+                    listOf(
+                        de.abicoach.data.GoalResult("pattern", "partly", "Einmal „the author describe“, danach richtig „he explains“ und „he mentions“."),
+                        de.abicoach.data.GoalResult("skill", "no", "Nur ein Zitat („Nobody is waiting for permission“), die Wirkung der Kontraste blieb unbelegt."),
+                        de.abicoach.data.GoalResult("habit", "yes", "Im Gespräch zwei ausführliche Antworten mit Begründung und dem Beispiel brain drain."),
+                    ),
+                observations =
+                    listOf(
+                        de.abicoach.data.Observation("beschreibt in Aufgabe 2 den Inhalt, statt die Wirkung zu analysieren", "inhalt", "schwaeche"),
+                        de.abicoach.data.Observation("verknüpft Themen gut mit Beispielen aus dem Unterricht", "gespraech", "staerke"),
+                    ),
+                secondOpinion = de.abicoach.data.SecondOpinion(9, 10, 10, "Gemini 4 Argon", 11, "Inhaltlich solide, die Analyse bleibt an der Oberfläche. Sprachlich sicher mit wenigen Fehlern."),
             )
         app.store.deleteAll()
         app.store.save(
@@ -566,6 +603,7 @@ object Demo {
                 part1Sec = 610,
                 debrief = debrief.copy(segments = listOf(1 to "The article Lagos Rising", 2 to "Moving on to the analysis", 3 to "Now I would like to comment")),
                 examiner = "Gemini 3.8 Live",
+                goals = goals,
                 liveErrors = debrief.errors,
                 tech =
                     "== Teil 1 (Vortrag) · 10:10 Min. · Coach ==\nMikrofon: hört dich (höchster Pegel 0.71)\nLive-Mitschrift: läuft, 31 Sätze\n" +
@@ -745,6 +783,14 @@ object Demo {
                         strengths = listOf("klarer Aufbau"),
                         weaknesses = listOf("wenig Textbelege"),
                     ),
+            ),
+        )
+        app.insights.replaceAll(
+            listOf(
+                de.abicoach.learn.Insight("antwortet im Gespräch oft nur mit einem Satz", "gespraech", "schwaeche", 3, now - 12 * DAY, now - 2 * DAY),
+                de.abicoach.learn.Insight("beschreibt in Aufgabe 2 den Inhalt, statt die Wirkung zu analysieren", "inhalt", "schwaeche", 2, now - 9 * DAY, now - DAY),
+                de.abicoach.learn.Insight("verknüpft Themen gut mit Beispielen aus dem Unterricht", "gespraech", "staerke", 2, now - 6 * DAY, now - DAY),
+                de.abicoach.learn.Insight("liest im Vortrag ganze Sätze von den Notizen ab", "vortrag", "schwaeche", 2, now - 20 * DAY, now - 8 * DAY, overcome = 2),
             ),
         )
         app.dossiers.clear()

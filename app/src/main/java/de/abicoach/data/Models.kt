@@ -123,6 +123,8 @@ data class ExamTask(
     val unitId: String = "",
     /** Key points of the original model solution (Lösungsvorschlag), if the material had one. */
     val solution: String = "",
+    /** How the learning brain shaped this material for the student (German, for the preparation page). */
+    val adapted: String = "",
 ) {
     val wordCount: Int get() = text.split(Regex("\\s+")).count { it.isNotBlank() }
 
@@ -133,7 +135,7 @@ data class ExamTask(
         JSONObject().put("topicId", topicId).put("title", title).put("textType", textType).put("text", text)
             .put("sourceNote", sourceNote).put("tasks", tasks.toJsonArray { it.toJson() })
             .put("part2", part2.toJsonArray { it.toJson() }).put("source", source).put("courseLinks", courseLinks.toJsonArray())
-            .put("unitId", unitId).put("solution", solution)
+            .put("unitId", unitId).put("solution", solution).put("adapted", adapted)
 
     companion object {
         fun fromJson(o: JSONObject) =
@@ -149,6 +151,7 @@ data class ExamTask(
                 courseLinks = o.optJSONArray("courseLinks").strings(),
                 unitId = o.optString("unitId"),
                 solution = o.optString("solution"),
+                adapted = o.optString("adapted"),
             )
     }
 }
@@ -166,6 +169,53 @@ data class TaskReview(val number: Int, val points: Int, val covered: List<String
 
     companion object {
         fun fromJson(o: JSONObject) = TaskReview(o.optInt("number"), o.optInt("points"), o.optJSONArray("covered").strings(), o.optJSONArray("missing").strings(), o.optString("tip"))
+    }
+}
+
+/**
+ * A concrete goal for one session, set by the learning brain from the student's profile (an error pattern to avoid,
+ * the weakest criterion of the task, a habit to change). [check] tells the grader in English how to judge it.
+ */
+data class SessionGoal(val id: String, val text: String, val check: String, val kind: String, val target: String = "") {
+    fun toJson(): JSONObject = JSONObject().put("id", id).put("text", text).put("check", check).put("kind", kind).put("target", target)
+
+    companion object {
+        fun fromJson(o: JSONObject) = SessionGoal(o.optString("id"), o.optString("text"), o.optString("check"), o.optString("kind"), o.optString("target"))
+    }
+}
+
+/** How the grader judged one session goal: "yes", "partly" or "no", with a short note. */
+data class GoalResult(val id: String, val result: String, val note: String) {
+    val reached: Boolean get() = result == "yes"
+
+    fun toJson(): JSONObject = JSONObject().put("id", id).put("result", result).put("note", note)
+
+    companion object {
+        fun fromJson(o: JSONObject) = GoalResult(o.optString("id"), o.optString("result", "no"), o.optString("note"))
+    }
+}
+
+/** Something the grader noticed about the student's habits (not a single mistake): it goes into the learner memory. */
+data class Observation(val text: String, val area: String, val polarity: String) {
+    val strength: Boolean get() = polarity == "staerke"
+
+    fun toJson(): JSONObject = JSONObject().put("text", text).put("area", area).put("polarity", polarity)
+
+    companion object {
+        fun fromJson(o: JSONObject) = Observation(o.optString("text"), o.optString("area"), o.optString("polarity", "schwaeche"))
+    }
+}
+
+/** The independent second grading (like the second examiner in the Abitur) and how it was combined. */
+data class SecondOpinion(val inhalt: Int, val darstellung: Int, val total: Int, val by: String, val firstTotal: Int, val reason: String) {
+    val agrees: Boolean get() = kotlin.math.abs(total - firstTotal) <= 2
+
+    fun toJson(): JSONObject =
+        JSONObject().put("inhalt", inhalt).put("darstellung", darstellung).put("total", total).put("by", by).put("firstTotal", firstTotal).put("reason", reason)
+
+    companion object {
+        fun fromJson(o: JSONObject) =
+            SecondOpinion(o.optInt("inhalt"), o.optInt("darstellung"), o.optInt("total"), o.optString("by"), o.optInt("firstTotal"), o.optString("reason"))
     }
 }
 
@@ -244,6 +294,12 @@ data class Debrief(
     val progress: Progress? = null,
     /** The student's own presentation (or answers) rewritten at 15-point level, made on request. */
     val model: List<ModelPart> = emptyList(),
+    /** How the goals of the session were reached. */
+    val goalResults: List<GoalResult> = emptyList(),
+    /** What the grader noticed about the student's habits. */
+    val observations: List<Observation> = emptyList(),
+    /** The independent second grading, if there was one. */
+    val secondOpinion: SecondOpinion? = null,
 ) {
     val stars: Int get() = when {
         totalPoints >= 13 -> 3
@@ -276,6 +332,9 @@ data class Debrief(
             .put("readingAloud", readingAloud)
             .put("progress", progress?.toJson() ?: JSONObject.NULL)
             .put("model", model.toJsonArray { it.toJson() })
+            .put("goalResults", goalResults.toJsonArray { it.toJson() })
+            .put("observations", observations.toJsonArray { it.toJson() })
+            .put("secondOpinion", secondOpinion?.toJson() ?: JSONObject.NULL)
     }
 
     companion object {
@@ -306,6 +365,9 @@ data class Debrief(
                 readingAloud = o.optBoolean("readingAloud"),
                 progress = o.optJSONObject("progress")?.let { Progress.fromJson(it) },
                 model = o.optJSONArray("model").objects().map { ModelPart.fromJson(it) },
+                goalResults = o.optJSONArray("goalResults").objects().map { GoalResult.fromJson(it) },
+                observations = o.optJSONArray("observations").objects().map { Observation.fromJson(it) },
+                secondOpinion = o.optJSONObject("secondOpinion")?.let { SecondOpinion.fromJson(it) },
             )
         }
     }
@@ -337,6 +399,8 @@ data class SessionRecord(
     val retryOf: String = "",
     /** Technical log of the live parts (microphone, ear, transcript, coach), for the "Technik-Protokoll". */
     val tech: String = "",
+    /** The goals the learning brain set for this session. */
+    val goals: List<SessionGoal> = emptyList(),
 ) {
     val studentText: String
         get() = utterances.filter { it.speaker == Speaker.STUDENT }.joinToString(" ") { it.text }
@@ -366,6 +430,7 @@ data class SessionRecord(
             .put("levelId", levelId)
             .put("retryOf", retryOf)
             .put("tech", tech)
+            .put("goals", goals.toJsonArray { it.toJson() })
 
     companion object {
         fun create(kind: SessionKind, feedback: FeedbackMode, topicId: Int, task: ExamTask?, focusTask: Int = 0, focusCategories: List<String> = emptyList()) =
@@ -407,6 +472,7 @@ data class SessionRecord(
                 levelId = o.optString("levelId"),
                 retryOf = o.optString("retryOf"),
                 tech = o.optString("tech"),
+                goals = o.optJSONArray("goals").objects().map { SessionGoal.fromJson(it) },
             )
     }
 }

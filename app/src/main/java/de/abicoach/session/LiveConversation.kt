@@ -54,6 +54,8 @@ data class LiveDiag(
     val coachSpoken: Int = 0,
     val coachByPhone: Int = 0,
     val repeatsOk: Int = 0,
+    /** Notes of the conversation director to the examiner (topic switch, follow-up questions, last minute …). */
+    val director: Int = 0,
 )
 
 data class LiveUiState(
@@ -105,6 +107,14 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
         val wavFile: File?,
         val checkerContext: String,
         val targetSeconds: Int,
+        /** The app steers the examiner like an exam director: time, topic switch, follow-up questions. */
+        val directed: Boolean = false,
+        /** The second topic of the exam conversation; the examiner switches at about half of the time. */
+        val switchTopic: String = "",
+        /** Practice only: structures the examiner should make the student use (from the error memory). */
+        val elicit: List<String> = emptyList(),
+        /** After this many seconds of uninterrupted talking the examiner cuts in (0 = never, e.g. in a sprint). */
+        val monologueSec: Int = 100,
     )
 
     data class Result(
@@ -209,6 +219,40 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
 
     @Volatile private var finished = false
     private val startedAt = System.currentTimeMillis()
+
+    // ---------- conversation director ----------
+
+    /** When the student's current answer began (0 = the examiner has the floor). */
+    @Volatile private var answerStartAt = 0L
+
+    /** Lengths of the student's last answers in ms, newest last. */
+    private val answers = ArrayDeque<Long>()
+
+    @Volatile private var examinerTalking = false
+
+    @Volatile private var lastExaminerAt = 0L
+
+    @Volatile private var lastDirectorAt = 0L
+
+    /** A note waits for the examiner's next turn; if he stays silent after the student spoke, he gets a nudge. */
+    @Volatile private var noteAt = 0L
+
+    @Volatile private var noteWatch = false
+
+    /** The examiner did not react to a note: no more notes in this part (only the monologue cut-in). */
+    @Volatile private var notesBlocked = false
+
+    @Volatile private var switchSent = false
+
+    @Volatile private var finalSent = false
+
+    @Volatile private var lastProbeAt = 0L
+
+    @Volatile private var lastMonologueAt = 0L
+
+    @Volatile private var nextElicitAt = 60_000L
+
+    @Volatile private var elicitIndex = 0
 
     /** Shows a prepared state without microphone or network (screenshots in the emulator test). */
     fun startDemo(demo: LiveUiState) {
@@ -322,6 +366,101 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
             timeUpSent = true
             examiner?.sendInstruction("TIME_UP")
         }
+        // A turn of the examiner that never got its end (e.g. the connection was renewed): he is silent again.
+        if (examinerTalking && now - lastExaminerAt > 8_000 && !player.isPlaying(now)) examinerTalking = false
+        if (config.directed && !timeUpSent) direct(now)
+    }
+
+    /**
+     * The conversation director: like the chair of an exam committee it keeps an eye on the time and on the answers and
+     * gives the examiner short notes – switch to the second topic at about half of the time, dig deeper after several
+     * short answers, make the student use the structures of his error patterns (practice only), one last evaluative
+     * question in the final minute. A note is sent only while the examiner is silent and never close to a coach
+     * correction; it shapes his next turn without interrupting anyone. Only a very long monologue makes him cut in.
+     */
+    private fun direct(now: Long) {
+        val agent = examiner ?: return
+        if (finished || !kickoffSent || !_state.value.examinerReady) return
+        val voiceAt = maxOf(segmenter?.lastVoiceAt ?: 0L, lastSpeechAt)
+        // A note the examiner did not react to: he may be waiting for more input. Nudge him once and stop the notes.
+        if (noteWatch) {
+            if (lastExaminerAt > noteAt) {
+                noteWatch = false
+            } else if (voiceAt > noteAt && now - voiceAt > 6_000 && !player.isPlaying(now)) {
+                noteWatch = false
+                notesBlocked = true
+                lastDirectorAt = now
+                log("Regie: Prüfer reagiert nach der Notiz nicht – Anstoß, keine weiteren Notizen")
+                agent.sendInstruction(Prompts.DIRECTOR_NUDGE)
+                return
+            }
+        }
+        val busy = examinerTalking || player.isPlaying(now) || now < muteUntil || pendingCoach != null || coachSent != null || repeatTarget != null
+        if (busy || now - lastCoachAt < 10_000 || now - lastDirectorAt < 10_000) return
+        // The student has been talking for a very long time without letting the examiner in: a real examiner cuts in.
+        val answer = answerStartAt
+        if (config.monologueSec > 0 && answer > 0 && now - answer > config.monologueSec * 1000L && now - voiceAt < 2_000 && now - lastMonologueAt > 90_000) {
+            lastMonologueAt = now
+            lastDirectorAt = now
+            if (agent.sendInstruction(Prompts.DIRECTOR_MONOLOGUE)) {
+                diag { it.copy(director = it.director + 1) }
+                log("Regie: sehr langer Monolog – der Prüfer hakt ein")
+            }
+            return
+        }
+        if (notesBlocked) return
+        val note = nextNote(now, now - startedAt) ?: return
+        if (agent.sendNote("DIRECTOR: ${note.second}")) {
+            lastDirectorAt = now
+            noteAt = now
+            noteWatch = true
+            diag { it.copy(director = it.director + 1) }
+            log("Regie: ${note.first}")
+        }
+    }
+
+    /** The most important note right now: a label for the log and the English instruction. */
+    private fun nextNote(now: Long, elapsed: Long): Pair<String, String>? {
+        val target = config.targetSeconds * 1000L
+        if (config.switchTopic.isNotBlank() && !switchSent && elapsed >= target * 45 / 100) {
+            switchSent = true
+            return "Themenwechsel" to Prompts.directorSwitch(config.switchTopic)
+        }
+        if (!finalSent && target >= 240_000 && elapsed >= target - 60_000) {
+            finalSent = true
+            return "letzte Minute – eine wertende Schlussfrage" to Prompts.DIRECTOR_FINAL
+        }
+        val brief = synchronized(lock) { answers.size >= 3 && answers.takeLast(3).all { it < 12_000 } }
+        if (brief && now - lastProbeAt > 90_000) {
+            lastProbeAt = now
+            synchronized(lock) { answers.clear() }
+            return "kurze Antworten – der Prüfer fragt tiefer nach" to Prompts.DIRECTOR_PROBE
+        }
+        if (config.elicit.isNotEmpty() && elapsed >= nextElicitAt && elapsed < target - 75_000) {
+            nextElicitAt = elapsed + 150_000
+            val line = config.elicit[elicitIndex % config.elicit.size]
+            elicitIndex++
+            return "Fehlermuster gezielt abfragen: ${line.take(50)}" to Prompts.directorElicit(line)
+        }
+        return null
+    }
+
+    /** The examiner starts or continues a turn: the student's answer before it is over. */
+    private fun examinerOutput(now: Long) {
+        lastExaminerAt = now
+        if (examinerTalking) return
+        examinerTalking = true
+        val start = answerStartAt
+        answerStartAt = 0L
+        if (start <= 0L) return
+        val voiceAt = maxOf(segmenter?.lastVoiceAt ?: 0L, lastSpeechAt)
+        val length = voiceAt - start
+        if (length >= 1_500) {
+            synchronized(lock) {
+                answers.addLast(length)
+                while (answers.size > 6) answers.removeFirst()
+            }
+        }
     }
 
     private fun statusText(s: LiveUiState): String =
@@ -352,6 +491,8 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
             if (level > 0.06f) {
                 lastSpeechAt = now
                 voicedMs += 100
+                // The student starts answering (for the director: how long his answers are).
+                if (answerStartAt == 0L && !examinerTalking && !examinerAudible) answerStartAt = now
             }
         } else {
             segmenter?.flush(now)
@@ -431,6 +572,7 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
             }
             is LiveEvent.Audio -> {
                 examinerHeard = true
+                examinerOutput(System.currentTimeMillis())
                 val sent = coachSent
                 if (sent != null) {
                     coachSent = null
@@ -442,6 +584,7 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
             }
             is LiveEvent.ModelText -> {
                 examinerHeard = true
+                examinerOutput(System.currentTimeMillis())
                 flushFallbackStudent()
                 val text = synchronized(lock) { examinerTurn.append(event.text).toString() }
                 _state.update { it.copy(examinerLive = text) }
@@ -451,8 +594,12 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
                 // transcriber nor the ear can write along.
                 if (!transcriberWorks && segmenter == null) synchronized(lock) { fallbackStudent.append(event.text) }
             }
-            is LiveEvent.TurnComplete -> flushExaminer(interrupted = false)
+            is LiveEvent.TurnComplete -> {
+                examinerTalking = false
+                flushExaminer(interrupted = false)
+            }
             is LiveEvent.Interrupted -> {
+                examinerTalking = false
                 player.flush()
                 flushExaminer(interrupted = true)
             }
@@ -749,6 +896,11 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
             sb.append(", ").append(d.repeatsOk).append(" richtig wiederholt\n")
         }
         if (config.examinerPrompt != null) sb.append("Prüfer: ").append(d.examiner.ifBlank { "–" }).append(" (").append(_state.value.examinerLabel).append(")\n")
+        if (config.directed && config.examinerPrompt != null) {
+            sb.append("Gesprächsregie: ").append(d.director).append(" Hinweise an den Prüfer")
+            if (notesBlocked) sb.append(" (Prüfer reagierte nicht auf Notizen – danach nur noch Einhaken bei Monologen)")
+            sb.append('\n')
+        }
         synchronized(techLog) { techLog.forEach { sb.append(it).append('\n') } }
         return sb.toString().trim()
     }

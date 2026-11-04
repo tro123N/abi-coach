@@ -138,7 +138,7 @@ object MaterialPrefetch {
         val now = System.currentTimeMillis()
         if (now - lastStartedAt < MIN_GAP_MS) return
         lastStartedAt = now
-        val topic = app.course.pickTopicFromCourse()
+        val topic = de.abicoach.learn.LearningBrain.pickTopic(app)
         val source = if (app.course.hasMaterial()) Knowledge.Source.COURSE else Knowledge.Source.NEW
         MaterialScheduler.enqueue(app, MaterialShelf.PREFETCH, MaterialGenerator.Request(topic, Knowledge.TextType.GEMISCHT, source), null, 0, prefetch = true)
     }

@@ -79,8 +79,17 @@ object MaterialGenerator {
         } else {
             prompt = ""
         }
+        // The learning brain shapes ordinary practice material for this student: text type, operators, level.
+        // Not for the placement test and not for an Abi-Weg level, which has its own requirement.
+        val ownText = prompt.isNotEmpty()
+        val adapt =
+            if (!request.short && request.instruction.isBlank()) {
+                runCatching { de.abicoach.learn.LearningBrain.adaptMaterial(app, request.textType, withText = !ownText) }.getOrNull()
+            } else {
+                null
+            }
         val finalPrompt =
-            if (prompt.isNotEmpty()) {
+            if (ownText) {
                 prompt
             } else {
                 val anchored = source == Knowledge.Source.COURSE && course.hasMaterial()
@@ -91,7 +100,7 @@ object MaterialGenerator {
                 val context = if (anchored) course.forTopic(request.topicId, maxChars = 5_000) else ""
                 Prompts.materialRequest(
                     request.topicId,
-                    request.textType,
+                    adapt?.textType ?: request.textType,
                     if (anchored) "" else overview,
                     context,
                     anchored,
@@ -101,10 +110,15 @@ object MaterialGenerator {
         val shortLine =
             if (request.short) "\nIMPORTANT: This is a short placement test. The text must have only 170 to 220 words; keep the three tasks simple." else ""
         val levelLine = if (request.instruction.isNotBlank()) "\nIMPORTANT – requirement of this exercise: ${request.instruction}" else ""
+        val adaptLine = adapt?.let { "\n${it.instruction}" }.orEmpty()
+        // The exam conversation goes to the topic fields the student needs most (weak, unsure or never practised).
+        val p2a = de.abicoach.learn.LearningBrain.pickTopic(app, exclude = setOf(request.topicId))
+        val p2b = de.abicoach.learn.LearningBrain.pickTopic(app, exclude = setOf(request.topicId, p2a))
+        val part2Line = "\nFor part2_topics use these two topic fields, which the student needs most: $p2a = ${Knowledge.topic(p2a)?.english ?: "any"}; $p2b = ${Knowledge.topic(p2b)?.english ?: "any"}."
         onProgress("${app.ai.brainLabel()} schreibt Text und Aufgaben …")
-        val answer = app.ai.brainJson(Prompts.MATERIAL_SYSTEM, finalPrompt + shortLine + levelLine, Prompts.materialSchema)
+        val answer = app.ai.brainJson(Prompts.MATERIAL_SYSTEM, finalPrompt + shortLine + levelLine + adaptLine + part2Line, Prompts.materialSchema)
         val task = parse(app, answer.json, request.topicId, source.name.lowercase())
-        return task to note
+        return task.copy(adapted = adapt?.summary.orEmpty()) to note
     }
 
     private fun parse(app: AbiCoachApp, json: JSONObject, topicId: Int, source: String): ExamTask {
@@ -182,9 +196,65 @@ class Analyzer(private val app: AbiCoachApp) {
             }.onFailure { onProgress("Aufnahme konnte nicht angehört werden: ${it.message}") }
         }
         onProgress("${hub.brainLabel()} bewertet deine Leistung …")
-        val context = Prompts.analysisContext(record, courseContext, teacherNotes, listening?.let { Prompts.listeningSummary(it) }, profileNote)
+        val listened = listening?.let { Prompts.listeningSummary(it) }
+        val context = Prompts.analysisContext(record, courseContext, teacherNotes, listened, profileNote, app.insights.knownTexts())
         val answer = hub.brainJson(Prompts.ANALYSIS_SYSTEM, context, Prompts.analysisSchema)
-        return Prompts.parseDebrief(answer.json, record.studentText, listening != null, listening, answer.by, listenedBy)
+        val parsed = Prompts.parseDebrief(answer.json, record.studentText, listening != null, listening, answer.by, listenedBy)
+        val goalIds = record.goals.map { it.id }.toSet()
+        val first = parsed.copy(goalResults = parsed.goalResults.filter { it.id in goalIds })
+        if (!needsSecondOpinion(record)) return first
+        // Like the committee in the Abitur: an independent second grading, the result is the mean of both.
+        onProgress("Zweitbewertung: eine zweite Prüferin bewertet unabhängig …")
+        return try {
+            // The second examiner sees the same session, but neither the first grade nor the goals or the profile.
+            val second = hub.brainJson(Prompts.SECOND_SYSTEM, Prompts.analysisContext(record.copy(goals = emptyList()), courseContext, teacherNotes, listened, ""), Prompts.secondSchema)
+            combine(first, second.json, second.by)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            onProgress("Zweitbewertung übersprungen: ${e.message}")
+            first
+        }
+    }
+
+    /** Sessions that weigh much in the profile and are long enough for a fair second look. */
+    private fun needsSecondOpinion(record: SessionRecord): Boolean {
+        val words = record.studentText.split(Regex("\\s+")).count { it.isNotBlank() }
+        if (words < 150 || !app.ai.hasGemini) return false
+        return when (record.kind) {
+            de.abicoach.data.SessionKind.SIMULATION, de.abicoach.data.SessionKind.PLACEMENT -> true
+            de.abicoach.data.SessionKind.PART1 -> record.focusTask == 0 && record.retryOf.isBlank()
+            de.abicoach.data.SessionKind.PART2 -> record.durationSec >= 300
+            de.abicoach.data.SessionKind.TRAINING -> false
+        }
+    }
+
+    /** Averages both gradings (points and skills); the reasons of the first grading stay, the second is kept for display. */
+    private fun combine(first: Debrief, o: JSONObject, by: String): Debrief {
+        val inhalt = o.optJSONObject("inhalt")
+        val darstellung = o.optJSONObject("darstellung")
+        val i2 = inhalt?.optInt("points", -1) ?: -1
+        val d2 = darstellung?.optInt("points", -1) ?: -1
+        if (i2 !in 0..15 || d2 !in 0..15) return first
+        val total2 = Math.round(0.4 * i2 + 0.6 * d2).toInt().coerceIn(0, 15)
+        val i = Math.round((first.inhaltPoints + i2) / 2.0).toInt().coerceIn(0, 15)
+        val d = Math.round((first.darstellungPoints + d2) / 2.0).toInt().coerceIn(0, 15)
+        val total = Math.round(0.4 * i + 0.6 * d).toInt().coerceIn(0, 15)
+        val skillsJson = o.optJSONObject("skills") ?: JSONObject()
+        val skills = first.skills.toMutableMap()
+        Skill.entries.forEach { s ->
+            val v = skillsJson.optInt(s.key, -1)
+            // Pronunciation comes from listening to the recording: that measurement stays.
+            if (v in 0..15 && s != Skill.AUSSPRACHE) skills[s] = skills[s]?.let { Math.round((it + v) / 2.0).toInt() } ?: v
+        }
+        val reason = listOf(inhalt?.optString("reason").orEmpty(), darstellung?.optString("reason").orEmpty()).filter { it.isNotBlank() }.joinToString(" ").take(500)
+        return first.copy(
+            inhaltPoints = i,
+            darstellungPoints = d,
+            totalPoints = total,
+            skills = skills,
+            secondOpinion = de.abicoach.data.SecondOpinion(i2, d2, total2, by, first.totalPoints, reason),
+        )
     }
 
     /**
@@ -226,7 +296,8 @@ data class CoachAction(val kind: String, val arg: String = "") {
                 "aufgabe2" -> "Analysieren üben"
                 "aufgabe3" -> "Kommentieren üben"
                 "vortrag" -> "Ganzen Vortrag üben"
-                "gespraech" -> "Prüfungsgespräch üben"
+                "gespraech" -> arg.toIntOrNull()?.let { "Gespräch: " + Knowledge.topicShort(it) } ?: "Prüfungsgespräch üben"
+                "einstufung" -> "Einstufung machen"
                 "sprint" -> "Gesprächs-Sprint"
                 "simulation" -> "Prüfungssimulation"
                 "wortschatz" -> "Wortschatz wiederholen"
@@ -239,34 +310,26 @@ data class CoachAction(val kind: String, val arg: String = "") {
             }
 
     companion object {
-        /** Reads "aufgabe2" or "level:w3.perceive"; null for anything unknown. */
-        fun parse(value: String): CoachAction? {
-            val kind = value.substringBefore(':').trim().lowercase()
-            val arg = value.substringAfter(':', "").trim()
-            return when {
-                kind !in KINDS -> null
-                kind == "level" && de.abicoach.path.Curriculum.level(arg) == null -> null
-                kind == "dossier" && (arg.toIntOrNull() ?: -1) !in 0..13 -> null
-                else -> CoachAction(kind, if (kind == "level" || kind == "dossier") arg else "")
-            }
-        }
+        /** Reads "aufgabe2", "gespraech:7" or "level:w3.perceive"; null for anything unknown. */
+        fun parse(value: String): CoachAction? = valid(value.substringBefore(':').trim().lowercase(), value.substringAfter(':', "").trim())
 
-        private val KINDS = setOf("aufgabe1", "aufgabe2", "aufgabe3", "vortrag", "gespraech", "sprint", "simulation", "wortschatz", "aussprache", "training", "dossier", "echt", "level")
+        /** Checks kind and argument; an argument is kept only where it means something (level, dossier, topic of a conversation). */
+        private fun valid(kind: String, arg: String): CoachAction? =
+            when {
+                kind !in KINDS -> null
+                kind == "level" -> if (de.abicoach.path.Curriculum.level(arg) == null) null else CoachAction(kind, arg)
+                kind == "dossier" -> if ((arg.toIntOrNull() ?: -1) !in 0..13) null else CoachAction(kind, arg)
+                kind == "gespraech" -> CoachAction(kind, arg.takeIf { (it.toIntOrNull() ?: -1) in 0..13 }.orEmpty())
+                else -> CoachAction(kind)
+            }
+
+        private val KINDS = setOf("aufgabe1", "aufgabe2", "aufgabe3", "vortrag", "gespraech", "sprint", "simulation", "wortschatz", "aussprache", "training", "dossier", "echt", "level", "einstufung")
         private val TAG = Regex("\\[\\[\\s*([a-zA-Z0-9]+)\\s*(?::\\s*([\\w.]+))?\\s*]]")
 
         /** Removes the action markers from the text and returns the valid actions. */
         fun extract(raw: String): Pair<String, List<CoachAction>> {
             val actions =
-                TAG.findAll(raw).mapNotNull { m ->
-                    val kind = m.groupValues[1].lowercase()
-                    val arg = m.groupValues[2]
-                    when {
-                        kind !in KINDS -> null
-                        kind == "level" && de.abicoach.path.Curriculum.level(arg) == null -> null
-                        kind == "dossier" && (arg.toIntOrNull() ?: -1) !in 0..13 -> null
-                        else -> CoachAction(kind, arg)
-                    }
-                }.distinct().take(3).toList()
+                TAG.findAll(raw).mapNotNull { m -> valid(m.groupValues[1].lowercase(), m.groupValues[2]) }.distinct().take(3).toList()
             val text = raw.replace(TAG, "").replace(Regex("\n{3,}"), "\n\n").trim()
             return text to actions
         }

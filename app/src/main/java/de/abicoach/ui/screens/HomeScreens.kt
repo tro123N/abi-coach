@@ -63,7 +63,9 @@ fun AbiWegScreen(vm: AppViewModel) {
     val sessions by app.store.sessions.collectAsState()
     val docs by app.memory.docs.collectAsState()
     val progress by app.path.progress.collectAsState()
-    val recommendations = remember(version, profile, sessions, docs) { Planner.today(app) }
+    val patterns by app.errorMemory.patterns.collectAsState()
+    val habits by app.insights.all.collectAsState()
+    val recommendations = remember(version, profile, sessions, docs, patterns, habits) { Planner.today(app) }
     val milestones = remember(version, profile, sessions, docs) { Planner.milestones(app) }
     val worlds = remember(docs) { app.worlds() }
     val next = remember(progress, profile, worlds) { de.abicoach.path.PathEngine.next(worlds, progress, profile) }
@@ -138,6 +140,7 @@ private fun OverviewCard(vm: AppViewModel, profile: Profile) {
                 }
             }
         }
+        if (prognosis != null) ProjectionBlock(vm)
         Gap(14.dp)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.height(androidx.compose.foundation.layout.IntrinsicSize.Min)) {
             StatTile(days?.toString() ?: "?", if (days == 1L) "Tag bis zum Abi" else "Tage bis zum Abi", Modifier.weight(1f).fillMaxHeight(), icon = R.drawable.event_24dp, color = accent)
@@ -151,6 +154,15 @@ private fun OverviewCard(vm: AppViewModel, profile: Profile) {
 private fun TodayCard(vm: AppViewModel, recommendations: List<Recommendation>) {
     AbiCard(modifier = Modifier.testTag("today")) {
         CardTitle("Heute dran", icon = R.drawable.task_alt_24dp, iconTint = green)
+        val phase = remember(recommendations) { de.abicoach.learn.LearningBrain.phase(vm.app) }
+        CaptionText(
+            if (phase == de.abicoach.learn.Phase.START) {
+                "Erst die Einstufung – dann rechnet die App aus, was dir am meisten bringt."
+            } else {
+                "Phase ${phase.label} · berechnet aus deinem ganzen Lernstand: was dir pro Minute die meisten Punkte bringt."
+            },
+        )
+        Gap(8.dp)
         if (recommendations.isEmpty()) {
             BodyText("Alles erledigt. Wenn du magst: eine Simulation oder ein Gespräch zu einem Themenfeld, das du lange nicht hattest.")
         }

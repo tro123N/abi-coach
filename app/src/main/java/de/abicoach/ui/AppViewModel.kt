@@ -27,6 +27,7 @@ import de.abicoach.learn.Drill
 import de.abicoach.learn.DrillCheck
 import de.abicoach.learn.DrillMaker
 import de.abicoach.learn.DrillOutcome
+import de.abicoach.learn.LearningBrain
 import de.abicoach.memory.DossierMaker
 import de.abicoach.memory.DossierScheduler
 import de.abicoach.practice.SayItCheck
@@ -232,6 +233,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             Target.Vocab -> openVocab()
             is Target.Setup -> nav.push(Screen.Setup(target.setup))
             Target.Drills -> openDrills()
+            Target.Pronunciation -> openPronunciation()
             is Target.Dossier -> openDossier(target.topic)
         }
     }
@@ -257,9 +259,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     // ---------- starting a session ----------
 
+    /** "Aus meinem Kurs": the learning brain picks a covered topic field that needs practice (weak, unsure or new). */
     private fun resolveTopic(choice: Int): Int =
         when (choice) {
-            Knowledge.FROM_COURSE -> app.course.pickTopicFromCourse()
+            Knowledge.FROM_COURSE -> LearningBrain.pickTopic(app)
             Knowledge.RANDOM -> Knowledge.TOPICS.random().id
             else -> choice
         }
@@ -323,7 +326,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         notes = ""
         tasksDone.clear()
         notice = note
-        draft = SessionRecord.create(p.kind, p.feedback, p.topicId, generated, p.focusTask, p.focusCategories).copy(levelId = p.levelId)
+        draft =
+            SessionRecord.create(p.kind, p.feedback, p.topicId, generated, p.focusTask, p.focusCategories)
+                .copy(levelId = p.levelId, goals = LearningBrain.goals(app, p.kind, p.focusTask))
         prepMinutes = p.prepMinutes
         prepEndsAt = 0L
         if (openNow) {
@@ -456,10 +461,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private fun startConversation(s: SessionSetup, topicId: Int) {
         task = null
         notes = ""
-        val record = SessionRecord.create(s.kind, s.feedback, topicId, null, 0, s.focusCategories).copy(levelId = s.levelId.orEmpty())
+        val record =
+            SessionRecord.create(s.kind, s.feedback, topicId, null, 0, s.focusCategories)
+                .copy(levelId = s.levelId.orEmpty(), goals = LearningBrain.goals(app, s.kind, 0))
         draft = record
         viewModelScope.launch {
             val context = withContext(Dispatchers.Default) { runCatching { app.course.forTopic(topicId, maxChars = 4_000) }.getOrDefault("") }
+            // Like in the exam, the exam conversation switches to a second topic field after about half of the time.
+            val second = if (s.kind == SessionKind.PART2) Knowledge.topic(LearningBrain.pickTopic(app, exclude = setOf(topicId)))?.english.orEmpty() else ""
             val prompt =
                 Prompts.trainingExaminer(
                     topicId = topicId,
@@ -471,6 +480,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     part2Style = s.kind == SessionKind.PART2,
                     extra = s.instruction,
                     patterns = patternBlockFor(s.feedback),
+                    secondTopic = second,
                 )
             val conversation =
                 LiveConversation(
@@ -484,6 +494,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         wavFile = app.store.audioFile(record.id, if (s.kind == SessionKind.PART2) 2 else 0),
                         checkerContext = "Conversation about: ${Knowledge.topic(topicId)?.english ?: "the course"}",
                         targetSeconds = s.talkMinutes * 60,
+                        directed = true,
+                        switchTopic = second,
+                        elicit = if (s.feedback != FeedbackMode.PRUEFUNG) app.errorMemory.examinerLines(4) else emptyList(),
+                        monologueSec = if (s.isSprint) 0 else 100,
                     ),
                 )
             live = conversation
@@ -569,6 +583,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                             wavFile = app.store.audioFile(updated.id, 2),
                             checkerContext = "Exam conversation: ${t.part2.joinToString("; ") { it.question }}",
                             targetSeconds = minutes * 60,
+                            directed = true,
+                            switchTopic = t.part2.getOrNull(1)?.let { "${Knowledge.topic(it.topicId)?.english ?: "another topic field"} – ${it.question}" }.orEmpty(),
+                            elicit = if (updated.feedback != FeedbackMode.PRUEFUNG) app.errorMemory.examinerLines(4) else emptyList(),
                         ),
                     )
                 live = next
@@ -651,7 +668,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         task = originalTask
         notes = original.notes
         tasksDone.clear()
-        draft = SessionRecord.create(SessionKind.PART1, feedback, original.topicId, originalTask, taskNumber).copy(retryOf = recordId)
+        draft =
+            SessionRecord.create(SessionKind.PART1, feedback, original.topicId, originalTask, taskNumber)
+                .copy(retryOf = recordId, goals = LearningBrain.goals(app, SessionKind.PART1, taskNumber))
         prepMinutes = 2
         notice = "Zweiter Versuch: derselbe Text, nur Aufgabe $taskNumber. Du hast 2 Minuten – dann sprichst du es besser."
         app.feedback.play(FeedbackType.START)
@@ -847,7 +866,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         when (action.kind) {
             "aufgabe1", "aufgabe2", "aufgabe3" -> nav.push(Screen.Setup(SessionSetup.defaults(SessionKind.PART1, action.kind.last().digitToInt(), f)))
             "vortrag" -> nav.push(Screen.Setup(SessionSetup.defaults(SessionKind.PART1, 0, f)))
-            "gespraech" -> nav.push(Screen.Setup(SessionSetup.defaults(SessionKind.PART2, 0, f)))
+            "gespraech" -> nav.push(Screen.Setup(SessionSetup.defaults(SessionKind.PART2, 0, f).copy(topicChoice = action.arg.toIntOrNull() ?: Knowledge.FROM_COURSE)))
+            "einstufung" -> nav.push(Screen.PlacementIntro)
             "sprint" -> nav.push(Screen.Setup(SessionSetup.sprint(f)))
             "simulation" -> nav.push(Screen.Setup(SessionSetup.defaults(SessionKind.SIMULATION, 0, f)))
             "level" -> nav.push(Screen.Level(action.arg))
@@ -1116,7 +1136,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
      */
     private fun patternBlockFor(feedback: FeedbackMode): String {
         if (feedback == FeedbackMode.PRUEFUNG) return ""
-        val patterns = Prompts.patternBlock(app.errorMemory.examinerLines(5), feedback == FeedbackMode.COACH)
+        val patterns = Prompts.patternBlock(app.errorMemory.examinerLines(5), feedback == FeedbackMode.COACH) + Prompts.habitBlock(app.insights.weaknesses(3).map { it.text })
         val level =
             app.profiles.profile.value.prognosis()?.let { p ->
                 "\n\nThe student's current level is about ${p.points} of 15 points. " +
@@ -1382,7 +1402,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         task = demoTask
         notes = "• Summary: Lagos, young creatives, Nollywood\n• Analysis: optimistic tone, contrasts\n• Comment: link to class (Adichie)"
         prepEndsAt = System.currentTimeMillis() + minutes * 60_000L
-        draft = SessionRecord.create(kind, FeedbackMode.FLUESTERN, demoTask.topicId, demoTask, focusTask)
+        draft = SessionRecord.create(kind, FeedbackMode.FLUESTERN, demoTask.topicId, demoTask, focusTask).copy(goals = LearningBrain.goals(app, kind, focusTask))
         nav.push(Screen.Prep)
     }
 
@@ -1403,6 +1423,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             )
         conversation.startDemo(state)
         live = conversation
+        if (draft == null) draft = SessionRecord.create(SessionKind.PART2, FeedbackMode.FLUESTERN, 4, null).copy(goals = LearningBrain.goals(app, SessionKind.PART2, 0))
         nav.push(Screen.Live)
     }
 

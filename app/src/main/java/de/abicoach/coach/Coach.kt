@@ -70,6 +70,8 @@ object CoachContext {
         val due = app.vocab.due().size
         if (due > 0) sb.append("\nWortschatz: $due Karten fällig.")
         sb.append("\nTage in Folge geübt: ").append(app.store.streak()).append(", heute ").append(app.store.minutesToday()).append(" von ").append(app.settings.dailyMinutes).append(" Min.")
+        // What the learning brain computed from all of this (plan, projection, habits): the coach builds on it.
+        runCatching { de.abicoach.learn.LearningBrain.explain(app) }.getOrNull()?.takeIf { it.isNotBlank() }?.let { sb.append("\n\n").append(it) }
         if (withLevels) {
             val worlds = app.worlds()
             val progress = app.path.progress.value
@@ -132,11 +134,10 @@ Du bekommst den aktuellen Stand des Schülers und erstellst seinen Tagesplan auf
 Regeln:
 - headline: ein motivierender, konkreter Satz (höchstens 14 Wörter), kein Floskel-Satz.
 - focus: zwei Sätze: Woran liegt es gerade am meisten (Zahlen aus dem Stand nennen) und was bringt heute die meisten Punkte.
-- steps: genau 3 Schritte in sinnvoller Reihenfolge (Warm-up kurz, Hauptübung, Wiederholung/Wortschatz). Jeder Schritt hat title (höchstens 6 Wörter), why (ein Satz, warum das heute dran ist, mit Bezug zu seinen Fehlern oder Lehrkraft-Kommentaren) und action.
-- action ist genau einer dieser Werte: aufgabe1, aufgabe2, aufgabe3, vortrag, gespraech, sprint, simulation, wortschatz, aussprache, training (Sprech-Training seiner eigenen Fehlermuster), echt (eine echte Prüfungsaufgabe aus seinem Abi-Material, nur wenn vorhanden), dossier:NUMMER (ein Themen-Dossier lesen, nur vorhandene) oder level:ID (nur eine ID aus der Liste im Stand).
-- Wenn Fehlermuster im Sprech-Training fällig sind, gehört „training“ fast immer in den Plan (kurz, 5 Minuten). Ein Themenfeld, das im Kurs vorkommt, aber noch nie geübt wurde, ist ein guter Hauptschritt.
-- Plane realistisch für die Tageszeit des Schülers (etwa 20–30 Minuten insgesamt). Wenn der Prüfungstermin nah ist (unter 21 Tage), plane mehr Simulation und Vortrag.
-- Wenn er heute schon geübt hat, schlage etwas Leichteres vor und lobe ihn.
+- steps: genau 3 Schritte. Im Stand steht unter „Lern-Gehirn der App“ der Plan, den die App aus allen Daten berechnet hat (erwarteter Punktgewinn pro Minute, Phase bis zur Prüfung). Übernimm seine Schritte und ihre Reihenfolge mit genau seinen Aktionen; weiche nur ab, wenn der Stand einen klaren Grund liefert (dann nimm einen der „weiteren Kandidaten“). Jeder Schritt hat title (höchstens 6 Wörter), why (ein Satz, warum das heute dran ist – mit den Zahlen und Gründen aus dem Plan, seinen Fehlern oder Gewohnheiten) und action.
+- action ist genau einer dieser Werte: aufgabe1, aufgabe2, aufgabe3, vortrag, gespraech oder gespraech:NUMMER (Gespräch zu einem Themenfeld), sprint, simulation, wortschatz, aussprache, training (Sprech-Training seiner eigenen Fehlermuster), echt (eine echte Prüfungsaufgabe aus seinem Abi-Material, nur wenn vorhanden), dossier:NUMMER (ein Themen-Dossier lesen, nur vorhandene), einstufung oder level:ID (nur eine ID aus der Liste im Stand).
+- focus nennt die Phase und das, was laut Plan heute am meisten Punkte bringt.
+- Wenn er heute schon geübt hat, lobe ihn kurz.
         """.trimIndent()
 
     private val schema = obj("headline" to str(), "focus" to str(), "steps" to arr(obj("title" to str(), "why" to str(), "action" to str())))

@@ -65,6 +65,10 @@ class AbiCoachApp : Application() {
     lateinit var dossiers: de.abicoach.memory.DossierStore
         private set
 
+    /** What the app has learned about the student's habits (the learner memory). */
+    lateinit var insights: de.abicoach.learn.InsightStore
+        private set
+
     /** A message from background work (e.g. "Gemini hat übernommen") that the app shows once. */
     @Volatile var pendingNotice: String? = null
 
@@ -99,6 +103,7 @@ class AbiCoachApp : Application() {
         ai = AiHub(http, settings)
         dossiers = de.abicoach.memory.DossierStore(this)
         errorMemory = de.abicoach.learn.ErrorMemoryStore(this)
+        insights = de.abicoach.learn.InsightStore(this)
         course = CourseContext(memory, Retriever(memory, ai), settings, profiles, dossiers)
         feedback = Feedback(this, { settings.sound }, { settings.vibration })
         path = PathStore(this)

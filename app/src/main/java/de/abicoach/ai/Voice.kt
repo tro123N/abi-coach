@@ -40,6 +40,9 @@ interface VoiceAgent {
     /** An instruction from the app (start, coach correction, time is up). The examiner answers it with his voice at once. */
     fun sendInstruction(text: String): Boolean
 
+    /** A note from the app that the examiner takes into account in his next turn, without answering it at once. */
+    fun sendNote(text: String): Boolean = sendInstruction(text)
+
     fun sendStreamEnd()
 
     fun close()
@@ -57,6 +60,8 @@ class GeminiVoiceAgent(
     override fun sendAudio(pcm16k: ByteArray) = socket.sendAudio(pcm16k)
 
     override fun sendInstruction(text: String): Boolean = socket.sendUserTurn(text)
+
+    override fun sendNote(text: String): Boolean = socket.sendUserTurn(text, complete = false)
 
     override fun sendStreamEnd() = socket.sendStreamEnd()
 

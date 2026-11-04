@@ -9,8 +9,10 @@ import de.abicoach.ai.str
 import de.abicoach.data.Debrief
 import de.abicoach.data.ExamTask
 import de.abicoach.data.FeedbackMode
+import de.abicoach.data.GoalResult
 import de.abicoach.data.Knowledge
 import de.abicoach.data.LiveError
+import de.abicoach.data.Observation
 import de.abicoach.data.Phrase
 import de.abicoach.data.PronTip
 import de.abicoach.data.SessionKind
@@ -39,6 +41,7 @@ Rules:
 - If the student does not understand a question, rephrase it more simply.
 - Never mention grades or points.
 - Messages that start with "COACH:" come from the training app, not from the student. Follow them immediately and briefly, then continue.
+- Messages that start with "DIRECTOR:" also come from the app, which keeps an eye on the time and on how the student answers. Follow them naturally in your next turn and never mention them.
 - If you receive "TIME_UP", thank the student in one sentence and end."""
 
     private fun courseBlock(courseOverview: String, topicContext: String, teacherNotes: String): String {
@@ -64,6 +67,36 @@ Rules:
         if (coach) sb.append(" When a COACH message concerns one of them, this is the most important correction of the session.")
         return sb.toString()
     }
+
+    /** The student's habits from the learner memory (German), for the examiner of a practice conversation. */
+    fun habitBlock(habits: List<String>): String {
+        if (habits.isEmpty()) return ""
+        val sb = StringBuilder("\n\nWhat the app has observed about the student's habits in earlier sessions (in German):\n")
+        habits.take(3).forEach { sb.append("- ").append(it).append('\n') }
+        sb.append("Help him overcome them in a natural way: for example, if his answers are short, ask why and for an example; if he stays general, ask for something concrete from class.")
+        return sb.toString()
+    }
+
+    // ---------- Conversation director (the app steers the examiner) ----------
+
+    const val DIRECTOR_MONOLOGUE =
+        "DIRECTOR: The student has been talking for a long time without letting you in. Politely interrupt him now, like a real examiner " +
+            "(\"Sorry to interrupt you here …\"), pick up one point he made and ask a focused follow-up question."
+
+    const val DIRECTOR_FINAL =
+        "About one minute of the conversation is left. In your next turn, ask one last question that makes the student evaluate something or take a clear stand (AFB III)."
+
+    const val DIRECTOR_PROBE =
+        "The student's last answers were very short. In your next turn, ask an open question that makes him explain and justify his view with an example " +
+            "(e.g. \"Why do you think so?\", \"Could you give an example from class?\"). Do not settle for one-sentence answers."
+
+    const val DIRECTOR_NUDGE = "DIRECTOR: Please respond to what the student just said and continue the conversation."
+
+    fun directorSwitch(topic: String): String =
+        "About half of the time is over. In your next turn, react to the student's answer in one short sentence, then switch explicitly to the second topic: $topic. Connect it to what was said before."
+
+    fun directorElicit(line: String): String =
+        "In your next question, create a natural situation in which the student needs this structure – without mentioning grammar or mistakes: $line."
 
     fun part2Examiner(task: ExamTask, part1Excerpt: String, courseOverview: String, topicContext: String, teacherNotes: String, minutes: Int, patterns: String = ""): String {
         val topics = task.part2.ifEmpty { emptyList() }
@@ -97,6 +130,7 @@ $EXAMINER_RULES
         part2Style: Boolean,
         extra: String = "",
         patterns: String = "",
+        secondTopic: String = "",
     ): String {
         val coach =
             if (mode == FeedbackMode.COACH) {
@@ -109,7 +143,8 @@ $EXAMINER_RULES
         val topic = Knowledge.topic(topicId)?.english ?: "topics from the whole course"
         val style =
             if (part2Style) {
-                "The conversation should be exactly like part 2 of the exam: start with an open question about the topic field, follow up, and after a while connect it to another topic field of the course."
+                "The conversation should be exactly like part 2 of the exam: start with an open question about the topic field, follow up, and after a while connect it to another topic field of the course" +
+                    if (secondTopic.isNotBlank()) " – the second topic field is: $secondTopic (the app tells you when it is time to switch)." else "."
             } else {
                 "This is a relaxed speaking practice: start with an open question about the topic, move on to related aspects and, after a while, connect the topic to another area of the course."
             }
@@ -308,9 +343,11 @@ ${skillLines()}
 - segments: nur bei einem Vortrag (Teil 1): für jede bearbeitete Aufgabe die Nummer und die ersten 4–8 Wörter, mit denen der Prüfling diese Aufgabe beginnt, wörtlich aus dem Transkript. Sonst leer.
 - reading_aloud: true, wenn der Prüfling offensichtlich abliest statt frei zu sprechen (aus Audio oder Audio-Auswertung erkennbar), sonst false.
 - student_transcript: nur ausfüllen, wenn das mitgelieferte Transkript des Prüflings leer ist und Audio vorliegt: dann das Gesagte wortgetreu aus dem Audio. Sonst leer.
+- goal_results: nur wenn unten „Ziele dieser Sitzung“ stehen: für jedes Ziel seine id, result ("yes" = erreicht, "partly" = teilweise, "no" = nicht erreicht) und note (ein kurzer Satz auf Deutsch mit einem konkreten Beleg aus dem Transkript). Die Ziele ändern nichts an den Punkten. Sonst leer.
+- insights: 1–4 Beobachtungen über Gewohnheiten des Prüflings, die über einzelne Fehler hinausgehen und für sein weiteres Üben wichtig sind (z. B. „antwortet im Gespräch meist nur mit einem Satz“, „wiederholt in Aufgabe 2 den Inhalt, statt zu analysieren“, „belegt Aussagen gut mit Beispielen aus dem Unterricht“). text: ein kurzer deutscher Satz in der dritten Person ohne Namen; area: inhalt, sprache, vortrag, gespraech oder strategie; polarity: staerke oder schwaeche. Nur, was in DIESER Sitzung klar zu sehen war. Wenn eine der unten „bereits bekannten Beobachtungen“ wieder zutrifft, übernimm ihren Wortlaut genau.
         """.trimIndent()
 
-    fun analysisContext(record: SessionRecord, courseContext: String, teacherNotes: String, listening: String?, profileNote: String): String {
+    fun analysisContext(record: SessionRecord, courseContext: String, teacherNotes: String, listening: String?, profileNote: String, knownInsights: List<String> = emptyList()): String {
         val sb = StringBuilder()
         sb.append("Modus: ").append(record.kind.label)
         if (record.kind.hasPart1 && record.kind.hasPart2) sb.append(" (Teil 1 Vortrag, Teil 2 Prüfungsgespräch)")
@@ -337,6 +374,14 @@ ${skillLines()}
         if (courseContext.isNotBlank()) sb.append("\n\n").append(courseContext)
         if (teacherNotes.isNotBlank()) sb.append("\n\n").append(teacherNotes)
         if (profileNote.isNotBlank()) sb.append("\n\nBisheriges Lernprofil: ").append(profileNote)
+        if (record.goals.isNotEmpty()) {
+            sb.append("\n\nZiele dieser Sitzung (vom Lern-Gehirn der App gesetzt; beurteile jedes in goal_results):\n")
+            record.goals.forEach { g -> sb.append("- id ").append(g.id).append(": ").append(g.text).append(" — Prüffrage: ").append(g.check).append('\n') }
+        }
+        if (knownInsights.isNotEmpty()) {
+            sb.append("\nBereits bekannte Beobachtungen über den Prüfling (nur für den Wortlaut von insights, nie für die Punkte):\n")
+            knownInsights.forEach { sb.append("- ").append(it).append('\n') }
+        }
         if (listening != null) sb.append("\n\nAudio-Auswertung der Aufnahme (von Gemini):\n").append(listening)
         sb.append("\n\nWortgetreues Transkript (STUDENT = Prüfling, EXAMINER = Prüfer):\n")
         if (record.utterances.isEmpty()) sb.append("(leer – bitte aus dem Audio rekonstruieren)\n")
@@ -368,6 +413,28 @@ ${skillLines()}
             "segments" to arr(obj("number" to int(), "first_words" to str())),
             "reading_aloud" to de.abicoach.ai.bool(),
             "student_transcript" to str(),
+            "goal_results" to arr(obj("id" to str(), "result" to enumOf(listOf("yes", "partly", "no")), "note" to str())),
+            "insights" to arr(obj("text" to str(), "area" to enumOf(listOf("inhalt", "sprache", "vortrag", "gespraech", "strategie")), "polarity" to enumOf(listOf("staerke", "schwaeche")))),
+        )
+
+    // ---------- Second, independent grading (like a second examiner) ----------
+
+    val SECOND_SYSTEM =
+        """
+Du bist die zweite Prüferin im NRW-Abitur (mündliche Prüfung Englisch, 4. Fach) und bewertest eine Übungsprüfung unabhängig von der ersten Prüferin, deren Ergebnis du nicht kennst.
+${Knowledge.EXAM_FACTS}
+- Lies das wortgetreue Transkript (Füllwörter und Selbstkorrekturen sind normal) und – falls vorhanden – die Audio-Auswertung.
+- Bewerte streng wie im echten Abitur, nur nach dem, was in dieser Sitzung zu hören und zu lesen ist: Punkte (0–15) für die inhaltliche Leistung (Aufgabenbezug, Erwartungshorizont, Tiefe, Beispiele) und für die Darstellungsleistung (Aufbau, freies Sprechen, Gesprächsführung, Wortschatz, Grammatik, Aussprache).
+- skills: für jede Kompetenz 0–15, -1 wenn sie hier nicht beurteilbar war:
+${skillLines()}
+- reason: je zwei Sätze Begründung auf Deutsch im Stil einer Notenbegründung.
+        """.trimIndent()
+
+    val secondSchema: Sch =
+        obj(
+            "inhalt" to obj("points" to int(), "reason" to str()),
+            "darstellung" to obj("points" to int(), "reason" to str()),
+            "skills" to obj(*Skill.entries.map { it.key to int() }.toTypedArray()),
         )
 
     // ---------- Listening to the recording (before the grading) ----------
@@ -449,6 +516,16 @@ Du hörst die Aufnahme eines deutschen Schülers, der für die mündliche Englis
             listenedBy = listenedBy,
             segments = o.optJSONArray("segments").objects().map { it.optInt("number") to it.optString("first_words") }.filter { it.first in 1..3 && it.second.isNotBlank() },
             readingAloud = o.optBoolean("reading_aloud") || (listening?.optBoolean("reading_aloud") ?: false),
+            goalResults =
+                o.optJSONArray("goal_results").objects()
+                    .map { GoalResult(it.optString("id").trim(), it.optString("result").trim().lowercase(), it.optString("note").trim()) }
+                    .filter { it.id.isNotBlank() && it.result in setOf("yes", "partly", "no") }
+                    .distinctBy { it.id },
+            observations =
+                o.optJSONArray("insights").objects()
+                    .map { Observation(it.optString("text").trim(), it.optString("area").trim().lowercase(), it.optString("polarity").trim().lowercase()) }
+                    .filter { it.text.length in 8..200 && (it.polarity == "staerke" || it.polarity == "schwaeche") }
+                    .take(4),
         )
     }
 
@@ -475,7 +552,8 @@ Du bekommst vorab den „Stand des Schülers“ (Prognose, Kompetenzen, letzte A
 Stütze dich zuerst auf die mitgelieferten Auszüge aus seinem eigenen Kursmaterial und nenne die Fundstelle als [1], [2] … Wenn das Material die Frage nicht beantwortet, sag das und antworte aus deinem Wissen (dann ohne Fundstelle).
 Wenn es zur Prüfung passt, schließe mit einem kurzen Tipp, wie er das im Vortrag oder im Gespräch nutzen kann.
 Du kannst passende Übungen der App als Knöpfe vorschlagen (höchstens zwei, nur wenn sie wirklich weiterhelfen). Schreib dafür ans Ende eine eigene Zeile mit Markierungen wie [[aufgabe2]]:
-[[aufgabe1]] Zusammenfassen üben · [[aufgabe2]] Analysieren üben · [[aufgabe3]] Kommentieren üben · [[vortrag]] ganzer Vortrag · [[gespraech]] Prüfungsgespräch · [[sprint]] 3-Minuten-Gesprächssprint · [[simulation]] ganze Prüfung · [[wortschatz]] Wortschatz wiederholen · [[aussprache]] Aussprache-Labor · [[level:ID]] ein Level des Abi-Wegs (nur IDs aus der Liste unten).
+[[aufgabe1]] Zusammenfassen üben · [[aufgabe2]] Analysieren üben · [[aufgabe3]] Kommentieren üben · [[vortrag]] ganzer Vortrag · [[gespraech]] Prüfungsgespräch (oder [[gespraech:NUMMER]] zu einem Themenfeld) · [[sprint]] 3-Minuten-Gesprächssprint · [[simulation]] ganze Prüfung · [[wortschatz]] Wortschatz wiederholen · [[aussprache]] Aussprache-Labor · [[training]] Sprech-Training seiner Fehlermuster · [[dossier:NUMMER]] Themen-Dossier · [[echt]] echte Prüfungsaufgabe · [[level:ID]] ein Level des Abi-Wegs (nur IDs aus der Liste unten).
+Wenn er fragt, was er üben soll, stütze dich auf den Plan des Lern-Gehirns im Stand (Abschnitt „Lern-Gehirn der App“) und erkläre ihn mit dessen Gründen.
 Der Schüler führt die Übungen selbst aus – du sagst nie, dass du etwas gestartet hast.
         """.trimIndent()
 

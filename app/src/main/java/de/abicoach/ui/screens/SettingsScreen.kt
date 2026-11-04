@@ -277,10 +277,15 @@ fun SettingsScreen(vm: AppViewModel) {
     confirm?.let { what ->
         PopUp(
             title = if (what == "sessions") "Alle Sitzungen löschen?" else "Lernprofil zurücksetzen?",
-            description = if (what == "sessions") "Alle Auswertungen und Aufnahmen werden gelöscht." else "Prognose und Kompetenzen beginnen von vorn. Die Sitzungen bleiben.",
+            description = if (what == "sessions") "Alle Auswertungen und Aufnahmen werden gelöscht." else "Prognose, Kompetenzen und das Lerner-Gedächtnis beginnen von vorn. Die Sitzungen bleiben.",
             confirmText = if (what == "sessions") "Löschen" else "Zurücksetzen",
             onConfirm = {
-                if (what == "sessions") app.store.deleteAll() else app.profiles.reset()
+                if (what == "sessions") {
+                    app.store.deleteAll()
+                } else {
+                    app.profiles.reset()
+                    app.insights.reset()
+                }
                 confirm = null
             },
             onDismiss = { confirm = null },
