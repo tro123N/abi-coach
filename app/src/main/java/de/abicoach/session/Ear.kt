@@ -117,16 +117,19 @@ class SpeechSegmenter(private val onSegment: (SpeechSegment) -> Unit) {
         private const val FRAME_MS = 100L
         private const val PRE_ROLL = 3
         private const val START_FRAMES = 2
-        private const val END_SILENCE = 6
+        /** 0.4 s of silence ends an utterance: quick enough for a hint in the next breath. */
+        private const val END_SILENCE = 4
         private const val TAIL_FRAMES = 2
-        private const val MIN_VOICED_MS = 700L
-        private const val MAX_MS = 7_000L
+        private const val MIN_VOICED_MS = 500L
+
+        /** Long speech without a pause is cut after 4.5 s at its quietest moment, so the check never lags far behind. */
+        private const val MAX_MS = 4_500L
         private const val MIN_LEVEL = 0.03f
     }
 }
 
 /**
- * The ear: Gemini listens to one utterance of the student and writes down what he said (with his mistakes) and
+ * The ear: the AI listens to one utterance of the student and writes down what he said (with his mistakes) and
  * which clear mistakes it contains – in one quick call. Judging the real audio avoids false hints that come from
  * a misheard transcript.
  */

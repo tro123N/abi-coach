@@ -10,7 +10,7 @@ import kotlinx.coroutines.withContext
 import kotlin.random.Random
 
 /** Hybrid search over the student's material: keywords (BM25) and meaning (vectors), fused by rank. */
-class Retriever(private val store: MemoryStore, private val hub: AiHub) {
+class Retriever(private val store: MemoryStore, private val hub: AiHub, private val settings: Settings) {
     private val queryVectors = LruCache<String, FloatArray>(64)
 
     suspend fun search(
@@ -23,7 +23,7 @@ class Retriever(private val store: MemoryStore, private val hub: AiHub) {
         val index = withContext(Dispatchers.Default) { store.index() }
         if (index.chunks.isEmpty()) return emptyList()
         val queryVector =
-            if (useVectors && index.hasVectors && hub.hasGemini) {
+            if (useVectors && index.hasVectors && hub.ready && hub.embedSpace != null && hub.embedSpace == settings.vectorSpace) {
                 queryVectors.get(query) ?: runCatching { hub.embed(listOf(query), query = true).first() }.getOrNull()?.also { queryVectors.put(query, it) }
             } else {
                 null

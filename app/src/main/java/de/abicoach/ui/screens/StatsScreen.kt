@@ -12,6 +12,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -42,6 +44,8 @@ import de.abicoach.ui.components.Gap
 import de.abicoach.ui.components.LineChart
 import de.abicoach.ui.components.StatTile
 import de.abicoach.ui.components.Tab
+import de.abicoach.ui.components.TopBarAction
+import de.abicoach.ui.components.PopUp
 import de.abicoach.ui.theme.AbiTheme
 import de.abicoach.ui.theme.accent
 import de.abicoach.ui.theme.green
@@ -203,7 +207,7 @@ fun StatsScreen(vm: AppViewModel) {
                     item {
                         AbiCard {
                             CardTitle("Letzte Sitzungen", icon = R.drawable.history_24dp)
-                            recent.forEach { s -> SessionRow(s) { vm.tap(); if (s.debrief != null) vm.nav.push(Screen.Debrief(s.id)) else vm.openAnalysis(s.id) } }
+                            recent.forEach { s -> SessionRow(s) { vm.openSession(s.id) } }
                             Gap(6.dp)
                             ActionButton("Alle Sitzungen", R.drawable.history_24dp, MaterialTheme.colorScheme.onPrimary, { vm.tap(); vm.nav.push(Screen.Sessions) }, container = MaterialTheme.colorScheme.background)
                         }
@@ -230,20 +234,129 @@ private fun Column2(content: @Composable () -> Unit) {
     androidx.compose.foundation.layout.Column { content() }
 }
 
-/** All sessions, newest first. */
+/** All sessions, newest first; select several and delete them completely. */
 @Composable
 fun SessionsScreen(vm: AppViewModel) {
     val sessions by vm.app.store.sessions.collectAsState()
-    DetailScaffold(title = "Alle Sitzungen", onBack = { vm.tap(); vm.nav.pop() }, tag = "sessions") {
+    var selecting by remember { mutableStateOf(false) }
+    var chosen by remember { mutableStateOf(setOf<String>()) }
+    var confirm by remember { mutableStateOf(false) }
+    // Sessions deleted elsewhere leave the selection.
+    val picked = chosen.intersect(sessions.map { it.id }.toSet())
+    fun toggle(id: String) {
+        chosen = if (id in chosen) chosen - id else chosen + id
+    }
+    fun leave() {
+        selecting = false
+        chosen = emptySet()
+    }
+    if (confirm) {
+        PopUp(
+            title = if (picked.size == 1) "Sitzung löschen?" else "${picked.size} Sitzungen löschen?",
+            description = "Sitzung, Aufnahme und Auswertung werden ganz gelöscht – auch eine Auswertung, die noch wartet. Dein Lernprofil bleibt, wie es ist.",
+            confirmText = "Löschen",
+            onConfirm = {
+                confirm = false
+                vm.deleteSessions(picked)
+                leave()
+            },
+            onDismiss = { confirm = false },
+            confirmColor = red,
+        )
+    }
+    DetailScaffold(
+        title = if (selecting) "${picked.size} ausgewählt" else "Alle Sitzungen",
+        onBack = {
+            vm.tap()
+            if (selecting) leave() else vm.nav.pop()
+        },
+        backIcon = if (selecting) R.drawable.close_24dp else R.drawable.arrow_back_24dp,
+        tag = "sessions",
+        actions = {
+            if (sessions.isNotEmpty()) {
+                if (selecting) {
+                    TopBarAction(R.drawable.delete_24dp, "Ausgewählte löschen", { if (picked.isNotEmpty()) confirm = true }, tint = red, tag = "sessions_delete")
+                } else {
+                    TopBarAction(R.drawable.checklist_24dp, "Auswählen", {
+                        vm.tap()
+                        selecting = true
+                    }, tag = "sessions_select")
+                }
+            }
+        },
+    ) {
         if (sessions.isEmpty()) {
             BodyText("Noch keine Sitzungen.")
-        } else {
-            val byKind = sessions.groupBy { it.kind }
-            AbiCard {
-                CardTitle("${sessions.size} Sitzungen", icon = R.drawable.history_24dp)
-                CaptionText(byKind.entries.joinToString(" · ") { "${it.key.short}: ${it.value.size}" })
+            return@DetailScaffold
+        }
+        if (selecting) {
+            val open = sessions.filter { it.debrief == null }.map { it.id }.toSet()
+            AbiCard(modifier = Modifier.testTag("sessions_selection")) {
+                CardTitle("Sitzungen auswählen", icon = R.drawable.checklist_24dp)
+                CaptionText("Tippe die Sitzungen an, die weg sollen. Sie werden ganz gelöscht – samt Aufnahme und einer Auswertung, die noch wartet.")
                 Gap(8.dp)
-                sessions.forEach { s -> SessionRow(s) { vm.tap(); if (s.debrief != null) vm.nav.push(Screen.Debrief(s.id)) else vm.openAnalysis(s.id) } }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ActionButton("Alle", R.drawable.check_24dp, accent, {
+                        vm.tap()
+                        chosen = sessions.map { it.id }.toSet()
+                    }, Modifier.weight(1f), container = MaterialTheme.colorScheme.background)
+                    ActionButton("Keine", R.drawable.close_24dp, accent, {
+                        vm.tap()
+                        chosen = emptySet()
+                    }, Modifier.weight(1f), container = MaterialTheme.colorScheme.background)
+                }
+                if (open.isNotEmpty()) {
+                    Gap(8.dp)
+                    ActionButton(
+                        "Nicht ausgewertete (${open.size})",
+                        R.drawable.hourglass_bottom_24dp,
+                        yellow,
+                        {
+                            vm.tap()
+                            chosen = open
+                        },
+                        Modifier.testTag("sessions_select_open"),
+                        container = MaterialTheme.colorScheme.background,
+                    )
+                }
+                Gap(8.dp)
+                ActionButton(
+                    if (picked.isEmpty()) "Löschen" else "Löschen (${picked.size})",
+                    R.drawable.delete_24dp,
+                    red,
+                    {
+                        vm.tap()
+                        confirm = true
+                    },
+                    Modifier.testTag("sessions_delete_button"),
+                    enabled = picked.isNotEmpty(),
+                    container = MaterialTheme.colorScheme.background,
+                )
+            }
+        }
+        val byKind = sessions.groupBy { it.kind }
+        AbiCard {
+            CardTitle("${sessions.size} Sitzungen", icon = R.drawable.history_24dp)
+            CaptionText(byKind.entries.joinToString(" · ") { "${it.key.short}: ${it.value.size}" })
+            if (!selecting) CaptionText("Zum Löschen: oben „Auswählen“ tippen oder eine Sitzung lange drücken.")
+            Gap(8.dp)
+            sessions.forEach { s ->
+                SessionRow(
+                    s,
+                    selected = if (selecting) s.id in picked else null,
+                    onLongClick = {
+                        vm.tap()
+                        selecting = true
+                        toggle(s.id)
+                    },
+                ) {
+                    if (selecting) {
+                        vm.tap()
+                        toggle(s.id)
+                    } else {
+                        vm.openSession(s.id)
+                    }
+                }
             }
         }
     }

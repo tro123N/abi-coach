@@ -17,7 +17,7 @@ data class CheckerStatus(
     val checks: Int = 0,
     val lastOkAt: Long = 0,
     val failure: String? = null,
-    /** "Audio" (Gemini hears the recording) or "Text" (checks the live transcript). */
+    /** "Audio" (the AI hears the recording) or "Text" (checks the live transcript). */
     val mode: String = "Audio",
     /** Average time from the end of an utterance to the answer. */
     val avgMs: Int = 0,
@@ -27,7 +27,7 @@ data class CheckerStatus(
 /**
  * The "second ear": checks what the student says while he speaks.
  *
- * Main path: the [SpeechSegmenter] cuts the microphone at natural pauses and Gemini listens to each utterance itself
+ * Main path: the [SpeechSegmenter] cuts the microphone at natural pauses and the AI listens to each utterance itself
  * (transcript and mistakes in one call). This does not depend on the live transcription and avoids false hints
  * from misheard words. If listening fails several times in a row, the checker falls back for a minute to the text of
  * the live transcription (sentence by sentence), then tries listening again.
@@ -40,6 +40,8 @@ class LiveChecker(
     private val onStatus: (CheckerStatus) -> Unit,
     /** What the ear understood in an utterance (used as a backup transcript and for the coach's "say it again"). */
     private val onHeard: (SpeechSegment, String) -> Unit = { _, _ -> },
+    /** False when the AI cannot listen itself (Claude): then the live transcript of the phone is checked. */
+    private val listen: Boolean = true,
 ) {
     private val lock = Any()
     private val segments = ArrayDeque<SpeechSegment>()
@@ -62,15 +64,15 @@ class LiveChecker(
 
     @Volatile private var totalMs = 0L
 
-    @Volatile private var status = CheckerStatus(label = hub.fastLabel())
+    @Volatile private var status = CheckerStatus(label = hub.fastLabel(), mode = if (listen) "Audio" else "Text")
 
-    private val audioMode: Boolean get() = System.currentTimeMillis() >= textUntil
+    private val audioMode: Boolean get() = listen && System.currentTimeMillis() >= textUntil
 
     /** One utterance of the student, cut at a pause. */
     fun feedSegment(segment: SpeechSegment) = synchronized(lock) {
         segments.addLast(segment)
         // If the network is slow, the oldest utterances are dropped: a late hint is worth less than a current one.
-        while (segments.size > 4) segments.removeFirst()
+        while (segments.size > 3) segments.removeFirst()
     }
 
     /** Text the transcriber has finished (a sentence or a whole turn). Used only when listening does not work. */
@@ -136,17 +138,24 @@ class LiveChecker(
         }
     }
 
+    /**
+     * Listening to the utterances comes first. Alongside, every finished sentence of the live transcript is checked at
+     * once (it is there before the pause that ends the utterance): from that fast lane only clear, serious mistakes
+     * count, so a misheard word cannot trigger a wrong hint – the small ones come from listening.
+     */
     private fun launchNext() {
         val now = System.currentTimeMillis()
-        if (now < pausedUntil || inFlight.get() >= 2) return
+        if (now < pausedUntil || inFlight.get() >= MAX_IN_FLIGHT) return
         if (audioMode) {
-            val segment =
-                synchronized(lock) {
-                    // While listening works, the text path stays idle.
-                    queue.clear()
-                    segments.removeFirstOrNull()
-                } ?: return
-            launchAudio(segment)
+            val segment = synchronized(lock) { segments.removeFirstOrNull() }
+            if (segment != null) {
+                launchAudio(segment)
+                return
+            }
+            if (now - lastCallAt < FAST_GAP_MS || inFlight.get() >= MAX_IN_FLIGHT - 1) return
+            val sentence = synchronized(lock) { queue.removeLastOrNull()?.also { queue.clear() } } ?: return
+            lastCallAt = now
+            launchText(sentence, seriousOnly = true)
             return
         }
         if (now - lastCallAt < MIN_GAP_MS) return
@@ -159,7 +168,7 @@ class LiveChecker(
                 parts.joinToString(" ")
             }
         lastCallAt = now
-        launchText(text)
+        launchText(text, seriousOnly = false)
     }
 
     private fun launchAudio(segment: SpeechSegment) {
@@ -191,33 +200,44 @@ class LiveChecker(
         }
     }
 
-    private fun launchText(text: String) {
+    private fun launchText(text: String, seriousOnly: Boolean) {
         inFlight.incrementAndGet()
         val started = System.currentTimeMillis()
         scope.launch {
             try {
                 val json = hub.fastJson(Prompts.CHECK_SYSTEM, Prompts.checkRequest(text, context), Prompts.checkSchema)
                 val reference = Prompts.normalize(text)
-                val all = Prompts.parseErrors(json.optJSONArray("errors")).filter { Prompts.isQuoted(it.quote, reference) }
-                ok(System.currentTimeMillis() - started, "Text")
+                val all =
+                    Prompts.parseErrors(json.optJSONArray("errors")).filter { Prompts.isQuoted(it.quote, reference) }
+                        .filter { !seriousOnly || it.severity == "major" || it.severity == "content" }
+                if (!seriousOnly) ok(System.currentTimeMillis() - started, "Text")
                 deliver(all)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 if (e is AiException && e.code == 429) pausedUntil = System.currentTimeMillis() + 20_000
-                failed(e, "Text")
+                // The fast lane is a bonus: its failures do not count while listening works.
+                if (!seriousOnly) failed(e, "Text")
             } finally {
                 inFlight.decrementAndGet()
             }
         }
     }
 
+    /** Each mistake is reported once, even if both lanes (or two overlapping checks) found it. */
     private fun deliver(errors: List<LiveError>) {
         val fresh =
             synchronized(lock) {
                 val t = System.currentTimeMillis()
                 recentQuotes.entries.removeAll { t - it.value > 90_000 }
-                errors.filter { e -> recentQuotes.put(Prompts.normalize(e.quote), t) == null }
+                errors.filter { e ->
+                    val quote = "q:" + Prompts.normalize(e.quote)
+                    val fix = "c:" + Prompts.normalize(e.correction)
+                    val known = recentQuotes.containsKey(quote) || recentQuotes.containsKey(fix)
+                    recentQuotes[quote] = t
+                    recentQuotes[fix] = t
+                    !known
+                }
             }
         if (fresh.isNotEmpty()) onErrors(fresh)
     }
@@ -238,6 +258,12 @@ class LiveChecker(
     companion object {
         private const val STABLE_MS = 1_300L
         private const val MIN_GAP_MS = 1_000L
+
+        /** The fast lane checks a finished sentence at most this often. */
+        private const val FAST_GAP_MS = 600L
+
+        /** Checks running at the same time, so a slow answer does not hold up the next utterance. */
+        private const val MAX_IN_FLIGHT = 3
 
         /** Splits at . ? ! and cuts very long run-on sentences after 16 words (speech often has little punctuation). */
         fun splitSentences(text: String): List<String> =

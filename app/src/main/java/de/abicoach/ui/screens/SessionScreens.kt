@@ -65,6 +65,7 @@ import de.abicoach.ui.components.BulletText
 import de.abicoach.ui.components.CaptionText
 import de.abicoach.ui.components.CardTitle
 import de.abicoach.ui.components.ChoiceChips
+import de.abicoach.ui.components.MultiChoiceChips
 import de.abicoach.ui.components.ExpandableCard
 import de.abicoach.ui.components.Gap
 import de.abicoach.ui.components.Tab
@@ -160,6 +161,40 @@ fun SetupScreen(vm: AppViewModel, initial: SessionSetup) {
                 CaptionText("Tipp: Lade unter „Kurs“ dein Material hoch – dann passen Texte und Fragen genau zu eurem Unterricht.")
             }
         }
+        if ((s.kind.hasPart2 || s.kind == SessionKind.TRAINING) && s.kind != SessionKind.PLACEMENT && !s.isSprint) {
+            val forExam = s.kind.hasPart2
+            val main = s.topicChoice.takeIf { it in 0..13 }
+            val others = Knowledge.TOPICS.map { it.id }.filter { it != main }
+            val picked = s.extraTopics.filter { it != main }.toSet()
+            AbiCard(modifier = Modifier.testTag("setup_more_topics")) {
+                CardTitle(if (forExam) "Teil 2 – Themenfelder" else "Weitere Themenfelder", icon = R.drawable.hub_24dp)
+                CaptionText(
+                    if (forExam) {
+                        "Im Abitur darf Teil 2 nicht bei einem Kurshalbjahr bleiben – meist verbinden die Prüfer zwei Themenfelder und fragen nach Zusammenhängen. " +
+                            "Wähle bis zu ${AppViewModel.MAX_EXTRA_TOPICS}, die zusammen geprüft werden. Ohne Auswahl nimmt die App die, die du am nötigsten hast."
+                    } else {
+                        "Optional: bis zu ${AppViewModel.MAX_EXTRA_TOPICS} weitere Themenfelder – das Gespräch verbindet sie, wie im Abitur."
+                    },
+                )
+                Gap(8.dp)
+                MultiChoiceChips(
+                    options = others,
+                    selected = picked,
+                    label = { Knowledge.topicShort(it) },
+                    onToggle = { id ->
+                        vm.tap()
+                        s = s.copy(extraTopics = if (id in picked) (picked - id).toList() else (picked + id).toList())
+                    },
+                    canAdd = picked.size < AppViewModel.MAX_EXTRA_TOPICS,
+                    tagPrefix = "moretopic",
+                )
+                if (picked.isNotEmpty()) {
+                    Gap(6.dp)
+                    val first = main?.let { Knowledge.topicShort(it) } ?: if (s.kind == SessionKind.SIMULATION) "Text aus Teil 1" else "dein Themenfeld"
+                    CaptionText("Geprüft wird: " + (listOf(first) + picked.map { Knowledge.topicShort(it) }).joinToString(" → "))
+                }
+            }
+        }
         if (s.kind.hasPart1) {
             AbiCard {
                 CardTitle("Material für Teil 1", icon = R.drawable.article_24dp)
@@ -218,12 +253,15 @@ fun SetupScreen(vm: AppViewModel, initial: SessionSetup) {
             CaptionText(s.feedback.description)
         }
         AbiCard {
-            CardTitle("Deine KI für diese Übung", icon = R.drawable.auto_awesome_24dp)
-            if (s.kind.hasPart2 || !s.kind.hasPart1) CaptionText("Prüfer: ${app.ai.examinerLabel()} – hört und spricht gleichzeitig")
-            CaptionText("Mitschrift: ${de.abicoach.ai.AiHub.pretty(app.settings.transcribeModel)} (wortgetreu, mit deinen Fehlern)")
+            CardTitle("Deine KI für diese Übung: ${app.ai.providerLabel()}", icon = R.drawable.auto_awesome_24dp)
+            val claude = app.ai.provider == de.abicoach.ai.Provider.ANTHROPIC
+            if (s.kind.hasPart2 || !s.kind.hasPart1) {
+                CaptionText("Prüfer: ${app.ai.examinerLabel()}" + if (claude) " – antwortet, wenn du fertig bist" else " – hört und spricht gleichzeitig")
+            }
+            CaptionText("Mitschrift: ${app.ai.transcriberLabel()}" + if (claude) "" else " (wortgetreu, mit deinen Fehlern)")
             if (s.feedback != FeedbackMode.PRUEFUNG) CaptionText("Fehlerprüfung beim Sprechen: ${app.ai.fastLabel()}")
             if (s.kind.hasPart1) CaptionText("Text und Aufgaben: ${app.ai.brainLabel()}")
-            CaptionText("Bewertung und Aufnahme anhören: ${app.ai.brainLabel()}")
+            CaptionText("Bewertung: ${app.ai.brainLabel()}" + if (app.ai.hearsRecordings) " · Aufnahme anhören: ${app.ai.listenerLabel()}" else " (nach der Mitschrift)")
         }
     }
 }
@@ -689,7 +727,7 @@ fun AnalyzingScreen(vm: AppViewModel) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var asked by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     var confirmCancel by remember { mutableStateOf(false) }
-    val cloud = vm.app.settings.cloudAnalysis
+    val cloud = vm.app.settings.cloudAnalysis && vm.app.ai.canRunInCloud
     if (confirmCancel) {
         PopUp(
             title = "Auswertung abbrechen?",

@@ -173,19 +173,25 @@ class AnalysisCenter {
 /** Evaluates a session and folds the result into the profile, the Abi-Weg and the vocabulary. */
 object AnalysisRunner {
     suspend fun run(app: AbiCoachApp, record: SessionRecord, onProgress: (String) -> Unit): Debrief {
+        val startInCloud = app.ai.canRunInCloud && app.settings.cloudAnalysis
+        // A job that already runs at Google is picked up even after switching to another company.
+        val running = app.cloudJobs.get(record.id) != null && app.settings.geminiKey.isNotBlank()
         val graded =
-            if (app.settings.cloudAnalysis || app.cloudJobs.get(record.id) != null) {
+            if (startInCloud || running) {
                 try {
-                    CloudAnalysis.run(app, record, onProgress)
-                } catch (e: AiException) {
-                    if (!e.isPermanent) throw e
-                    // The cloud way does not work with this key or model: grade directly instead.
-                    app.cloudJobs.remove(record.id)
-                    onProgress("Cloud-Auswertung nicht verfügbar – werte direkt aus …")
-                    app.pendingNotice = "Die Auswertung lief diesmal nicht in der Cloud (${e.message?.take(120)}), sondern direkt über dein Handy."
+                    CloudAnalysis.run(app, record, allowStart = startInCloud, onProgress = onProgress)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    // Only a lost connection waits (the job goes on in the cloud). Anything else: grade directly, now.
+                    if (e.isConnectionProblem()) throw e
+                    CloudAnalysis.cancel(app, record.id)
+                    onProgress("Die Cloud-Auswertung hat nicht geklappt – werte direkt aus …")
+                    app.pendingNotice = "Die Auswertung lief diesmal direkt statt in Googles Cloud (${e.message?.take(120)})."
                     Analyzer(app).analyze(record, onProgress)
                 }
             } else {
+                if (app.cloudJobs.get(record.id) != null) CloudAnalysis.cancel(app, record.id)
                 Analyzer(app).analyze(record, onProgress)
             }
         // The comparison with earlier sessions is made afterwards: the grader itself never sees earlier points.
@@ -203,6 +209,8 @@ object AnalysisRunner {
             var rated = p.withRatings(debrief.skills, weight, now, record.kind.short)
             rated = rated.withTopic(record.topicId, topicPoints, weight, now)
             if (record.kind.hasPart2) record.task?.part2?.forEach { t -> rated = rated.withTopic(t.topicId, topicPoints, weight * 0.4, now) }
+            // A conversation over several topic fields (chosen in the setup) counts for each of them.
+            if (record.task == null) record.extraTopics.forEach { t -> rated = rated.withTopic(t, topicPoints, weight * 0.6, now) }
             if (record.kind == SessionKind.PLACEMENT) rated.copy(placementDone = true, placementAt = now) else rated
         }
         // The error memory: every mistake of this session, grouped by its rule, followed over time.
@@ -269,7 +277,7 @@ class AnalysisWorker(context: Context, params: WorkerParameters) : CoroutineWork
         Notifications.foreground(
             applicationContext,
             "AbiCoach wertet deine Sitzung aus",
-            if ((applicationContext as AbiCoachApp).settings.cloudAnalysis) {
+            if ((applicationContext as AbiCoachApp).let { it.ai.canRunInCloud && it.settings.cloudAnalysis }) {
                 "Die Bewertung läuft in Googles Cloud – du kannst die App schließen, das Ergebnis kommt trotzdem."
             } else {
                 "Die KI hört zu und bewertet nach dem NRW-Raster …"
@@ -302,14 +310,11 @@ class AnalysisWorker(context: Context, params: WorkerParameters) : CoroutineWork
             Result.success()
         } catch (e: CancellationException) {
             throw e
-        } catch (e: CloudPending) {
-            // Still running in the cloud: look again in a little while (also when the app is closed).
-            app.analysis.progress(id, "Die Bewertung läuft noch in Googles Cloud – das Ergebnis wird gleich abgeholt …")
-            Result.retry()
         } catch (e: Exception) {
-            val temporary = e is IOException || (e as? AiException)?.isTransient == true
-            if (temporary && runAttemptCount < 6) {
-                app.analysis.progress(id, "Die Verbindung wackelt – neuer Versuch gleich …")
+            // A few more tries for a lost connection or a busy server – then it stops with a clear message, never endless.
+            val temporary = e.isConnectionProblem() || (e as? AiException)?.isTransient == true
+            if (temporary && runAttemptCount < MAX_RETRIES) {
+                app.analysis.progress(id, "Die Verbindung wackelt – neuer Versuch gleich (${runAttemptCount + 1} von $MAX_RETRIES) …")
                 Result.retry()
             } else {
                 val message = "Auswertung fehlgeschlagen: ${e.message}"
@@ -322,5 +327,9 @@ class AnalysisWorker(context: Context, params: WorkerParameters) : CoroutineWork
 
     companion object {
         const val KEY_ID = "id"
+        private const val MAX_RETRIES = 3
     }
 }
+
+/** No connection (network down, timeout): waiting helps. Everything else does not get better by trying again. */
+internal fun Throwable.isConnectionProblem(): Boolean = this is IOException || (this as? AiException)?.isNetwork == true

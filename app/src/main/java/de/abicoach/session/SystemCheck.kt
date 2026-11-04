@@ -13,14 +13,17 @@ enum class CheckState { WAIT, RUN, OK, WARN, FAIL }
 data class CheckLine(val key: String, val title: String, val state: CheckState = CheckState.WAIT, val detail: String = "")
 
 /**
- * Tests every Google part of the app for real, with a few cents of usage: the key, the brain, the quick error check,
- * the read-aloud voice, the verbatim transcriber (fed with a spoken test sentence), the examiner's voice and – most
- * important for the coach – a correction that is sent to the examiner in the middle of a conversation.
+ * Tests every part of the chosen AI for real, with a few cents of usage: the key, the brain, the quick error check,
+ * the read-aloud voice, the transcriber (fed with a spoken test sentence), the examiner's voice and the coach note
+ * that the examiner gets in the middle of a conversation.
  */
 class SystemCheck(private val app: AbiCoachApp) {
+    private val provider = app.ai.provider
+    private val company = provider.company
+
     private val titles =
         listOf(
-            "key" to "Google-Schlüssel",
+            "key" to "$company-Schlüssel",
             "brain" to "Bewertung und Aufgaben",
             "cloud" to "Auswertung in der Cloud",
             "fast" to "Fehlerprüfung beim Sprechen",
@@ -49,16 +52,16 @@ class SystemCheck(private val app: AbiCoachApp) {
         titles.forEach { (key, _) -> set(key, CheckState.WAIT) }
 
         set("key", CheckState.RUN)
-        var keyError = if (app.ai.hasGemini) app.ai.gemini.checkKey() else "Es ist kein Schlüssel eingetragen."
+        var keyError = if (app.ai.ready) app.ai.checkKey() else "Es ist kein $company-Schlüssel eingetragen."
         if (keyError != null && isNetwork(keyError)) {
             // A lost connection often comes back within seconds.
             kotlinx.coroutines.delay(3_000)
-            keyError = app.ai.gemini.checkKey()
+            keyError = app.ai.checkKey()
         }
         if (keyError != null) {
             val network = isNetwork(keyError)
             set("key", CheckState.FAIL, if (network) NETWORK_HELP else keyError)
-            titles.drop(1).forEach { (key, _) -> set(key, CheckState.WARN, if (network) "Übersprungen – zuerst muss die Verbindung zu Google stehen." else "Übersprungen, solange der Schlüssel nicht funktioniert.") }
+            titles.drop(1).forEach { (key, _) -> set(key, CheckState.WARN, if (network) "Übersprungen – zuerst muss die Verbindung zu $company stehen." else "Übersprungen, solange der Schlüssel nicht funktioniert.") }
             return
         }
         set("key", CheckState.OK, "Der Schlüssel funktioniert.")
@@ -111,7 +114,7 @@ class SystemCheck(private val app: AbiCoachApp) {
                         CheckState.FAIL,
                         when {
                             network -> NETWORK_HELP
-                            (e as? AiException)?.isOverloaded == true -> "Google ist gerade überlastet (${message.take(80)}). Das ist vorübergehend – die App weicht beim Üben automatisch auf ein anderes Modell aus."
+                            (e as? AiException)?.isOverloaded == true -> "$company ist gerade überlastet (${message.take(80)}). Das ist vorübergehend – die App weicht beim Üben automatisch auf ein anderes Modell aus."
                             else -> message
                         },
                     )
@@ -137,6 +140,10 @@ class SystemCheck(private val app: AbiCoachApp) {
 
     /** A tiny job in Google's cloud (background mode): started, then fetched again – like the real evaluation. */
     private suspend fun checkCloud(): Boolean {
+        if (!app.ai.canRunInCloud) {
+            set("cloud", CheckState.OK, "Entfällt: Mit $company wertet die App direkt aus – lass sie dafür kurz offen (sie arbeitet auch gesperrt weiter).")
+            return true
+        }
         val start = System.currentTimeMillis()
         val job =
             try {
@@ -153,7 +160,7 @@ class SystemCheck(private val app: AbiCoachApp) {
                 set("cloud", CheckState.OK, "Funktioniert (${seconds(start)}): Die Auswertung läuft bei Google weiter, auch wenn du die App schließt.")
                 return true
             }
-            if (!state.running) {
+            if (state.ended) {
                 set("cloud", CheckState.WARN, "Der Cloud-Auftrag endete mit „${state.status}“ ${state.error}. Die App wertet dann direkt aus.".trim())
                 return true
             }
@@ -180,10 +187,10 @@ class SystemCheck(private val app: AbiCoachApp) {
         val start = System.currentTimeMillis()
         val pcm = app.ai.speak("I goed to school yesterday and I have seen many friends there.")
         return if (pcm != null && pcm.size > 1_000) {
-            set("tts", CheckState.OK, "Gemini-Stimme funktioniert (${seconds(start)}).")
+            set("tts", CheckState.OK, "${app.ai.voiceLabel()} funktioniert (${seconds(start)}).")
             pcm
         } else {
-            set("tts", CheckState.WARN, "Keine Gemini-Stimme – die App liest dann mit der Handy-Stimme vor.")
+            set("tts", CheckState.WARN, "Keine KI-Stimme – die App liest dann mit der Handy-Stimme vor.")
             null
         }
     }
@@ -269,14 +276,14 @@ class SystemCheck(private val app: AbiCoachApp) {
             drain(events)
             set("coach", CheckState.RUN)
             try {
+                // The coach speaks the correction itself; the examiner only gets a note and must stay in the conversation.
                 val error = LiveError("I goed home", "I went home", "Past tense of go", "TENSE", "major")
-                val coachAt = System.currentTimeMillis()
-                agent.sendInstruction(Prompts.coachMessage(error))
-                val answer = waitFor(events, 12_000) { it is LiveEvent.Audio || it is LiveEvent.Failed }
-                if (answer is LiveEvent.Audio) {
-                    set("coach", CheckState.OK, "Der Prüfer sagt die Korrektur selbst (Antwort nach ${seconds(coachAt)}).")
+                val noted = agent.sendNote(Prompts.coachNote(error))
+                val broke = waitFor(events, 3_000) { it is LiveEvent.Failed }
+                if (noted && broke == null) {
+                    set("coach", CheckState.OK, "Der Coach unterbricht in der nächsten Atempause mit ${app.ai.voiceLabel()}; der Prüfer bekommt eine Notiz und wiederholt nichts.")
                 } else {
-                    set("coach", CheckState.WARN, "Der Prüfer antwortet nicht auf Coach-Hinweise. Der Coach spricht dann automatisch mit der Handy-Stimme.")
+                    set("coach", CheckState.WARN, "Der Prüfer nimmt gerade keine Notizen an (${(broke as? LiveEvent.Failed)?.message ?: "keine Verbindung"}). Der Coach spricht trotzdem.")
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -291,6 +298,10 @@ class SystemCheck(private val app: AbiCoachApp) {
     }
 
     private suspend fun checkMemory(): Boolean {
+        if (!app.ai.canEmbed) {
+            set("memory", CheckState.OK, "Claude hat keine Suchvektoren – die Suche im Kursmaterial nutzt Stichwörter.")
+            return true
+        }
         val start = System.currentTimeMillis()
         val vectors = app.ai.embed(listOf("The Hate U Give"), query = true)
         if (vectors.isEmpty() || vectors[0].isEmpty()) {
@@ -316,9 +327,9 @@ class SystemCheck(private val app: AbiCoachApp) {
     companion object {
         private const val TIPS =
             "1. WLAN aus- und wieder einschalten oder mobile Daten testen. 2. Einstellungen → Netzwerk → „Privates DNS“ auf „Automatisch“. " +
-                "3. VPN oder Werbeblocker kurz ausschalten. 4. Im Schul-WLAN ist Google-KI manchmal gesperrt – dann mobile Daten nutzen."
+                "3. VPN oder Werbeblocker kurz ausschalten. 4. Im Schul-WLAN ist KI manchmal gesperrt – dann mobile Daten nutzen."
 
-        const val NETWORK_HELP = "Keine Verbindung zu Google: Das Handy findet den Server gerade nicht. $TIPS"
+        const val NETWORK_HELP = "Keine Verbindung zum KI-Server: Das Handy findet ihn gerade nicht. $TIPS"
     }
 
     private fun drain(events: Channel<LiveEvent>) {

@@ -289,7 +289,16 @@ class SmokeTest {
 
         ui { vm.nav.openTab(Tab.TRAINING); vm.nav.push(Screen.Setup(SessionSetup.defaults(SessionKind.SIMULATION, 0, FeedbackMode.FLUESTERN))) }
         shot("einrichten_simulation")
+        // Part 2 links several topic fields: choose two of them.
+        runCatching { compose.onNodeWithTag("setup_more_topics").performScrollTo() }
+        runCatching { compose.onNodeWithTag("moretopic_1").performClick() }
+        runCatching { compose.onNodeWithTag("moretopic_4").performClick() }
+        shot("einrichten_teil2_themen")
         swipeShot("setup", "einrichten_simulation_unten", 2)
+        ui { vm.nav.pop(); vm.nav.push(Screen.Setup(SessionSetup.defaults(SessionKind.PART2, 0, FeedbackMode.COACH))) }
+        runCatching { compose.onNodeWithTag("setup_more_topics").performScrollTo() }
+        runCatching { compose.onNodeWithTag("moretopic_2").performClick() }
+        shot("einrichten_gespraech_themen")
         ui { vm.nav.pop(); vm.nav.push(Screen.Setup(SessionSetup.defaults(SessionKind.PART1, 2, FeedbackMode.COACH))) }
         shot("einrichten_aufgabe2")
 
@@ -313,10 +322,26 @@ class SmokeTest {
         ui { vm.demoClear(); vm.nav.push(Screen.Analyzing) }
         shot("auswertung_laeuft")
 
+        // All sessions: select several and delete them.
+        ui { vm.nav.openTab(Tab.STATS); vm.nav.push(Screen.Sessions) }
+        shot("sitzungen")
+        runCatching { compose.onNodeWithTag("sessions_select").performClick() }
+        runCatching { compose.onNodeWithTag("sessions_selection").performScrollTo() }
+        ui { }
+        shot("sitzungen_auswaehlen")
+        ui { vm.nav.pop() }
+
         ui { vm.nav.openTab(Tab.WEG); vm.nav.push(Screen.Settings) }
         shot("einstellungen")
         swipeShot("settings", "einstellungen_2", 1)
         swipeShot("settings", "einstellungen_3", 2)
+        // The other AI companies (the settings change only what is shown here; no key is needed for the picture).
+        ui { app.settings.provider = de.abicoach.ai.Provider.OPENAI; vm.nav.pop(); vm.nav.push(Screen.Settings) }
+        shot("einstellungen_openai")
+        ui { app.settings.provider = de.abicoach.ai.Provider.ANTHROPIC; vm.nav.pop(); vm.nav.push(Screen.Settings) }
+        shot("einstellungen_claude")
+        swipeShot("settings", "einstellungen_claude_2", 1)
+        ui { app.settings.provider = de.abicoach.ai.Provider.GOOGLE; vm.nav.pop() }
 
         // Dark mode
         ui { app.settings.themeMode = ThemeMode.DARK; vm.nav.openTab(Tab.WEG) }
@@ -368,6 +393,13 @@ class SmokeTest {
         Log.i(TAG, "Hintergrund-Status: ${app.analysis.status.value}")
         ui { vm.nav.openTab(Tab.WEG) }
         shot("hintergrund_weiter_in_der_app")
+        // A tap on a session that is not evaluated opens it – it is not evaluated again by itself.
+        ui { vm.openSession(id) }
+        shot("nicht_ausgewertet")
+        ui { vm.deleteSessions(listOf(id)) }
+        Thread.sleep(400)
+        Log.i(TAG, "Sitzung gelöscht: ${app.store.get(id) == null}")
+        shot("nach_dem_loeschen")
     }
 
     companion object {

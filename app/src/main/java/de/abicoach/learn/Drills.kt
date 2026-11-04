@@ -86,7 +86,7 @@ Regeln:
     /** Asks the AI for [count] exercises; without a key or on failure, simple "say it right" exercises from the examples. */
     suspend fun make(app: AbiCoachApp, patterns: List<ErrorPattern>, count: Int = 8): List<Drill> {
         if (patterns.isEmpty()) return emptyList()
-        if (!app.ai.hasGemini) return local(patterns, count)
+        if (!app.ai.ready) return local(patterns, count)
         val sb = StringBuilder()
         sb.append("Anzahl Übungen: ").append(count).append("\n\nFehlermuster (wichtigste zuerst):\n")
         patterns.forEach { p ->

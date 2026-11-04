@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -87,8 +88,9 @@ fun kindIcon(kind: SessionKind): Int =
     }
 
 /** One past session: symbol, title, date and topic, points with stars. */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-fun SessionRow(record: SessionRecord, onClick: () -> Unit) {
+fun SessionRow(record: SessionRecord, selected: Boolean? = null, onLongClick: (() -> Unit)? = null, onClick: () -> Unit) {
     val dimens = AbiTheme.dimens
     val debrief = record.debrief
     Row(
@@ -97,10 +99,24 @@ fun SessionRow(record: SessionRecord, onClick: () -> Unit) {
             Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(dimens.components.cornerRadius))
-                .clickable { onClick() }
+                .combinedClickable(onLongClick = onLongClick, onClick = onClick)
                 .testTag("session_${record.id}")
                 .padding(vertical = 6.dp),
     ) {
+        if (selected != null) {
+            androidx.compose.material3.Checkbox(
+                checked = selected,
+                onCheckedChange = null,
+                colors =
+                    androidx.compose.material3.CheckboxDefaults.colors(
+                        checkedColor = accent,
+                        checkmarkColor = Color.White,
+                        uncheckedColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.55f),
+                    ),
+                modifier = Modifier.testTag("select_${record.id}"),
+            )
+            Spacer(Modifier.width(6.dp))
+        }
         LevelBadge(
             label = "",
             locked = false,
@@ -208,9 +224,10 @@ fun rememberMicGate(action: () -> Unit): () -> Unit {
     }
 }
 
-/** Read-aloud button: Gemini's voice, tap again to stop. */
+/** Read-aloud button: the AI's voice, tap again to stop. [prefetch] makes the speech ahead, so the tap plays at once. */
 @Composable
-fun SpeakButton(vm: AppViewModel, text: String) {
+fun SpeakButton(vm: AppViewModel, text: String, prefetch: Boolean = false) {
+    if (prefetch) androidx.compose.runtime.LaunchedEffect(text) { vm.prefetchSpeech(text) }
     val active = vm.speaking == text
     IconButton(onClick = { if (active) vm.stopSpeaking() else vm.speak(text) }) {
         Icon(

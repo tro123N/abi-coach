@@ -33,17 +33,20 @@ Android-App zur Vorbereitung auf die **mündliche Abiturprüfung Englisch in NRW
 - **KI-Tagesplan:** In der Karte „Dein Plan für heute“ erklärt der Coach (Gemini 4 Argon) den berechneten Plan des Lern-Gehirns in zwei Sätzen – mit deinen Zahlen, Fehlern, Gewohnheiten und Lehrkraft-Kommentaren. Jeder Schritt startet direkt aus der Karte.
 - **Ziele für jede Übung:** Vor jeder Übung setzt die App dir bis zu drei konkrete Ziele (ein Fehlermuster vermeiden, die schwächste Kompetenz dieser Aufgabe, eine Gewohnheit ablegen). Die Auswertung sagt dir, ob du sie erreicht hast – mit Beleg aus deinem Gesagten.
 - **Lerner-Gedächtnis:** Die KI merkt sich nach jeder Sitzung deine Gewohnheiten (z. B. „antwortet im Gespräch oft nur mit einem Satz“) und Stärken, zählt, wie oft sie vorkommen, und streicht sie, wenn du das Ziel dagegen zweimal erreicht hast. Prüfer, Ziele, Plan und Coach richten sich danach.
-- **Gesprächsregie:** Während des Gesprächs achtet die App wie eine Prüfungsvorsitzende auf Zeit und Antworten und gibt dem Prüfer unhörbar kurze Hinweise: Themenwechsel nach etwa der Hälfte, tiefer nachfragen nach mehreren kurzen Antworten, in Übungen Fragen, die deine Fehlermuster provozieren, eine wertende Schlussfrage in der letzten Minute; bei sehr langen Monologen hakt er ein.
+- **Mehrere Themenfelder in Teil 2:** Wie im Abitur (§ 38 APO-GOSt: Teil 2 darf nicht bei einem Kurshalbjahr bleiben) wählst du beim Einrichten bis zu zwei weitere Themenfelder, die zusammen geprüft werden; ohne Auswahl nimmt die App die, die du am nötigsten hast. Der Prüfer wechselt zur richtigen Zeit und fragt nach Zusammenhängen.
+- **Gesprächsregie:** Während des Gesprächs achtet die App wie eine Prüfungsvorsitzende auf Zeit und Antworten und gibt dem Prüfer unhörbar kurze Hinweise: Themenwechsel (bei zwei Themen nach etwa der Hälfte, bei drei nach einem und zwei Dritteln), tiefer nachfragen nach mehreren kurzen Antworten, in Übungen Fragen, die deine Fehlermuster provozieren, eine wertende Schlussfrage in der letzten Minute; bei sehr langen Monologen hakt er ein.
 - **Für dich angepasstes Material:** Neue Prüfungstexte wählen Textart, Operatoren (die du am wenigsten geübt hast) und Niveau passend zu dir; das Prüfungsgespräch geht zu den Themenfeldern, die du am nötigsten hast.
 - **Zweitbewertung:** Ganze Prüfungen, Einstufung, ganze Vorträge und lange Gespräche bewertet eine zweite, unabhängige Prüferin; die Note ist der Mittelwert – wie im Prüfungsausschuss. So wird dein Lernprofil verlässlicher.
-- **Auswertung in der Cloud:** Die App lädt die Aufnahme hoch und gibt Bewertung und Zweitbewertung als Hintergrund-Aufträge an Google (Interactions API) – ab dann läuft alles in Googles Rechenzentrum weiter, auch wenn du die App schließt, das Handy sperrst oder offline bist. Sobald die App wieder läuft, holt sie das Ergebnis ab. Beide Bewertungen laufen gleichzeitig, das geht auch schneller. Jede Auswertung lässt sich **abbrechen** (auch in der Cloud); die Sitzung bleibt gespeichert.
+- **Auswertung in der Cloud (Google):** Die App lädt die Aufnahme hoch und gibt Bewertung und Zweitbewertung als Hintergrund-Aufträge an Google (Interactions API) – ab dann läuft alles in Googles Rechenzentrum weiter, auch wenn du die App schließt, das Handy sperrst oder offline bist. Sie hängt nie fest: Scheitert der Auftrag, ist die Antwort kaputt oder dauert er länger als 6 Minuten, wertet die App sofort direkt aus; nur bei fehlendem Netz versucht sie es höchstens dreimal später. Erst- und Zweitbewertung laufen immer gleichzeitig. Jede Auswertung lässt sich **abbrechen** (auch in der Cloud); die Sitzung bleibt gespeichert.
+- **Sitzungen aufräumen:** Unter „Alle Sitzungen“ wählst du mehrere Sitzungen aus (oder alle nicht ausgewerteten) und löschst sie ganz – samt Aufnahme und wartender Auswertung. Ein Tipp auf eine nicht ausgewertete Sitzung startet keine Auswertung mehr von selbst: Du entscheidest, ob sie ausgewertet oder gelöscht wird.
 - **Alles läuft im Hintergrund weiter:** Einlesen von Kursmaterial und das Schreiben des Prüfungstexts laufen weiter, wenn du die App schließt oder das Handy sperrst, und melden sich mit einer Benachrichtigung. Der nächste Prüfungstext wird auf Wunsch schon vorab erstellt, damit der Start sofort geht.
 - **Vorbereitung geht nicht verloren:** Text, Aufgaben und deine Notizen werden gespeichert; wenn die Vorbereitungszeit zu Ende ist, klingelt eine Benachrichtigung – auch bei gesperrtem Handy.
 - **Live bleibt zuverlässig:** Während des Gesprächs bleibt der Bildschirm an und ein Mikrofon-Dienst („AbiCoach hört zu“) hält die Verbindung am Leben, auch wenn du kurz in eine andere App wechselst.
-- **Das Ohr (Flüstern und Coach):** Die App erkennt selbst, wann du eine Pause machst, und Gemini hört sich jede Äußerung direkt an – Mitschrift und Fehler in einem Schritt, meist 2–3 Sekunden nach der Pause. Das funktioniert auch, wenn die Live-Mitschrift hängt, und vermeidet falsche Hinweise durch verhörte Wörter. Der **Coach** spricht in allen Teilen: im Gespräch sagt der Prüfer die Korrektur selbst, im Vortrag eine Coach-Stimme; danach wartet er, bis du den Satz richtig wiederholst (✓ auf dem Bildschirm). Wichtig sind ihm vor allem deine bekannten Fehlermuster. Nach dem Vortrag folgt eine kurze **Korrekturrunde**.
+- **Das Ohr (Flüstern und Coach):** Die App erkennt selbst, wann du eine Pause machst (0,4 Sekunden reichen), und die KI hört sich jede Äußerung direkt an – Mitschrift und Fehler in einem Schritt. Zusätzlich prüft eine schnelle Spur jeden fertigen Satz der Live-Mitschrift sofort (nur klare, schwere Fehler, damit ein verhörtes Wort keinen falschen Hinweis auslöst). Der **Coach** unterbricht in Echtzeit: in deiner nächsten Atempause (spätestens nach 2,5 Sekunden), höchstens alle 6 Sekunden, mit eigener Stimme – der Satz wird schon vorbereitet, während du weitersprichst; der Prüfer bekommt eine Notiz und wiederholt nichts. Danach wartet der Coach, bis du den Satz richtig wiederholst (✓ auf dem Bildschirm). Wichtig sind ihm vor allem deine bekannten Fehlermuster. Nach dem Vortrag folgt eine kurze **Korrekturrunde**.
+- **Vorlesen ohne Wartezeit und ohne Knall:** Die Stimme kommt gestreamt (sie beginnt, bevor der ganze Satz fertig ist) und wird gespeichert – beim zweiten Tippen kommt sie sofort. Wörter im Aussprache-Labor werden schon vorab gemacht. Das Rauschen, das manche KI-Stimmen nach dem letzten Wort anhängen, schneidet die App ab (sie erkennt das Ende der echten Stimme an ihrer Tonhöhe) und blendet weich aus. Kommt die KI-Stimme nicht innerhalb von 3 Sekunden, liest die Handy-Stimme.
 - **Live-Status und Technik-Protokoll:** Kleine Anzeigen zeigen während des Übens, ob Mikrofon, Mitschrift, Ohr, Coach und Prüfer arbeiten; in der Auswertung steht ein kopierbares Protokoll. Unter Einstellungen → System prüfen gibt es zusätzlich einen **Mikrofon-Test**, bei dem du selbst einen Satz mit Fehler sagst.
 - **Fehlergedächtnis:** Jede Fehlerart (z. B. „third person -s“, „since vs for“) aus Übungen, Auswertungen und Klausuren wird mit Beispielen und Verlauf gespeichert: neu, aktiv, wird besser, behoben. Der Prüfer stellt in Übungen gezielt Fragen, die genau diese Strukturen verlangen.
-- **Sprech-Training:** Kurze Sprech-Übungen (richtig sagen, umformen, Satz vollenden, Redemittel einsetzen, kurz antworten) aus deinen eigenen Fehlern, mit Sätzen zu deinen Kursthemen. Gemini hört sofort zu; was sitzt, kommt seltener wieder, was hakt, bald wieder.
+- **Sprech-Training:** Kurze Sprech-Übungen (richtig sagen, umformen, Satz vollenden, Redemittel einsetzen, kurz antworten) aus deinen eigenen Fehlern, mit Sätzen zu deinen Kursthemen. Die KI hört sofort zu; was sitzt, kommt seltener wieder, was hakt, bald wieder.
 - **Musterfassung:** In der Auswertung schreibt die KI deinen eigenen Vortrag (oder deine Antworten) auf 15-Punkte-Niveau um – mit deinen Ideen, Top-Sprache und dem, was gefehlt hat, zum Anhören.
 - **Sag es richtig:** Bei jedem Fehler und jedem „So klingt es nach 15 Punkten“-Satz gibt es einen Knopf – du sprichst den Satz nach und bekommst gleich Rückmeldung.
 - **Zweiter Versuch:** Nach der Auswertung kannst du die schwächste Aufgabe mit demselben Text noch einmal machen (2 Min. Vorbereitung). Die Auswertung zeigt vorher/nachher; die Bewertung selbst kennt frühere Punkte nicht und bleibt fair.
@@ -68,38 +71,30 @@ Android-App zur Vorbereitung auf die **mündliche Abiturprüfung Englisch in NRW
 
 ## Welche KI was macht
 
-Alles kommt von **einem Anbieter: Google**. Du brauchst nur einen Schlüssel.
+Unter Einstellungen → KI wählst du **eine Firma, die alles macht**: **Google**, **OpenAI** oder **Anthropic** – zum Vergleichen kannst du jederzeit wechseln. Jede Firma braucht ihren eigenen Schlüssel.
 
-| Aufgabe | Modell |
-|---|---|
-| Prüfer im Gespräch (hört und spricht gleichzeitig) | **Gemini 3.8 Live** |
-| Wortgetreue Mitschrift | **Gemini 3.5 Transcribe Live** (Modus VERBATIM) |
-| Bewertung, Aufgaben, Coach | **Gemini 4 Argon** (mit Denkstufe) → Ausweichmodell Gemini 3.8 Flash |
-| Ohr: hört jede Äußerung an (Fehler, Mitschrift), Sag-es-richtig, Sprech-Training | **Gemini 3.8 Flash** (Audio, niedrige Denkstufe, schnell) |
-| Coach-Stimme im Vortrag | **Gemini 3.8 Flash TTS** → Android-Stimme |
-| Themen-Dossiers, Sprech-Übungen, Musterfassung, echte Aufgaben auslesen | **Gemini 4 Argon** → Gemini 3.8 Flash |
-| Material lesen | **Gemini 3.8 Flash** |
-| Suche im Material | **Gemini Embedding 2** |
-| Aufnahme anhören | **Gemini 4 Argon** → Gemini 3.8 Flash |
-| Vorlesen | **Gemini 3.8 Flash TTS** → Android-Stimme |
+| Aufgabe | Google | OpenAI | Anthropic |
+|---|---|---|---|
+| Prüfer im Gespräch | **Gemini 3.8 Live** (hört und spricht gleichzeitig) | **GPT-Live-1** (hört und spricht gleichzeitig) | **Claude Haiku 5.5** mit Handy-Stimme (antwortet, wenn du fertig bist) |
+| Mitschrift | **Gemini 3.5 Transcribe Live** (wortgetreu) | **GPT-Live-Transcribe** | Spracherkennung des Handys (Android 13+) |
+| Bewertung, Aufgaben, Coach, Dossiers | **Gemini 4 Argon** → Gemini 3.8 Flash | **GPT 6.1 Sol** → GPT 6.1 Terra | **Claude Opus 5.5** → Claude Sonnet 5.5 |
+| Ohr, Sag-es-richtig, Sprech-Training | **Gemini 3.8 Flash** (hört selbst) | **GPT Audio 1.5** (hört selbst) | Handy-Spracherkennung + **Claude Haiku 5.5** |
+| Fehlerprüfung der Mitschrift | **Gemini 3.8 Flash** | **GPT 6 Luna** | **Claude Haiku 5.5** |
+| Material lesen | **Gemini 3.8 Flash** | **GPT 6.1 Terra** | **Claude Sonnet 5.5** |
+| Suche im Material | **Gemini Embedding 2** | **text-embedding-3-large** | Stichwortsuche (Claude hat keine Vektoren) |
+| Aufnahme anhören | **Gemini 4 Argon** | **GPT Audio 1.5** (Ausschnitte) | – (Claude hört nicht) |
+| Vorlesen und Coach-Stimme | **Gemini 3.8 Flash TTS** | **GPT-4o mini TTS** | Stimme des Handys |
 
-Den Schlüssel gibt es kostenlos zu erstellen unter aistudio.google.com/apikey. Unter Einstellungen → KI wählst du **Beste Qualität** oder **Sparsam** (Gemini 3.8 Flash für alles). Mit **System prüfen → Alles testen** prüft die App Schlüssel, alle Modelle, Prüfer-Stimme und Coach-Anweisung einmal durch.
-
-## Installation
-
-1. Unter **Releases → latest** die Datei `AbiCoach.apk` auf dem Handy öffnen und installieren.
-2. In der App: Einstellungen → KI → Google-Schlüssel einfügen → „Prüfen“, dann **System prüfen → Alles testen**.
-3. Unter **Mein Kurs** dein Material hochladen, dann die **Einstufung** machen.
-4. Tipp: Mit Kopfhörern üben – dann kannst du den Prüfer auch unterbrechen.
+Schlüssel gibt es unter aistudio.google.com/apikey (Google), platform.openai.com/api-keys (OpenAI) und platform.claude.com/settings/keys (Anthropic). **Beste Qualität** nutzt das stärkste Modell der Firma, **Sparsam** das günstigere. Wechselst du zwischen Google und OpenAI, bekommt dein Kursmaterial im Hintergrund neue Suchvektoren (bis dahin sucht die App mit Stichwörtern). Mit **System prüfen → Alles testen** prüft die App Schlüssel, Modelle, Stimme, Mitschrift, Prüfer und Coach der gewählten Firma einmal durch.
 
 ## Kosten und Datenschutz
 
-- Nur Google-Kosten: das Live-Gespräch mit dem Prüfer ist der größte Posten (je nach Tarif einige Cent pro Gesprächsminute), eine Auswertung kostet wenige Cent, ein ganzes Schulbuch einlesen unter 1 $. Mit **Sparsam** wird es noch günstiger.
-- Sitzungen, Lernprofil und Material liegen nur auf dem Handy; der Schlüssel liegt verschlüsselt im Android Keystore. Zum Lesen und Bewerten gehen Seiten, Mitschrift und Aufnahme an Google. Im kostenlosen Gemini-Tarif darf Google die Daten zur Verbesserung nutzen.
+- Es zahlt nur die gewählte Firma: das Live-Gespräch mit dem Prüfer ist der größte Posten (je nach Tarif einige Cent pro Gesprächsminute), eine Auswertung kostet wenige Cent, ein ganzes Schulbuch einlesen unter 1 $. Mit **Sparsam** wird es noch günstiger. Mit Claude fällt der Live-Ton weg (das Handy hört und spricht).
+- Sitzungen, Lernprofil und Material liegen nur auf dem Handy; die Schlüssel liegen verschlüsselt im Android Keystore. Zum Lesen und Bewerten gehen Seiten, Mitschrift und (bei Google und OpenAI) die Aufnahme an die gewählte Firma. Im kostenlosen Gemini-Tarif darf Google die Daten zur Verbesserung nutzen.
 
 ## Aufbau
 
-- `ai/` – Gemini (REST mit Denkstufen, Live-WebSocket, Einbettungen, Vorlesen); `AiHub` verteilt die Aufgaben auf die Modelle und springt bei Ausfall auf das Ausweichmodell
+- `ai/` – Google (`GeminiRest`, `GeminiLive`), OpenAI (`OpenAiRest`, `OpenAiLive`), Anthropic (`ClaudeRest`) und die Handy-Sprache (`PhoneSpeech`); `AiHub` verteilt alle Aufgaben auf die gewählte Firma, springt bei Ausfall auf ihr Ausweichmodell, streamt und speichert die Stimme; `audio/SpeechClean` schneidet Rauschen nach dem letzten Wort ab
 - `memory/` – Import, Lesen im Hintergrund (WorkManager), Abschnitte, Vektoren, Auswertung, hybride Suche, Kurs-Kontext für alle Prompts
 - `profile/` – Lernprofil nach dem NRW-Raster, Prognose, Hebel
 - `path/` – Abi-Weg: Welten und Levels (`Curriculum`), Freischalten, Sterne und Wiederholungsplan (`PathEngine`), Erinnerung

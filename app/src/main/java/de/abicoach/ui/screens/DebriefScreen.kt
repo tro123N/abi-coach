@@ -83,7 +83,7 @@ fun DebriefScreen(vm: AppViewModel, id: String) {
     if (confirmDelete) {
         PopUp(
             title = "Sitzung löschen?",
-            description = "Auswertung und Aufnahme werden gelöscht. Dein Lernprofil bleibt, wie es ist.",
+            description = "Sitzung, Aufnahme und Auswertung werden ganz gelöscht. Dein Lernprofil bleibt, wie es ist.",
             confirmText = "Löschen",
             onConfirm = { confirmDelete = false; vm.deleteSession(id) },
             onDismiss = { confirmDelete = false },
@@ -106,9 +106,11 @@ fun DebriefScreen(vm: AppViewModel, id: String) {
         if (d == null) {
             AbiCard {
                 CardTitle("Noch nicht ausgewertet", icon = R.drawable.hourglass_bottom_24dp, iconTint = yellow)
-                BodyText("Die Auswertung hat nicht geklappt oder wurde abgebrochen.")
+                BodyText("Du entscheidest: auswerten lassen – oder die Sitzung löschen, wenn du sie nicht brauchst.")
                 Gap(10.dp)
-                ActionButton("Jetzt auswerten", R.drawable.auto_awesome_24dp, accent, { vm.tap(); vm.openAnalysis(id) }, container = MaterialTheme.colorScheme.background)
+                ActionButton("Jetzt auswerten", R.drawable.auto_awesome_24dp, accent, { vm.tap(); vm.openAnalysis(id) }, Modifier.testTag("debrief_analyze"), container = MaterialTheme.colorScheme.background)
+                Gap(8.dp)
+                ActionButton("Sitzung löschen", R.drawable.delete_24dp, red, { vm.tap(); confirmDelete = true }, Modifier.testTag("debrief_delete"), container = MaterialTheme.colorScheme.background)
             }
             TranscriptSection(record)
             return@DetailScaffold
@@ -249,7 +251,7 @@ private fun DetailsGroup(vm: AppViewModel, record: SessionRecord, d: Debrief) {
                                     CaptionText(p.issue)
                                     BodyText(p.tip)
                                 }
-                                SpeakButton(vm, p.word)
+                                SpeakButton(vm, p.word, prefetch = true)
                             }
                             Gap(8.dp)
                         }

@@ -64,7 +64,7 @@ fun SayItDialog(vm: AppViewModel) {
         CaptionText("Richtig:")
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             Text("„${target.right}“", fontSize = dimens.fonts.label, color = green, modifier = Modifier.weight(1f))
-            SpeakButton(vm, target.right)
+            SpeakButton(vm, target.right, prefetch = true)
         }
         if (target.why.isNotBlank()) CaptionText(target.why)
         Gap(14.dp)

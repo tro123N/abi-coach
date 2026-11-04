@@ -146,7 +146,7 @@ Regeln:
         "${LocalDate.now()}|${app.store.sessions.value.count { it.debrief != null }}|${app.profiles.profile.value.placementDone}"
 
     fun worthIt(app: AbiCoachApp): Boolean =
-        app.ai.hasGemini && (app.profiles.profile.value.placementDone || app.store.sessions.value.any { it.debrief != null })
+        app.ai.ready && (app.profiles.profile.value.placementDone || app.store.sessions.value.any { it.debrief != null })
 
     /** Asks the brain for today's plan. Invalid steps are dropped; fewer than two valid steps count as failure. */
     suspend fun make(app: AbiCoachApp): Briefing {

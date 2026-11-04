@@ -30,7 +30,7 @@ enum class DocStatus(val label: String) {
     DONE("Fertig"),
     PAUSED("Pausiert"),
     FAILED("Fehler"),
-    WAITING_KEY("Wartet auf Gemini-Schlüssel"),
+    WAITING_KEY("Wartet auf einen KI-Schlüssel"),
 }
 
 /** One uploaded document (a PDF, a set of photos or a text) and how far the app has read it. */

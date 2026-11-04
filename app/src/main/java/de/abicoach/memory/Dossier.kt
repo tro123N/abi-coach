@@ -268,7 +268,7 @@ object DossierScheduler {
 class DossierWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
         val app = applicationContext as AbiCoachApp
-        if (!app.ai.hasGemini) return Result.success()
+        if (!app.ai.ready) return Result.success()
         // While pages are still being read, the dossier would be incomplete: wait for the reader.
         if (app.memory.docs.value.any { it.isActive }) return Result.success()
         val stale = app.course.coveredTopics().filter { (_, chunks) -> chunks >= 3 }.map { it.first }.filter { DossierMaker.isStale(app, it) }

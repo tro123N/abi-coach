@@ -308,7 +308,7 @@ fun LevelScreen(vm: AppViewModel, id: String) {
                         color = accent,
                         modifier = Modifier.weight(1f),
                     )
-                    SpeakButton(vm, level.example)
+                    SpeakButton(vm, level.example, prefetch = true)
                 }
                 CaptionText("Zum Anhören und Nachsprechen.")
             }

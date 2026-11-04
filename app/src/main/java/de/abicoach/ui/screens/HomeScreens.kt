@@ -214,7 +214,7 @@ private fun OverviewCard(vm: AppViewModel, profile: Profile) {
 private fun PlanCard(vm: AppViewModel, recommendations: List<Recommendation>) {
     val briefing by vm.app.briefings.current.collectAsState()
     val sessions by vm.app.store.sessions.collectAsState()
-    LaunchedEffect(sessions.size, vm.app.settings.geminiKey) { vm.refreshBriefing(false) }
+    LaunchedEffect(sessions.size, vm.app.ai.ready) { vm.refreshBriefing(false) }
     val phase = remember(recommendations) { LearningBrain.phase(vm.app) }
     AbiCard(modifier = Modifier.testTag("today")) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -574,7 +574,7 @@ private fun LazyListScope.freePractice(
         item(key = "recent") {
             AbiCard {
                 CardTitle("Zuletzt", icon = R.drawable.history_24dp)
-                recent.forEach { s -> SessionRow(s) { vm.tap(); if (s.debrief != null) vm.nav.push(Screen.Debrief(s.id)) else vm.openAnalysis(s.id) } }
+                recent.forEach { s -> SessionRow(s) { vm.openSession(s.id) } }
                 Gap(6.dp)
                 ActionButton(
                     "Alle Sitzungen",

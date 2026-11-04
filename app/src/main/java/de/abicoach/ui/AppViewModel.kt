@@ -294,8 +294,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun start(s: SessionSetup) {
         if (busy != null) return
-        if (!app.ai.hasGemini) {
-            errorMessage = "Bitte trage zuerst deinen Google-Schlüssel ein (Einstellungen → KI)."
+        if (!app.ai.ready) {
+            errorMessage = "Bitte trage zuerst deinen ${app.ai.provider.company}-Schlüssel ein (Einstellungen → KI)."
             nav.push(Screen.Settings)
             return
         }
@@ -335,6 +335,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 short = s.kind == SessionKind.PLACEMENT,
                 instruction = s.instruction,
                 unitId = s.unitId,
+                part2Topics = if (s.kind.hasPart2) s.extraTopics.filter { it != topicId }.take(MAX_EXTRA_TOPICS) else emptyList(),
             )
         MaterialScheduler.enqueue(app, key, request, s.fixedDocId, s.fixedPage, prefetch = false)
     }
@@ -480,14 +481,22 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private fun startConversation(s: SessionSetup, topicId: Int) {
         task = null
         notes = ""
+        // Like in the Abitur, the exam conversation links several topic fields: the ones the student chose, or else
+        // a second one he needs most. A training covers further topic fields only if the student chose them.
+        val chosen = s.extraTopics.filter { it in 0..13 && it != topicId }.distinct().take(MAX_EXTRA_TOPICS)
+        val extras = if (chosen.isEmpty() && s.kind == SessionKind.PART2) listOf(LearningBrain.pickTopic(app, exclude = setOf(topicId))) else chosen
         val record =
             SessionRecord.create(s.kind, s.feedback, topicId, null, 0, s.focusCategories)
-                .copy(levelId = s.levelId.orEmpty(), goals = LearningBrain.goals(app, s.kind, 0))
+                .copy(levelId = s.levelId.orEmpty(), goals = LearningBrain.goals(app, s.kind, 0), extraTopics = extras)
         draft = record
         viewModelScope.launch {
-            val context = withContext(Dispatchers.Default) { runCatching { app.course.forTopic(topicId, maxChars = 4_000) }.getOrDefault("") }
-            // Like in the exam, the exam conversation switches to a second topic field after about half of the time.
-            val second = if (s.kind == SessionKind.PART2) Knowledge.topic(LearningBrain.pickTopic(app, exclude = setOf(topicId)))?.english.orEmpty() else ""
+            val context =
+                withContext(Dispatchers.Default) {
+                    val main = runCatching { app.course.forTopic(topicId, maxChars = if (extras.isEmpty()) 4_000 else 2_600) }.getOrDefault("")
+                    val more = extras.map { id -> runCatching { app.course.forTopic(id, maxChars = 1_400) }.getOrDefault("") }.filter { it.isNotBlank() }.joinToString("\n\n")
+                    if (more.isBlank()) main else "$main\n\n$more"
+                }
+            val others = extras.mapNotNull { Knowledge.topic(it)?.english }
             val prompt =
                 Prompts.trainingExaminer(
                     topicId = topicId,
@@ -499,7 +508,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     part2Style = s.kind == SessionKind.PART2,
                     extra = s.instruction,
                     patterns = patternBlockFor(s.feedback),
-                    secondTopic = second,
+                    otherTopics = others,
                 )
             val conversation =
                 LiveConversation(
@@ -511,10 +520,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         feedback = s.feedback,
                         vocabulary = vocabulary(),
                         wavFile = app.store.audioFile(record.id, if (s.kind == SessionKind.PART2) 2 else 0),
-                        checkerContext = "Conversation about: ${Knowledge.topic(topicId)?.english ?: "the course"}",
+                        checkerContext = "Conversation about: " + (listOf(Knowledge.topic(topicId)?.english ?: "the course") + others).joinToString("; "),
                         targetSeconds = s.talkMinutes * 60,
                         directed = true,
-                        switchTopic = second,
+                        switchTopics = others,
                         elicit = if (s.feedback != FeedbackMode.PRUEFUNG) app.errorMemory.examinerLines(4) else emptyList(),
                         monologueSec = if (s.isSprint) 0 else 100,
                         goalPattern = goalPattern(record),
@@ -605,7 +614,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                             checkerContext = "Exam conversation: ${t.part2.joinToString("; ") { it.question }}",
                             targetSeconds = minutes * 60,
                             directed = true,
-                            switchTopic = t.part2.getOrNull(1)?.let { "${Knowledge.topic(it.topicId)?.english ?: "another topic field"} – ${it.question}" }.orEmpty(),
+                            switchTopics = t.part2.drop(1).map { "${Knowledge.topic(it.topicId)?.english ?: "another topic field"} – ${it.question}" },
                             elicit = if (updated.feedback != FeedbackMode.PRUEFUNG) app.errorMemory.examinerLines(4) else emptyList(),
                             goalPattern = goalPattern(updated),
                         ),
@@ -784,6 +793,16 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         if (nav.current == Screen.Analyzing) nav.pop()
     }
 
+    /**
+     * A tap on a session: its result – or, if it was not evaluated yet, the page where the student decides whether
+     * to evaluate or delete it. Nothing is evaluated without being asked (only a running evaluation is shown).
+     */
+    fun openSession(id: String) {
+        tap()
+        val status = app.analysis.status.value
+        if (status.id == id && status.error == null) nav.push(Screen.Analyzing) else nav.push(Screen.Debrief(id))
+    }
+
     fun openAnalysis(id: String) {
         nav.push(Screen.Analyzing)
         val status = app.analysis.status.value
@@ -835,10 +854,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 } else {
                     app.feedback.play(FeedbackType.ENABLE)
                     notice =
-                        if (app.ai.hasGemini) {
+                        if (app.ai.ready) {
                             "${created.size} ${if (created.size == 1) "Dokument" else "Dokumente"} hinzugefügt – die KI liest jetzt im Hintergrund."
                         } else {
-                            "Gespeichert. Sobald dein Gemini-Schlüssel eingetragen ist, liest die KI alles ein."
+                            "Gespeichert. Sobald dein ${app.ai.provider.company}-Schlüssel eingetragen ist, liest die KI alles ein."
                         }
                     IngestScheduler.kick(app)
                 }
@@ -867,8 +886,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun ask(question: String) {
         val q = question.trim()
         if (q.isEmpty() || askBusy) return
-        if (!app.ai.hasGemini) {
-            errorMessage = "Für den KI-Coach brauchst du den Google-Schlüssel (Einstellungen → KI)."
+        if (!app.ai.ready) {
+            errorMessage = "Für den KI-Coach brauchst du den ${app.ai.provider.company}-Schlüssel (Einstellungen → KI)."
             return
         }
         val history = askMessages.map { (if (it.fromUser) "user" else "assistant") to it.text }
@@ -972,8 +991,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun pronStart() {
         if (pronBusy || pronRecording || pronTarget.isBlank()) return
-        if (!app.ai.hasGemini) {
-            errorMessage = "Für das Aussprache-Labor brauchst du den Gemini-Schlüssel (Einstellungen → KI)."
+        if (!app.ai.ready) {
+            errorMessage = "Für das Aussprache-Labor brauchst du den ${app.ai.provider.company}-Schlüssel (Einstellungen → KI)."
             return
         }
         stopSpeaking()
@@ -1106,16 +1125,26 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun checkKey(provider: String) {
         keyChecking = provider
         viewModelScope.launch {
-            val result = app.ai.gemini.checkKey()
+            val result = app.ai.checkKey(de.abicoach.ai.Provider.of(provider))
             keyChecks = keyChecks + (provider to result)
             keyChecking = null
-            if (provider == "gemini" && result == null) app.resumeReading()
+            if (provider == app.ai.provider.id && result == null) app.resumeReading()
         }
     }
 
     fun keySaved(provider: String) {
         keyChecks = keyChecks - provider
-        if (provider == "gemini") app.resumeReading()
+        if (provider == app.ai.provider.id) app.resumeReading()
+    }
+
+    /** Switches the company whose AI does everything; material waiting for a key or new vectors goes on. */
+    fun chooseProvider(provider: de.abicoach.ai.Provider) {
+        if (provider == app.settings.provider) return
+        tap()
+        stopSpeaking()
+        app.settings.provider = provider
+        app.resumeReading()
+        if (app.ai.ready) de.abicoach.memory.DossierScheduler.kick(app)
     }
 
     // ---------- Abi-Weg ----------
@@ -1189,8 +1218,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun makeModel(id: String) {
         val record = app.store.get(id) ?: return
         if (record.debrief == null || modelBusy != null) return
-        if (!app.ai.hasGemini) {
-            errorMessage = "Dafür brauchst du den Google-Schlüssel (Einstellungen → KI)."
+        if (!app.ai.ready) {
+            errorMessage = "Dafür brauchst du den ${app.ai.provider.company}-Schlüssel (Einstellungen → KI)."
             return
         }
         modelBusy = id
@@ -1286,8 +1315,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun drillStart() {
         if (drillBusy || drillRecording || drillDone || drills.isEmpty()) return
-        if (!app.ai.hasGemini) {
-            errorMessage = "Für das Sprech-Training brauchst du den Google-Schlüssel (Einstellungen → KI)."
+        if (!app.ai.ready) {
+            errorMessage = "Für das Sprech-Training brauchst du den ${app.ai.provider.company}-Schlüssel (Einstellungen → KI)."
             return
         }
         stopSpeaking()
@@ -1391,8 +1420,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     /** Builds or renews the dossier of one topic field now. */
     fun makeDossier(topic: Int) {
         if (dossierBusy != null) return
-        if (!app.ai.hasGemini) {
-            errorMessage = "Für die Dossiers brauchst du den Google-Schlüssel (Einstellungen → KI)."
+        if (!app.ai.ready) {
+            errorMessage = "Für die Dossiers brauchst du den ${app.ai.provider.company}-Schlüssel (Einstellungen → KI)."
             return
         }
         dossierBusy = topic
@@ -1487,30 +1516,61 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     // ---------- reading aloud ----------
 
-    /** Reads an English sentence aloud: Gemini's voice, or Android's own voice as a fallback. */
+    /**
+     * Reads an English sentence aloud with the voice of the chosen AI. The speech is streamed (playback starts with
+     * the first piece) and kept, so the second tap plays at once. If the AI's voice does not come within three
+     * seconds, Android's own voice reads instead – and the AI's voice is kept for the next time.
+     */
     fun speak(text: String) {
         stopSpeaking()
         speaking = text
         speechJob =
             viewModelScope.launch {
                 try {
-                    val pcm = if (app.ai.hasGemini) app.ai.speak(text) else null
-                    if (pcm != null && pcm.size > 1_000) {
-                        val player = de.abicoach.audio.PcmPlayer(24_000, android.media.AudioAttributes.USAGE_MEDIA)
-                        speechPlayer = player
-                        player.start()
-                        player.enqueue(pcm)
-                        kotlinx.coroutines.delay(player.remainingMs() + 400)
+                    if (!app.ai.ready || app.ai.provider == de.abicoach.ai.Provider.ANTHROPIC) {
+                        androidTts.say(text)
+                        kotlinx.coroutines.delay(600L + text.length * 70L)
+                        return@launch
+                    }
+                    val player = de.abicoach.audio.PcmPlayer(24_000, android.media.AudioAttributes.USAGE_MEDIA)
+                    player.start()
+                    speechPlayer = player
+                    val first = kotlinx.coroutines.CompletableDeferred<Boolean>()
+                    var phoneVoice = false
+                    val synth =
+                        launch(kotlinx.coroutines.Dispatchers.IO) {
+                            val pcm =
+                                app.ai.speakStream(text) { piece ->
+                                    if (phoneVoice) return@speakStream
+                                    player.enqueue(piece)
+                                    first.complete(true)
+                                }
+                            if (pcm == null) first.complete(false)
+                        }
+                    val voiced = kotlinx.coroutines.withTimeoutOrNull(FIRST_SPEECH_MS) { first.await() } ?: false
+                    if (!voiced) {
+                        phoneVoice = true
                         player.stop()
                         speechPlayer = null
-                    } else {
                         androidTts.say(text)
-                        kotlinx.coroutines.delay(400L + text.length * 70L)
+                        kotlinx.coroutines.delay(600L + text.length * 70L)
+                        return@launch
                     }
+                    synth.join()
+                    // A moment of silence at the end, so that nothing clicks when the player stops.
+                    player.enqueue(ByteArray(4_800))
+                    kotlinx.coroutines.delay(player.remainingMs() + 150)
+                    player.stop()
+                    if (speechPlayer === player) speechPlayer = null
                 } finally {
                     if (speaking == text) speaking = null
                 }
             }
+    }
+
+    /** Makes the speech of a sentence the student will probably want to hear, so that the tap plays at once. */
+    fun prefetchSpeech(text: String) {
+        if (text.isNotBlank()) app.ai.prefetchSpeech(text)
     }
 
     fun stopSpeaking() {
@@ -1524,9 +1584,21 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     // ---------- data ----------
 
-    fun deleteSession(id: String) {
-        app.store.delete(id)
-        if (nav.current == Screen.Debrief(id)) nav.pop()
+    fun deleteSession(id: String) = deleteSessions(listOf(id))
+
+    /** Deletes sessions completely: record, recording and any evaluation that is still waiting or running. */
+    fun deleteSessions(ids: Collection<String>) {
+        val gone = ids.toSet()
+        if (gone.isEmpty()) return
+        gone.forEach { id ->
+            de.abicoach.session.AnalysisScheduler.cancel(app, id)
+            app.analysis.cancel(id)
+            app.store.delete(id)
+        }
+        viewModelScope.launch(Dispatchers.IO) { gone.forEach { id -> runCatching { de.abicoach.session.CloudAnalysis.cancel(app, id) } } }
+        if (readyDebrief?.first in gone) readyDebrief = null
+        notice = if (gone.size == 1) "Sitzung gelöscht." else "${gone.size} Sitzungen gelöscht."
+        (nav.current as? Screen.Debrief)?.let { if (it.id in gone) nav.pop() }
     }
 
     override fun onCleared() {
@@ -1549,5 +1621,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     companion object {
         val ANY_FEEDBACK = FeedbackMode.entries
+
+        /** How long the AI's voice may take before the phone's own voice reads instead. */
+        private const val FIRST_SPEECH_MS = 3_000L
+
+        /** Topic fields that can be added to a conversation (with the main one: up to three, as many as fit in 10–15 minutes). */
+        const val MAX_EXTRA_TOPICS = 2
     }
 }

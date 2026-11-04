@@ -638,6 +638,53 @@ fun <T> ChoiceChips(
     }
 }
 
+/** Like [ChoiceChips], but several can be on at once: a tap switches one on or off. [canAdd] false greys out the rest. */
+@Composable
+fun <T> MultiChoiceChips(
+    options: List<T>,
+    selected: Set<T>,
+    label: (T) -> String,
+    onToggle: (T) -> Unit,
+    modifier: Modifier = Modifier,
+    canAdd: Boolean = true,
+    tagPrefix: String = "multi",
+) {
+    val dimens = AbiTheme.dimens
+    FlowRow(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        options.forEachIndexed { index, option ->
+            val active = option in selected
+            val usable = active || canAdd
+            Text(
+                text = (if (active) "✓ " else "") + label(option),
+                fontSize = dimens.fonts.caption * 1.1f,
+                fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
+                color =
+                    when {
+                        active -> readable(accent)
+                        usable -> MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f)
+                        else -> MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.35f)
+                    },
+                modifier =
+                    Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(if (active) accent.copy(alpha = 0.16f) else MaterialTheme.colorScheme.background)
+                        .border(
+                            width = if (active) 1.5.dp else 1.dp,
+                            color = if (active) accent.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.12f),
+                            shape = RoundedCornerShape(50),
+                        )
+                        .clickable(enabled = usable) { onToggle(option) }
+                        .testTag("${tagPrefix}_$index")
+                        .padding(horizontal = 14.dp, vertical = 9.dp),
+            )
+        }
+    }
+}
+
 /** Kleine farbige Marke, z. B. „AFB II“ oder ein Themenfeld. */
 @Composable
 fun Pill(text: String, color: Color = accent, modifier: Modifier = Modifier) {

@@ -67,6 +67,31 @@ sealed class Sch {
         return o
     }
 
+    /**
+     * Strict JSON Schema for OpenAI and Claude structured outputs: like [jsonSchema], but every object also forbids
+     * additional properties (all properties are required anyway).
+     */
+    fun strictSchema(): JSONObject {
+        val o = JSONObject()
+        when (this) {
+            is Str -> {
+                o.put("type", "string")
+                enum?.let { o.put("enum", JSONArray(it)) }
+            }
+            is Integer -> o.put("type", "integer")
+            is Num -> o.put("type", "number")
+            is Bool -> o.put("type", "boolean")
+            is Arr -> o.put("type", "array").put("items", items.strictSchema())
+            is Obj -> {
+                val properties = JSONObject()
+                props.forEach { (k, v) -> properties.put(k, v.strictSchema()) }
+                o.put("type", "object").put("properties", properties).put("required", JSONArray(props.map { it.first })).put("additionalProperties", false)
+            }
+        }
+        description?.let { o.put("description", it) }
+        return o
+    }
+
     /** A readable outline of the expected JSON, used when a model has to be asked for JSON in plain text. */
     fun outline(indent: String = ""): String =
         when (this) {

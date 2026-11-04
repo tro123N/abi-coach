@@ -401,6 +401,8 @@ data class SessionRecord(
     val tech: String = "",
     /** The goals the learning brain set for this session. */
     val goals: List<SessionGoal> = emptyList(),
+    /** Further topic fields the conversation covered (part 2 links several, as in the Abitur). */
+    val extraTopics: List<Int> = emptyList(),
 ) {
     val studentText: String
         get() = utterances.filter { it.speaker == Speaker.STUDENT }.joinToString(" ") { it.text }
@@ -431,6 +433,7 @@ data class SessionRecord(
             .put("retryOf", retryOf)
             .put("tech", tech)
             .put("goals", goals.toJsonArray { it.toJson() })
+            .put("extraTopics", org.json.JSONArray(extraTopics))
 
     companion object {
         fun create(kind: SessionKind, feedback: FeedbackMode, topicId: Int, task: ExamTask?, focusTask: Int = 0, focusCategories: List<String> = emptyList()) =
@@ -473,6 +476,7 @@ data class SessionRecord(
                 retryOf = o.optString("retryOf"),
                 tech = o.optString("tech"),
                 goals = o.optJSONArray("goals").objects().map { SessionGoal.fromJson(it) },
+                extraTopics = o.optJSONArray("extraTopics")?.let { a -> (0 until a.length()).map { a.optInt(it, -1) }.filter { it in 0..13 } }.orEmpty(),
             )
     }
 }

@@ -82,7 +82,7 @@ class IngestPipeline(private val app: AbiCoachApp) {
 
     suspend fun step(): Step {
         val doc = store.docs.value.firstOrNull { it.isActive || it.status == DocStatus.WAITING_KEY } ?: return Step.IDLE
-        if (!app.ai.hasGemini) {
+        if (!app.ai.ready) {
             store.docs.value.filter { it.isActive }.forEach { d -> store.update(d.id) { it.copy(status = DocStatus.WAITING_KEY) } }
             return Step.IDLE
         }
@@ -90,7 +90,7 @@ class IngestPipeline(private val app: AbiCoachApp) {
             when {
                 doc.pagesRead < doc.pageCount -> readNext(doc)
                 !doc.chunked -> chunk(doc)
-                !doc.vectorless && doc.embedded < doc.chunkCount -> embedNext(doc)
+                !doc.vectorless && doc.embedded < doc.chunkCount && app.ai.canEmbed -> embedNext(doc)
                 !doc.digested -> digest(doc)
                 else -> store.update(doc.id) { it.copy(status = DocStatus.DONE, error = null) }
             }
@@ -203,6 +203,13 @@ class IngestPipeline(private val app: AbiCoachApp) {
         }
         val batch = chunks.subList(doc.embedded, minOf(chunks.size, doc.embedded + EMBED_BATCH))
         try {
+            // Vectors of different companies do not fit together: the first ones decide the space (see alignVectors).
+            val space = app.ai.embedSpace
+            if (space != null && app.settings.vectorSpace.isBlank()) app.settings.vectorSpace = space
+            if (space != null && app.settings.vectorSpace != space) {
+                app.alignVectors()
+                return
+            }
             val vectors = app.ai.embed(batch.map { it.text.take(6000) }, query = false, titles = batch.map { doc.title })
             store.appendVectors(doc.id, vectors)
             store.update(doc.id) { it.copy(embedded = it.embedded + batch.size) }

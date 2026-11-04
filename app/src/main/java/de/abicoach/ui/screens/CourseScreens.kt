@@ -215,8 +215,12 @@ fun CourseScreen(vm: AppViewModel) {
             AbiCard {
                 CardTitle("Datenschutz", icon = R.drawable.info_24dp)
                 CaptionText(
-                    "Deine Dateien bleiben auf dem Handy. Zum Lesen schickt die App die Seiten an Google Gemini. " +
-                        "Im Gratis-Tarif darf Google die Daten zur Verbesserung nutzen, mit Abrechnung nicht.",
+                    "Deine Dateien bleiben auf dem Handy. Zum Lesen schickt die App die Seiten an deine gewählte KI (${vm.app.ai.providerLabel()}). " +
+                        if (vm.app.ai.provider == de.abicoach.ai.Provider.GOOGLE) {
+                            "Im Gratis-Tarif darf Google die Daten zur Verbesserung nutzen, mit Abrechnung nicht."
+                        } else {
+                            "Daten, die über einen API-Schlüssel kommen, nutzt ${vm.app.ai.provider.company} nach eigenen Regeln standardmäßig nicht zum Training."
+                        },
                 )
             }
         }
@@ -243,7 +247,7 @@ private fun StatusCard(stats: MemoryStats, docs: List<CourseDoc>) {
         val waiting = docs.count { it.status == DocStatus.WAITING_KEY }
         if (waiting > 0) {
             Gap(8.dp)
-            CaptionText("$waiting ${if (waiting == 1) "Dokument wartet" else "Dokumente warten"} auf deinen Gemini-Schlüssel (Einstellungen → KI).", color = yellow)
+            CaptionText("$waiting ${if (waiting == 1) "Dokument wartet" else "Dokumente warten"} auf den Schlüssel deiner KI (Einstellungen → KI).", color = yellow)
         }
     }
 }

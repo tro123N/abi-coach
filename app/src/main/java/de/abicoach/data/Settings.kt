@@ -4,6 +4,7 @@ import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
+import de.abicoach.ai.Provider
 import de.abicoach.ui.theme.Palette
 import de.abicoach.ui.theme.ThemeMode
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -49,10 +50,10 @@ internal class KeyCipher {
         }.getOrNull()
 }
 
-/** All AI comes from Google. "Beste Qualität" lets the strongest Gemini model grade and write; "Sparsam" uses the cheaper Flash model. */
+/** "Beste Qualität" lets the strongest model of the chosen company grade and write; "Sparsam" uses its cheaper one. */
 enum class Quality(val label: String, val description: String) {
-    BEST("Beste Qualität", "Gemini 4 Argon bewertet, schreibt die Aufgaben und coacht – am genauesten."),
-    SPARSAM("Sparsam", "Gemini 3.8 Flash für alles – schneller und deutlich günstiger."),
+    BEST("Beste Qualität", "Das stärkste Modell bewertet, schreibt die Aufgaben und coacht – am genauesten."),
+    SPARSAM("Sparsam", "Ein schnelleres, günstigeres Modell für alles – deutlich billiger."),
 }
 
 /** All user settings. API keys are stored encrypted; everything else is plain preferences. */
@@ -61,7 +62,7 @@ class Settings(context: Context) {
     private val cipher = KeyCipher()
 
     init {
-        // The app uses Google only: keys and settings of the former OpenAI and Anthropic support are removed.
+        // Settings of a much older version (other key format and models): removed.
         val old = listOf("openai_key_enc", "anthropic_key_enc", "claude_brain_model", "claude_fast_model", "openai_live_model", "openai_voice")
         if (old.any { prefs.contains(it) }) prefs.edit().apply { old.forEach { remove(it) } }.apply()
     }
@@ -79,6 +80,34 @@ class Settings(context: Context) {
     var geminiKey: String
         get() = secret(KEY_GEMINI)
         set(value) = putSecret(KEY_GEMINI, value)
+
+    var openAiKey: String
+        get() = secret(KEY_OPENAI)
+        set(value) = putSecret(KEY_OPENAI, value)
+
+    var anthropicKey: String
+        get() = secret(KEY_ANTHROPIC)
+        set(value) = putSecret(KEY_ANTHROPIC, value)
+
+    fun keyOf(provider: Provider): String =
+        when (provider) {
+            Provider.GOOGLE -> geminiKey
+            Provider.OPENAI -> openAiKey
+            Provider.ANTHROPIC -> anthropicKey
+        }
+
+    fun setKey(provider: Provider, value: String) {
+        when (provider) {
+            Provider.GOOGLE -> geminiKey = value
+            Provider.OPENAI -> openAiKey = value
+            Provider.ANTHROPIC -> anthropicKey = value
+        }
+    }
+
+    /** The company whose AI does everything in the app (one key, one bill), so the student can compare them. */
+    var provider: Provider
+        get() = Provider.of(prefs.getString("provider", null))
+        set(value) = putString("provider", value.id)
 
     private val cache = java.util.concurrent.ConcurrentHashMap<String, String>()
 
@@ -113,6 +142,27 @@ class Settings(context: Context) {
     var ttsModel by StringPref("tts_model", "gemini-3.8-flash-tts")
     var ttsVoice by StringPref("tts_voice", "Kore")
 
+    // OpenAI
+    var oaBrainModel by StringPref("oa_brain_model", "gpt-6.1-sol")
+    var oaTextModel by StringPref("oa_text_model", "gpt-6.1-terra")
+    var oaFastModel by StringPref("oa_fast_model", "gpt-6-luna")
+    var oaAudioModel by StringPref("oa_audio_model", "gpt-audio-1.5")
+    var oaLiveModel by StringPref("oa_live_model", "gpt-live-1")
+    var oaVoice by StringPref("oa_voice", "cedar")
+    var oaTranscribeModel by StringPref("oa_transcribe_model", "gpt-live-transcribe")
+    var oaFileTranscribeModel by StringPref("oa_file_transcribe_model", "gpt-transcribe")
+    var oaTtsModel by StringPref("oa_tts_model", "gpt-4o-mini-tts")
+    var oaTtsVoice by StringPref("oa_tts_voice", "marin")
+    var oaEmbeddingModel by StringPref("oa_embedding_model", "text-embedding-3-large")
+
+    // Anthropic (Claude thinks; the phone hears and speaks)
+    var clBrainModel by StringPref("cl_brain_model", "claude-opus-5-5")
+    var clTextModel by StringPref("cl_text_model", "claude-sonnet-5-5")
+    var clFastModel by StringPref("cl_fast_model", "claude-haiku-5-5")
+
+    /** Which model made the search vectors of the course material ("gemini:gemini-embedding-2"); empty = none yet. */
+    var vectorSpace by StringPref("vector_space", "")
+
     // ---------- Exam and course ----------
 
     /** Exam date as YYYY-MM-DD, empty when unknown. */
@@ -144,7 +194,7 @@ class Settings(context: Context) {
     /** Prepares the next exam text in the background so that "Los geht's" starts at once. */
     var prefetchMaterial by BoolPref("prefetch_material", true)
 
-    /** The evaluation runs in Google's cloud: it goes on when the app is closed or the phone is off. */
+    /** With Google the evaluation runs in Google's cloud: it goes on when the app is closed or the phone is off. */
     var cloudAnalysis by BoolPref("cloud_analysis", true)
 
     // ---------- Look and feel ----------
@@ -203,6 +253,9 @@ class Settings(context: Context) {
 
     companion object {
         private const val KEY_GEMINI = "gemini_key_enc"
+        private const val KEY_OPENAI = "openai_api_key_enc"
+        private const val KEY_ANTHROPIC = "anthropic_api_key_enc"
         val GEMINI_VOICES = listOf("Charon", "Kore", "Puck", "Fenrir", "Aoede", "Leda", "Orus", "Zephyr")
+        val OPENAI_VOICES = listOf("cedar", "marin", "ash", "ballad", "coral", "sage", "verse", "alloy")
     }
 }

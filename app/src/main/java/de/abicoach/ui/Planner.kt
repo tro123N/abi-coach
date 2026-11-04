@@ -62,6 +62,11 @@ data class SessionSetup(
     val talkMinutes: Int = if (kind == SessionKind.PART2) 10 else 8,
     /** A specific original exam task from the uploaded Abitur material (with source REAL). */
     val unitId: String = "",
+    /**
+     * Further topic fields for the conversation, examined together (part 2 of the Abitur links several and must not
+     * stay with one term). Empty = the app picks the ones the student needs most.
+     */
+    val extraTopics: List<Int> = emptyList(),
 ) {
     val isSprint: Boolean get() = instruction == SPRINT_INSTRUCTION
 
@@ -98,8 +103,8 @@ object Planner {
         val docs = app.memory.docs.value
         val feedback = app.settings.defaultFeedback
 
-        if (!app.ai.hasGemini) {
-            out += Recommendation("KI-Schlüssel eintragen", "Ohne Gemini-Schlüssel kann die App nicht zuhören.", R.drawable.key_24dp, Tint.RED, Target.Keys)
+        if (!app.ai.ready) {
+            out += Recommendation("KI-Schlüssel eintragen", "Ohne Schlüssel deiner KI (Google, OpenAI oder Anthropic) kann die App nicht zuhören.", R.drawable.key_24dp, Tint.RED, Target.Keys)
         }
         if (docs.isEmpty()) {
             out += Recommendation("Kursmaterial hochladen", "Schulbuch, Klausuren, Arbeitsblätter – damit alles zu deinem Kurs passt.", R.drawable.cloud_upload_24dp, Tint.YELLOW, Target.Course)
@@ -160,7 +165,7 @@ object Planner {
         val docs = app.memory.docs.value
         val prognosis = profile.prognosis()?.points ?: 0
         return listOf(
-            Milestone("KI startklar", app.ai.hasGemini),
+            Milestone("KI startklar", app.ai.ready),
             Milestone("Kursmaterial im Gedächtnis", docs.isNotEmpty(), if (docs.isNotEmpty()) "${docs.size} Dokumente" else null),
             Milestone("Einstufung gemacht", profile.placementDone),
             Milestone("Erste Prüfungssimulation", simulations.isNotEmpty()),

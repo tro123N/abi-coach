@@ -282,7 +282,7 @@ fun PronunciationScreen(vm: AppViewModel) {
     val own = remember { vm.pronWords() }
     val record = rememberMicGate { vm.pronStart() }
     DetailScaffold(title = "Aussprache-Labor", onBack = { vm.tap(); vm.pronStop(); vm.stopSpeaking(); vm.nav.pop() }, tag = "pron") {
-        AreaIntro(R.drawable.graphic_eq_24dp, "Hören, nachsprechen, besser werden", "Hör dir das Wort an, sprich es nach – Gemini hört genau hin und sagt dir, welcher Laut noch nicht stimmt.")
+        AreaIntro(R.drawable.graphic_eq_24dp, "Hören, nachsprechen, besser werden", "Hör dir das Wort an, sprich es nach – die KI hört genau hin und sagt dir, welcher Laut noch nicht stimmt.")
         MessageBanners(vm)
         AbiCard {
             CardTitle("Wort oder Satz", icon = R.drawable.record_voice_over_24dp)
@@ -296,14 +296,14 @@ fun PronunciationScreen(vm: AppViewModel) {
                         ActionButton("Aufnehmen", R.drawable.mic_24dp, green, record, enabled = vm.pronTarget.isNotBlank() && !vm.pronBusy, container = MaterialTheme.colorScheme.background, modifier = Modifier.testTag("pron_record"))
                     }
                 }
-                if (vm.pronTarget.isNotBlank()) SpeakButton(vm, vm.pronTarget)
+                if (vm.pronTarget.isNotBlank()) SpeakButton(vm, vm.pronTarget, prefetch = true)
             }
             if (vm.pronRecording) {
                 Gap(6.dp)
                 CaptionText("Ich höre zu … sag es einmal deutlich und tippe dann auf „Fertig“.")
             }
         }
-        if (vm.pronBusy) LoadingCard("Gemini hört sich deine Aufnahme an …")
+        if (vm.pronBusy) LoadingCard("${vm.app.ai.listenerLabel()} hört sich deine Aufnahme an …")
         vm.pronResult?.let { r ->
             val color = if (r.score >= 85) green else if (r.score >= 65) yellow else red
             AbiCard(modifier = Modifier.testTag("pron_result")) {
@@ -461,7 +461,7 @@ private fun actionIcon(kind: String): Int =
 fun BriefingCard(vm: AppViewModel) {
     val briefing by vm.app.briefings.current.collectAsState()
     val sessions by vm.app.store.sessions.collectAsState()
-    androidx.compose.runtime.LaunchedEffect(sessions.size, vm.app.settings.geminiKey) { vm.refreshBriefing(false) }
+    androidx.compose.runtime.LaunchedEffect(sessions.size, vm.app.ai.ready) { vm.refreshBriefing(false) }
     val b = briefing
     if (b == null && !vm.briefingBusy && vm.briefingError == null) return
     AbiCard(modifier = Modifier.testTag("briefing")) {

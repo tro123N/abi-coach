@@ -37,6 +37,7 @@ object MaterialScheduler {
                 .putInt(MaterialWorker.PAGE, fixedPage)
                 .putBoolean(MaterialWorker.PREFETCH, prefetch)
                 .putString(MaterialWorker.UNIT, request.unitId)
+                .putString(MaterialWorker.PART2, request.part2Topics.joinToString(","))
                 .build()
         val builder =
             OneTimeWorkRequestBuilder<MaterialWorker>()
@@ -73,6 +74,7 @@ class MaterialWorker(context: Context, params: WorkerParameters) : CoroutineWork
                 short = inputData.getBoolean(SHORT, false),
                 instruction = inputData.getString(INSTRUCTION).orEmpty(),
                 unitId = inputData.getString(UNIT).orEmpty(),
+                part2Topics = inputData.getString(PART2).orEmpty().split(",").mapNotNull { it.trim().toIntOrNull() },
             )
         val docId = inputData.getString(DOC)?.takeIf { it.isNotBlank() }
         val page = inputData.getInt(PAGE, 0)
@@ -120,6 +122,7 @@ class MaterialWorker(context: Context, params: WorkerParameters) : CoroutineWork
         const val PAGE = "page"
         const val PREFETCH = "prefetch"
         const val UNIT = "unit"
+        const val PART2 = "part2"
     }
 }
 
@@ -131,7 +134,7 @@ object MaterialPrefetch {
 
     /** Starts the silent preparation of a text, if the student wants it, nothing is ready yet and the last try is a while ago. */
     fun maybeStart(app: AbiCoachApp) {
-        if (!app.settings.prefetchMaterial || !app.ai.hasGemini) return
+        if (!app.settings.prefetchMaterial || !app.ai.ready) return
         // New students do the placement test first (short text); a text in advance would only cost money.
         if (!app.profiles.profile.value.placementDone) return
         if (app.shelf.has(MaterialShelf.PREFETCH)) return
@@ -148,7 +151,8 @@ object MaterialPrefetch {
         val ordinary =
             (s.kind == SessionKind.PART1 || s.kind == SessionKind.SIMULATION) &&
                 s.fixedDocId == null && s.instruction.isBlank() &&
-                s.textType == Knowledge.TextType.GEMISCHT && s.source != Knowledge.Source.MATERIAL && s.source != Knowledge.Source.REAL
+                s.textType == Knowledge.TextType.GEMISCHT && s.source != Knowledge.Source.MATERIAL && s.source != Knowledge.Source.REAL &&
+                s.extraTopics.isEmpty()
         if (!ordinary) return null
         val entry = app.shelf.peek(MaterialShelf.PREFETCH) ?: return null
         val fits = s.topicChoice == Knowledge.FROM_COURSE || s.topicChoice == Knowledge.RANDOM || s.topicChoice == entry.task.topicId

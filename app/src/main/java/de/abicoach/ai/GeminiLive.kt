@@ -75,14 +75,14 @@ class LiveSocket(
     /** Builds the setup message. Arguments: resumption handle (or null) and whether to use the minimal setup. */
     private val setupFactory: (String?, Boolean) -> JSONObject,
     private val onEvent: (LiveEvent) -> Unit,
-) {
+) : LiveTranscriber {
     private val url =
         "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService." +
             "BidiGenerateContent?key=" + URLEncoder.encode(apiKey, "UTF-8")
 
     @Volatile private var socket: WebSocket? = null
 
-    @Volatile var ready = false
+    @Volatile override var ready = false
         private set
 
     @Volatile private var closedByUser = false
@@ -93,7 +93,7 @@ class LiveSocket(
 
     @Volatile private var failedReconnects = 0
 
-    fun connect() {
+    override fun connect() {
         closedByUser = false
         ready = false
         socket = http.newWebSocket(Request.Builder().url(url).build(), Listener())
@@ -102,7 +102,8 @@ class LiveSocket(
     /** Audio that arrived while the connection was (re)opening, at most about three seconds: nothing the student says gets lost. */
     private val backlog = java.util.ArrayDeque<ByteArray>()
 
-    fun sendAudio(pcm: ByteArray) {
+    override fun sendAudio(pcm16k: ByteArray) {
+        val pcm = pcm16k
         val current = socket
         if (!ready || current == null) {
             synchronized(backlog) {
@@ -129,7 +130,7 @@ class LiveSocket(
         ).toString()
 
     /** Tells the server that the microphone stopped, so the last utterance gets finalised. */
-    fun sendStreamEnd() {
+    override fun sendStreamEnd() {
         if (!ready) return
         socket?.send(JSONObject().put("realtimeInput", JSONObject().put("audioStreamEnd", true)).toString())
     }
@@ -147,7 +148,7 @@ class LiveSocket(
     }
 
     /** Replaces a connection that seems dead by a fresh one; the old one is closed once the new one is started. */
-    fun reconnectNow() {
+    override fun reconnectNow() {
         if (closedByUser) return
         val old = socket
         onEvent(LiveEvent.Info("$name: verbinde neu …"))
@@ -155,7 +156,7 @@ class LiveSocket(
         old?.close(1000, "refresh")
     }
 
-    fun close() {
+    override fun close() {
         closedByUser = true
         ready = false
         socket?.close(1000, "done")

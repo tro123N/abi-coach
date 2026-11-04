@@ -24,7 +24,25 @@ sealed interface LiveEvent {
     data class Failed(val message: String) : LiveEvent
 }
 
-/** A spoken conversation partner: the examiner (Gemini Live). */
+/** A live speech-to-text stream that writes down what the student says ("second ear"). */
+interface LiveTranscriber {
+    /** True once the stream is connected and writes along. */
+    val ready: Boolean
+
+    fun connect()
+
+    /** 16 kHz mono PCM from the microphone, in chunks of about 100 ms. */
+    fun sendAudio(pcm16k: ByteArray)
+
+    fun sendStreamEnd()
+
+    /** Renews a connection that seems to hang. */
+    fun reconnectNow() {}
+
+    fun close()
+}
+
+/** A spoken conversation partner: the examiner (Gemini Live, GPT-Live or Claude with the phone's voice). */
 interface VoiceAgent {
     /** Shown in the app, e.g. "Gemini 3.8 Live". */
     val label: String

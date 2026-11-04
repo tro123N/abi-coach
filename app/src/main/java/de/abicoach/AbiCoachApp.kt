@@ -104,12 +104,12 @@ class AbiCoachApp : Application() {
         profiles = ProfileStore(this)
         memory = MemoryStore(this)
         importer = Importer(this, memory)
-        ai = AiHub(http, settings)
+        ai = AiHub(this, http, settings)
         dossiers = de.abicoach.memory.DossierStore(this)
         errorMemory = de.abicoach.learn.ErrorMemoryStore(this)
         insights = de.abicoach.learn.InsightStore(this)
         cloudJobs = de.abicoach.session.CloudJobStore(this)
-        course = CourseContext(memory, Retriever(memory, ai), settings, profiles, dossiers)
+        course = CourseContext(memory, Retriever(memory, ai, settings), settings, profiles, dossiers)
         feedback = Feedback(this, { settings.sound }, { settings.vibration })
         path = PathStore(this)
         vocab = de.abicoach.practice.VocabStore(this)
@@ -143,17 +143,38 @@ class AbiCoachApp : Application() {
         )
         resumeReading()
         // Renews dossiers whose material changed (the job checks this itself and is cheap when nothing changed).
-        if (settings.geminiKey.isNotBlank()) de.abicoach.memory.DossierScheduler.kick(this)
-        // Evaluations that went on in the cloud while the app was closed: fetch their results.
+        if (ai.ready) de.abicoach.memory.DossierScheduler.kick(this)
+        // Evaluations that went on in Google's cloud while the app was closed: fetch their results.
         if (settings.geminiKey.isNotBlank()) cloudJobs.all().forEach { de.abicoach.session.AnalysisScheduler.resume(this, it.sessionId) }
     }
 
-    /** Continues reading material that is not finished yet (e.g. after a restart or a new key). */
+    /** Continues reading material that is not finished yet (e.g. after a restart, a new key or another company). */
     fun resumeReading() {
+        alignVectors()
         val docs = memory.docs.value
-        docs.filter { it.status == DocStatus.WAITING_KEY && settings.geminiKey.isNotBlank() }.forEach { d ->
+        docs.filter { it.status == DocStatus.WAITING_KEY && ai.ready }.forEach { d ->
             memory.update(d.id) { it.copy(status = DocStatus.QUEUED) }
         }
         if (memory.docs.value.any { it.isActive }) IngestScheduler.kick(this)
+    }
+
+    /**
+     * Search vectors of different companies do not fit together. When the chosen company makes other vectors than
+     * the stored ones, the material gets new vectors in the background (until then the search uses keywords).
+     * With Claude (no vectors) the stored ones are kept for a switch back.
+     */
+    fun alignVectors() {
+        val docs = memory.docs.value
+        if (settings.vectorSpace.isBlank() && docs.any { it.embedded > 0 }) settings.vectorSpace = "gemini:${settings.embeddingModel}"
+        val space = ai.embedSpace ?: return
+        if (!ai.ready) return
+        if (settings.vectorSpace.isNotBlank() && settings.vectorSpace != space) {
+            docs.filter { it.embedded > 0 || it.vectorless }.forEach { d -> memory.resetVectors(d.id) }
+        }
+        settings.vectorSpace = space
+        // Material that was finished without vectors (e.g. with Claude) gets them now.
+        memory.docs.value.filter { it.status == DocStatus.DONE && it.chunked && !it.vectorless && it.embedded < it.chunkCount }.forEach { d ->
+            memory.update(d.id) { it.copy(status = DocStatus.INDEXING) }
+        }
     }
 }

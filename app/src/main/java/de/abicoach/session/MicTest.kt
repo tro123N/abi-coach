@@ -83,7 +83,7 @@ class MicTest(private val app: AbiCoachApp) {
                 )
                 return@launch
             }
-            _state.update { it.copy(phase = Phase.CHECKING, message = "Gemini hört sich deinen Satz an …") }
+            _state.update { it.copy(phase = Phase.CHECKING, message = "Die KI hört sich deinen Satz an …") }
             val result =
                 try {
                     EarCheck.check(app.ai, heard, "microphone test", "")
@@ -94,7 +94,7 @@ class MicTest(private val app: AbiCoachApp) {
                     return@launch
                 }
             if (result.transcript.isBlank()) {
-                fail("Gemini hat keine Sprache erkannt. Sprich etwas lauter und näher am Handy.")
+                fail("Die KI hat keine Sprache erkannt. Sprich etwas lauter und näher am Handy.")
                 return@launch
             }
             _state.update { it.copy(transcript = result.transcript, errors = result.errors, ms = result.ms, phase = Phase.SPEAKING, message = "Der Coach spricht …") }
@@ -105,15 +105,15 @@ class MicTest(private val app: AbiCoachApp) {
                 if (pcm != null && pcm.size > 4_000) {
                     player.enqueue(pcm)
                     delay(player.remainingMs() + 300)
-                    "Gemini-Stimme"
+                    "KI-Stimme (${app.ai.voiceLabel()})"
                 } else {
                     tts.say(line)
                     delay(1_500L + line.length * 70L)
-                    "Handy-Stimme (Gemini-Stimme kam nicht rechtzeitig)"
+                    "Handy-Stimme (KI-Stimme kam nicht rechtzeitig)"
                 }
             val message =
                 when {
-                    first == null -> "Alles angekommen, aber Gemini fand keinen Fehler. Sag ruhig den Satz mit „goed“ – dann muss ein Hinweis kommen."
+                    first == null -> "Alles angekommen, aber die KI fand keinen Fehler. Sag ruhig den Satz mit „goed“ – dann muss ein Hinweis kommen."
                     else -> "Alles funktioniert: Mikrofon, Ohr, Hinweis und Coach-Stimme."
                 }
             _state.update { it.copy(phase = Phase.DONE, voice = voice, message = message) }

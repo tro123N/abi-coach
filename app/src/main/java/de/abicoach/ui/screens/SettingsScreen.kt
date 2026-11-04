@@ -36,7 +36,7 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import de.abicoach.R
-import de.abicoach.ai.AiHub
+import de.abicoach.ai.Provider
 import de.abicoach.data.FeedbackMode
 import de.abicoach.data.Quality
 import de.abicoach.data.Settings
@@ -84,39 +84,50 @@ fun SettingsScreen(vm: AppViewModel) {
         if (version < 0) return@DetailScaffold
         MessageBanners(vm)
         AbiCard(modifier = Modifier.testTag("settings_ai")) {
-            CardTitle("KI von Google", icon = R.drawable.auto_awesome_24dp)
+            CardTitle("Deine KI", icon = R.drawable.auto_awesome_24dp)
+            CaptionText("Wähle, wessen KI alles in der App macht. Zum Vergleichen kannst du jederzeit wechseln – jede Firma braucht ihren eigenen Schlüssel.")
+            Gap(8.dp)
+            ChoiceChips(Provider.entries, settings.provider, { it.label }, { vm.chooseProvider(it) }, tagPrefix = "provider")
+            Gap(6.dp)
+            CaptionText(providerNote(settings.provider))
+            Gap(12.dp)
             ChoiceChips(Quality.entries, settings.quality, { it.label }, { vm.tap(); settings.quality = it }, tagPrefix = "quality")
             Gap(6.dp)
             CaptionText(settings.quality.description)
-            Gap(14.dp)
-            KeyBlock(
-                vm = vm,
-                provider = "gemini",
-                title = "Google Gemini",
-                role = "Der einzige Schlüssel, den die App braucht",
-                current = settings.geminiKey,
-                url = "https://aistudio.google.com/apikey",
-                onSave = { settings.geminiKey = it },
-            )
+            // The key of the chosen company first; the others for comparing.
+            (listOf(settings.provider) + Provider.entries.filter { it != settings.provider }).forEach { p ->
+                Gap(14.dp)
+                androidx.compose.runtime.key(p.id) {
+                    KeyBlock(
+                        vm = vm,
+                        provider = p.id,
+                        title = p.label,
+                        role = if (p == settings.provider) "Macht gerade alles in der App" else "Zum Vergleichen – tippe oben auf „${p.label}“, um zu wechseln",
+                        current = settings.keyOf(p),
+                        url = p.keyUrl,
+                        required = p == settings.provider,
+                        onSave = { settings.setKey(p, it) },
+                    )
+                }
+            }
             Gap(10.dp)
-            CaptionText(
-                "Alles kommt von Google: Prüfer, Mitschrift, Bewertung, Coach, Kursgedächtnis und Vorlesen. " +
-                    "Der Schlüssel bleibt verschlüsselt auf deinem Handy und geht nur an Google.",
-            )
+            CaptionText("Die Schlüssel bleiben verschlüsselt auf deinem Handy und gehen nur an die jeweilige Firma.")
         }
         SystemCheckCard(vm)
         AbiCard {
             CardTitle("Wer macht was", icon = R.drawable.hub_24dp)
+            CaptionText(app.ai.providerLabel())
+            Gap(4.dp)
             RoleRow("Prüfer im Gespräch", app.ai.examinerLabel())
-            RoleRow("Wortgetreue Mitschrift", AiHub.pretty(settings.transcribeModel))
+            RoleRow("Mitschrift", app.ai.transcriberLabel())
             RoleRow("Bewertung, Aufgaben, Coach", app.ai.brainLabel())
             RoleRow("Fehlerprüfung beim Sprechen", app.ai.fastLabel())
-            RoleRow("Aufnahme anhören", app.ai.listenerLabel())
-            RoleRow("Material lesen", AiHub.pretty(settings.geminiReaderModel))
-            RoleRow("Suche im Material", AiHub.pretty(settings.embeddingModel))
-            RoleRow("Vorlesen", AiHub.pretty(settings.ttsModel))
+            RoleRow("Aufnahme anhören", if (app.ai.hearsRecordings) app.ai.listenerLabel() else "– (Claude hört nicht)")
+            RoleRow("Material lesen", app.ai.readerLabel())
+            RoleRow("Suche im Material", app.ai.searchLabel())
+            RoleRow("Vorlesen", app.ai.voiceLabel())
             Gap(4.dp)
-            CaptionText("Fällt ein Modell aus (kein Zugang, Limit erreicht), springt automatisch ${AiHub.pretty(settings.geminiTextModel)} ein.")
+            CaptionText("Fällt ein Modell aus (kein Zugang, Limit erreicht), springt automatisch ein anderes Modell derselben Firma ein.")
         }
         AbiCard {
             CardTitle("Prüfung", icon = R.drawable.event_24dp)
@@ -157,13 +168,28 @@ fun SettingsScreen(vm: AppViewModel) {
         ReminderCard(vm)
         AbiCard {
             CardTitle("Stimmen", icon = R.drawable.record_voice_over_24dp)
-            BodyText("Prüfer (Gemini Live)")
-            Gap(6.dp)
-            ChoiceChips(Settings.GEMINI_VOICES, settings.geminiVoice, { it }, { vm.tap(); settings.geminiVoice = it }, tagPrefix = "gvoice")
-            Gap(12.dp)
-            BodyText("Vorlesen von Musterantworten")
-            Gap(6.dp)
-            ChoiceChips(Settings.GEMINI_VOICES, settings.ttsVoice, { it }, { vm.tap(); settings.ttsVoice = it }, tagPrefix = "ttsvoice")
+            when (settings.provider) {
+                Provider.GOOGLE -> {
+                    BodyText("Prüfer (${app.ai.examinerLabel()})")
+                    Gap(6.dp)
+                    ChoiceChips(Settings.GEMINI_VOICES, settings.geminiVoice, { it }, { vm.tap(); settings.geminiVoice = it }, tagPrefix = "gvoice")
+                    Gap(12.dp)
+                    BodyText("Vorlesen und Coach")
+                    Gap(6.dp)
+                    ChoiceChips(Settings.GEMINI_VOICES, settings.ttsVoice, { it }, { vm.tap(); settings.ttsVoice = it }, tagPrefix = "ttsvoice")
+                }
+                Provider.OPENAI -> {
+                    BodyText("Prüfer (${app.ai.examinerLabel()})")
+                    Gap(6.dp)
+                    ChoiceChips(Settings.OPENAI_VOICES, settings.oaVoice, { it }, { vm.tap(); settings.oaVoice = it }, tagPrefix = "ovoice")
+                    Gap(12.dp)
+                    BodyText("Vorlesen und Coach")
+                    Gap(6.dp)
+                    ChoiceChips(Settings.OPENAI_VOICES, settings.oaTtsVoice, { it }, { vm.tap(); settings.oaTtsVoice = it }, tagPrefix = "ottsvoice")
+                }
+                Provider.ANTHROPIC ->
+                    CaptionText("Claude spricht mit der Stimme deines Handys. Welche Stimme das ist, stellst du in den Android-Einstellungen unter „Sprachausgabe“ ein (am besten Englisch, Großbritannien).")
+            }
             Gap(10.dp)
             ActionButton(
                 if (vm.speaking != null) "Stopp" else "Probehören",
@@ -176,17 +202,23 @@ fun SettingsScreen(vm: AppViewModel) {
         AbiCard {
             CardTitle("Aufnahme und Anzeige", icon = R.drawable.mic_24dp)
             SwitchRow(
-                "Aufnahme für die Auswertung hochladen",
-                "Gemini hört Aussprache und Flüssigkeit. Ohne Aufnahme wird nur das Transkript bewertet.",
+                "Aufnahme für die Auswertung mitschicken",
+                if (app.ai.hearsRecordings) {
+                    "Die KI hört Aussprache und Flüssigkeit. Ohne Aufnahme wird nur das Transkript bewertet."
+                } else {
+                    "Claude kann keine Aufnahmen hören – mit Claude wird nur das Transkript bewertet."
+                },
                 settings.uploadAudio,
                 { settings.uploadAudio = it },
             )
-            SwitchRow(
-                "Auswertung in der Cloud",
-                "Die Bewertung läuft bei Google weiter, auch wenn du die App schließt oder das Handy sperrst. Die App holt das Ergebnis ab, sobald sie wieder online ist.",
-                settings.cloudAnalysis,
-                { settings.cloudAnalysis = it },
-            )
+            if (settings.provider == Provider.GOOGLE) {
+                SwitchRow(
+                    "Auswertung in der Cloud",
+                    "Die Bewertung läuft bei Google weiter, auch wenn du die App schließt oder das Handy sperrst. Dauert sie länger als 6 Minuten, wertet die App direkt aus – sie hängt nie fest.",
+                    settings.cloudAnalysis,
+                    { settings.cloudAnalysis = it },
+                )
+            }
             SwitchRow("Mitschrift beim Vortrag zeigen", "Im Gespräch wird sie immer gezeigt.", settings.showTranscript, { settings.showTranscript = it })
             SwitchRow(
                 "Flüstern auch hörbar",
@@ -234,15 +266,35 @@ fun SettingsScreen(vm: AppViewModel) {
             SwitchRow("Töne", null, settings.sound, { settings.sound = it })
             SwitchRow("Vibration", "Auch für Hinweise beim Sprechen (Flüstern)", settings.vibration, { settings.vibration = it })
         }
-        ExpandableCard("Erweitert: Modelle", subtitle = "Nur ändern, wenn Google ein Modell umbenennt", icon = R.drawable.tune_24dp) {
-            ModelField("Prüfer (Live-Stimme)", settings.geminiLiveModel) { settings.geminiLiveModel = it }
-            ModelField("Gemini – Mitschrift", settings.transcribeModel) { settings.transcribeModel = it }
-            ModelField("Gemini – stärkstes Modell", settings.geminiBestModel) { settings.geminiBestModel = it }
-            ModelField("Gemini – schnelles Modell", settings.geminiTextModel) { settings.geminiTextModel = it }
-            ModelField("Gemini – Fehlerprüfung beim Sprechen", settings.geminiFastModel) { settings.geminiFastModel = it }
-            ModelField("Gemini – Material lesen", settings.geminiReaderModel) { settings.geminiReaderModel = it }
-            ModelField("Gemini – Suche (Vektoren)", settings.embeddingModel) { settings.embeddingModel = it }
-            ModelField("Gemini – Vorlesen", settings.ttsModel) { settings.ttsModel = it }
+        ExpandableCard("Erweitert: Modelle", subtitle = "Nur ändern, wenn ${settings.provider.company} ein Modell umbenennt", icon = R.drawable.tune_24dp) {
+            when (settings.provider) {
+                Provider.GOOGLE -> {
+                    ModelField("Prüfer (Live-Stimme)", settings.geminiLiveModel) { settings.geminiLiveModel = it }
+                    ModelField("Gemini – Mitschrift", settings.transcribeModel) { settings.transcribeModel = it }
+                    ModelField("Gemini – stärkstes Modell", settings.geminiBestModel) { settings.geminiBestModel = it }
+                    ModelField("Gemini – schnelles Modell", settings.geminiTextModel) { settings.geminiTextModel = it }
+                    ModelField("Gemini – Fehlerprüfung beim Sprechen", settings.geminiFastModel) { settings.geminiFastModel = it }
+                    ModelField("Gemini – Material lesen", settings.geminiReaderModel) { settings.geminiReaderModel = it }
+                    ModelField("Gemini – Suche (Vektoren)", settings.embeddingModel) { settings.embeddingModel = it }
+                    ModelField("Gemini – Vorlesen", settings.ttsModel) { settings.ttsModel = it }
+                }
+                Provider.OPENAI -> {
+                    ModelField("Prüfer (Live-Stimme)", settings.oaLiveModel) { settings.oaLiveModel = it }
+                    ModelField("Mitschrift (live)", settings.oaTranscribeModel) { settings.oaTranscribeModel = it }
+                    ModelField("Stärkstes Modell", settings.oaBrainModel) { settings.oaBrainModel = it }
+                    ModelField("Normales Modell (auch Material lesen)", settings.oaTextModel) { settings.oaTextModel = it }
+                    ModelField("Fehlerprüfung beim Sprechen", settings.oaFastModel) { settings.oaFastModel = it }
+                    ModelField("Aufnahmen anhören (Audio)", settings.oaAudioModel) { settings.oaAudioModel = it }
+                    ModelField("Aufnahmen abschreiben", settings.oaFileTranscribeModel) { settings.oaFileTranscribeModel = it }
+                    ModelField("Suche (Vektoren)", settings.oaEmbeddingModel) { settings.oaEmbeddingModel = it }
+                    ModelField("Vorlesen", settings.oaTtsModel) { settings.oaTtsModel = it }
+                }
+                Provider.ANTHROPIC -> {
+                    ModelField("Stärkstes Modell", settings.clBrainModel) { settings.clBrainModel = it }
+                    ModelField("Normales Modell (auch Material lesen)", settings.clTextModel) { settings.clTextModel = it }
+                    ModelField("Schnelles Modell (Prüfer, Fehlerprüfung)", settings.clFastModel) { settings.clFastModel = it }
+                }
+            }
         }
         AbiCard {
             CardTitle("Daten", icon = R.drawable.folder_24dp)
@@ -303,8 +355,23 @@ fun SettingsScreen(vm: AppViewModel) {
 @Suppress("FunctionName")
 private fun Planner_days(vm: AppViewModel): Long? = de.abicoach.ui.Planner.daysUntilExam(vm.app)
 
+/** What the chosen company does in the app, in plain words. */
+private fun providerNote(p: Provider): String =
+    when (p) {
+        Provider.GOOGLE ->
+            "Gemini macht alles selbst: Prüfer (hört und spricht gleichzeitig), wortgetreue Mitschrift, Bewertung, Coach, Kursgedächtnis und Vorlesen. " +
+                "Die Bewertung kann in Googles Cloud weiterlaufen, wenn das Handy aus ist."
+        Provider.OPENAI ->
+            "OpenAI macht alles selbst: GPT-Live als Prüfer (hört und spricht gleichzeitig), wortgetreue Mitschrift, GPT bewertet und coacht, " +
+                "das GPT-Audiomodell hört deine Aufnahmen an, die GPT-Stimme liest vor."
+        Provider.ANTHROPIC ->
+            "Claude denkt: bewertet, schreibt Texte und Aufgaben, coacht und ist dein Prüfer. Hören und sprechen kann Claude nicht – das übernehmen " +
+                "Spracherkennung und Stimme deines Handys (Android 13 oder neuer). Darum gibt es mit Claude keine Aussprache-Bewertung aus der Aufnahme, " +
+                "der Prüfer antwortet erst, wenn du fertig bist, und die Kurssuche geht nur über Stichwörter."
+    }
+
 @Composable
-private fun KeyBlock(vm: AppViewModel, provider: String, title: String, role: String, current: String, url: String, onSave: (String) -> Unit) {
+private fun KeyBlock(vm: AppViewModel, provider: String, title: String, role: String, current: String, url: String, required: Boolean, onSave: (String) -> Unit) {
     val uri = LocalUriHandler.current
     val dimens = AbiTheme.dimens
     var editing by remember(provider) { mutableStateOf(current.isBlank()) }
@@ -320,7 +387,7 @@ private fun KeyBlock(vm: AppViewModel, provider: String, title: String, role: St
             Text(
                 if (current.isBlank()) "fehlt" else "✓ eingetragen",
                 fontSize = dimens.fonts.caption,
-                color = if (current.isBlank()) (if (provider == "gemini") red else MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.6f)) else green,
+                color = if (current.isBlank()) (if (required) red else MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.6f)) else green,
             )
         }
         Gap(6.dp)
@@ -373,7 +440,7 @@ private fun SystemCheckCard(vm: AppViewModel) {
     AbiCard(modifier = Modifier.testTag("settings_check")) {
         CardTitle("System prüfen", icon = R.drawable.verified_24dp)
         CaptionText(
-            "Testet alles wirklich durch: Schlüssel, Bewertung, Mitschrift – und ob der Prüfer einen Coach-Hinweis mitten im Gespräch ausspricht. " +
+            "Testet deine gewählte KI wirklich durch: Schlüssel, Bewertung, Stimme, Mitschrift, Prüfer und Coach. " +
                 "Dauert etwa eine Minute und kostet nur ein paar Cent.",
         )
         Gap(8.dp)
@@ -382,7 +449,7 @@ private fun SystemCheckCard(vm: AppViewModel) {
             R.drawable.verified_24dp,
             accent,
             { vm.tap(); vm.runSystemCheck() },
-            enabled = !vm.systemChecking && vm.app.ai.hasGemini,
+            enabled = !vm.systemChecking && vm.app.ai.ready,
             container = MaterialTheme.colorScheme.background,
             modifier = Modifier.testTag("check_all"),
         )
@@ -396,7 +463,7 @@ private fun SystemCheckCard(vm: AppViewModel) {
             R.drawable.mic_24dp,
             accent,
             { micTest() },
-            enabled = vm.app.ai.hasGemini,
+            enabled = vm.app.ai.ready,
             subtitle = "Du sagst einen Satz mit Fehler – prüft Mikrofon, Ohr, Hinweis und Coach-Stimme wie im echten Training",
             container = MaterialTheme.colorScheme.background,
             modifier = Modifier.testTag("check_mic"),

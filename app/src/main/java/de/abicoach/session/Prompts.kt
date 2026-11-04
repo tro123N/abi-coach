@@ -41,6 +41,7 @@ Rules:
 - If the student does not understand a question, rephrase it more simply.
 - Never mention grades or points.
 - Messages that start with "COACH:" come from the training app, not from the student. Follow them immediately and briefly, then continue.
+- Messages that start with "COACH_NOTE:" tell you that the app's coach has just corrected the student out loud. Never repeat that correction; let the student say the sentence again, then continue where you were.
 - Messages that start with "DIRECTOR:" also come from the app, which keeps an eye on the time and on how the student answers. Follow them naturally in your next turn and never mention them.
 - If you receive "TIME_UP", thank the student in one sentence and end."""
 
@@ -64,7 +65,7 @@ Rules:
         val sb = StringBuilder("\n\nThe student's persistent mistakes from earlier sessions (most important first):\n")
         patterns.take(6).forEach { sb.append("- ").append(it).append('\n') }
         sb.append("Ask questions whose natural answer needs exactly these structures (e.g. questions about developments up to now for the present perfect, about a third person for the -s).")
-        if (coach) sb.append(" When a COACH message concerns one of them, this is the most important correction of the session.")
+        if (coach) sb.append(" When a coach correction concerns one of them, this is the most important correction of the session.")
         return sb.toString()
     }
 
@@ -92,8 +93,9 @@ Rules:
 
     const val DIRECTOR_NUDGE = "DIRECTOR: Please respond to what the student just said and continue the conversation."
 
-    fun directorSwitch(topic: String): String =
-        "About half of the time is over. In your next turn, react to the student's answer in one short sentence, then switch explicitly to the second topic: $topic. Connect it to what was said before."
+    fun directorSwitch(topic: String, last: Boolean = false): String =
+        "Time to move on. In your next turn, react to the student's answer in one short sentence, then switch explicitly to the next topic: $topic. " +
+            "Connect it to what was said before" + if (last) " and, near the end, ask how the topics discussed are related." else "."
 
     fun directorElicit(line: String): String =
         "In your next question, create a natural situation in which the student needs this structure – without mentioning grammar or mistakes: $line."
@@ -102,6 +104,14 @@ Rules:
         val topics = task.part2.ifEmpty { emptyList() }
         val topicA = topics.getOrNull(0)?.let { "${Knowledge.topic(it.topicId)?.english ?: "another topic area"} – ${it.question}" } ?: "a topic area from another term of the course"
         val topicB = topics.getOrNull(1)?.let { "${Knowledge.topic(it.topicId)?.english ?: "another topic area"} – ${it.question}" } ?: topicA
+        val switchPlan =
+            when {
+                topics.size > 2 ->
+                    "Then switch, when the app tells you, to: " + topics.drop(1).joinToString("; then ") { "${Knowledge.topic(it.topicId)?.english ?: "another topic area"} – ${it.question}" } +
+                        ". Make each switch explicit and connect it to what was said before."
+                topics.size == 2 -> "After about half of the time, switch to: $topicB. Make the switch explicit and connect it to what was said before."
+                else -> "Stay with this topic field, but connect it to the text of part 1 and to other topics of the course (wider contexts, as in the Abitur)."
+            }
         val facts = topics.flatMap { it.courseFacts }.take(10)
         val factLine = if (facts.isEmpty()) "" else "\nWhat the course covered on these topics: " + facts.joinToString(" | ")
         return """
@@ -114,9 +124,9 @@ What the student said in part 1 (excerpt): $part1Excerpt
 Your plan for part 2:
 1. Thank the student in one short sentence and lead over from the presentation to a broader question.
 2. Talk about: $topicA
-3. After about half of the time, switch to: $topicB. Make the switch explicit and connect it to what was said before.$factLine${courseBlock(courseOverview, topicContext, teacherNotes)}$patterns
+3. $switchPlan$factLine${courseBlock(courseOverview, topicContext, teacherNotes)}$patterns
 $EXAMINER_RULES
-- Never correct the student's English and never comment on mistakes yourself. Only a COACH message from the app may make you correct something.
+- Never correct the student's English and never comment on mistakes yourself – the app's coach does that (you then get a COACH_NOTE).
 """.trim()
     }
 
@@ -130,21 +140,30 @@ $EXAMINER_RULES
         part2Style: Boolean,
         extra: String = "",
         patterns: String = "",
-        secondTopic: String = "",
+        /** The other topic fields of the conversation, in order; the app tells the examiner when to switch. */
+        otherTopics: List<String> = emptyList(),
     ): String {
         val coach =
             if (mode == FeedbackMode.COACH) {
-                "- When you get a COACH message, interrupt the student kindly and briefly: say what they said and the correct form, ask them to say the corrected sentence once, then continue."
+                "- The app's coach corrects the student out loud and then sends you a COACH_NOTE. Do not correct anything yourself and do not repeat the coach; after the student has said the sentence again, continue naturally."
             } else {
                 "- Never correct the student's English yourself; the app handles feedback."
             }
         val focusLine =
             if (focus.isEmpty()) "" else "\nThe student wants to practise these weak points: ${focus.joinToString(", ")}. Ask questions that naturally require these structures."
         val topic = Knowledge.topic(topicId)?.english ?: "topics from the whole course"
+        val others =
+            when (otherTopics.size) {
+                0 -> ""
+                1 -> " – the second topic field is: ${otherTopics[0]} (the app tells you when it is time to switch)."
+                else -> " – the further topic fields, in this order, are: ${otherTopics.joinToString("; ")} (the app tells you when it is time to switch). Link them: ask how the topics are connected."
+            }
         val style =
             if (part2Style) {
                 "The conversation should be exactly like part 2 of the exam: start with an open question about the topic field, follow up, and after a while connect it to another topic field of the course" +
-                    if (secondTopic.isNotBlank()) " – the second topic field is: $secondTopic (the app tells you when it is time to switch)." else "."
+                    others.ifBlank { "." }
+            } else if (otherTopics.isNotEmpty()) {
+                "This is a relaxed speaking practice about several topic fields: start with an open question about the first one, move on to related aspects and then lead over to the others$others"
             } else {
                 "This is a relaxed speaking practice: start with an open question about the topic, move on to related aspects and, after a while, connect the topic to another area of the course."
             }
@@ -353,6 +372,10 @@ ${skillLines()}
         if (record.kind.hasPart1 && record.kind.hasPart2) sb.append(" (Teil 1 Vortrag, Teil 2 Prüfungsgespräch)")
         if (record.focusTask in 1..3) sb.append(" – nur Aufgabe ").append(record.focusTask)
         sb.append("\nThemenfeld: ").append(Knowledge.topic(record.topicId)?.german ?: "gemischt")
+        if (record.extraTopics.isNotEmpty()) {
+            sb.append("\nWeitere Themenfelder im Gespräch (wie in Teil 2 des Abiturs verbunden): ").append(record.extraTopics.joinToString(", ") { Knowledge.topic(it)?.german ?: "?" })
+            sb.append(" – bewerte auch, ob der Prüfling Zusammenhänge zwischen den Themenfeldern herstellt.")
+        }
         sb.append("\nDauer: ").append(record.durationSec / 60).append(" Min. ").append(record.durationSec % 60).append(" Sek.")
         if (record.part1Sec > 0) sb.append(" (davon Teil 1: ").append(record.part1Sec / 60).append(" Min. ").append(record.part1Sec % 60).append(" Sek.)")
         record.task?.let { t ->
@@ -382,7 +405,7 @@ ${skillLines()}
             sb.append("\nBereits bekannte Beobachtungen über den Prüfling (nur für den Wortlaut von insights, nie für die Punkte):\n")
             knownInsights.forEach { sb.append("- ").append(it).append('\n') }
         }
-        if (listening != null) sb.append("\n\nAudio-Auswertung der Aufnahme (von Gemini):\n").append(listening)
+        if (listening != null) sb.append("\n\nAudio-Auswertung der Aufnahme (von der KI):\n").append(listening)
         sb.append("\n\nWortgetreues Transkript (STUDENT = Prüfling, EXAMINER = Prüfer):\n")
         if (record.utterances.isEmpty()) sb.append("(leer – bitte aus dem Audio rekonstruieren)\n")
         record.utterances.forEach { u ->

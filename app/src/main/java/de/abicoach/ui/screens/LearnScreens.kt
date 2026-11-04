@@ -121,7 +121,7 @@ fun DrillsScreen(vm: AppViewModel) {
                                 )
                             else ->
                                 StartButton(
-                                    if (vm.drillBusy) "Gemini hört zu …" else "Sprechen",
+                                    if (vm.drillBusy) "Die KI hört zu …" else "Sprechen",
                                     onClick = { record() },
                                     enabled = !vm.drillBusy,
                                     icon = R.drawable.mic_24dp,
@@ -171,7 +171,7 @@ fun DrillsScreen(vm: AppViewModel) {
                     } else {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(current.cue, fontSize = dimens.fonts.body * 1.08f, lineHeight = dimens.fonts.body * 1.45f, color = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.weight(1f))
-                            SpeakButton(vm, current.cue)
+                            SpeakButton(vm, current.cue, prefetch = true)
                         }
                     }
                     if (vm.drillRecording) {
@@ -181,7 +181,7 @@ fun DrillsScreen(vm: AppViewModel) {
                     if (vm.drillBusy) {
                         Gap(10.dp)
                         ProgressLine(null)
-                        CaptionText("Gemini hört sich deine Antwort an …")
+                        CaptionText("Die KI hört sich deine Antwort an …")
                     }
                     result?.let { r ->
                         Gap(10.dp)
@@ -196,7 +196,7 @@ fun DrillsScreen(vm: AppViewModel) {
                                 CaptionText(if (r.ok) "Musterlösung:" else "So geht es richtig:")
                                 Text("„${current.target}“", fontSize = dimens.fonts.body, color = green)
                             }
-                            SpeakButton(vm, current.target)
+                            SpeakButton(vm, current.target, prefetch = true)
                         }
                         if (!r.ok) {
                             Gap(8.dp)
@@ -775,7 +775,7 @@ fun MicTestDialog(vm: AppViewModel) {
         if (st.phase == MicTest.Phase.CHECKING) ProgressLine(null)
         if (st.transcript.isNotBlank()) {
             GoalRow(ok = true, text = "Mikrofon und Pausen-Erkennung")
-            GoalRow(ok = true, text = "Gemini hat verstanden (${"%.1f".format(st.ms / 1000.0)} s): „${st.transcript}“")
+            GoalRow(ok = true, text = "Die KI hat verstanden (${"%.1f".format(st.ms / 1000.0)} s): „${st.transcript}“")
             GoalRow(ok = st.errors.isNotEmpty(), text = if (st.errors.isEmpty()) "Kein Fehler gefunden" else "Hinweis: " + st.errors.joinToString("; ") { "„${it.quote}“ → „${it.correction}“" })
             if (st.voice.isNotBlank()) GoalRow(ok = true, text = "Coach-Stimme: ${st.voice}")
         }

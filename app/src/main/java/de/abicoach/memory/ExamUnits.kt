@@ -219,7 +219,7 @@ Du bist Prüferin im NRW-Abitur Englisch. Zu einer ORIGINAL-Prüfungsaufgabe feh
                 Part2Topic(if (i == 0) id else app.course.pickTopicFromCourse(exclude = setOf(topic, id)), q, app.course.factsFor(id, 6))
             }
         val missing = tasks.withIndex().filter { it.value.expectations.isEmpty() }
-        if ((missing.isNotEmpty() || part2.isEmpty()) && app.ai.hasGemini) {
+        if ((missing.isNotEmpty() || part2.isEmpty()) && app.ai.ready) {
             onProgress("Ergänze den Erwartungshorizont …")
             val sb = StringBuilder("Text: \"${unit.title}\"\n$text\n\nOriginal-Aufgaben:\n")
             tasks.forEachIndexed { i, t ->

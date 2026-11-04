@@ -96,6 +96,14 @@ class MemoryStore(context: Context) {
         invalidate()
     }
 
+    /** Deletes the search vectors of a document, so that it gets new ones (another company makes other vectors). */
+    @Synchronized
+    fun resetVectors(id: String) {
+        File(docDir(id), "vectors.f32").delete()
+        update(id) { d -> d.copy(embedded = 0, vectorless = false, status = if (d.status == DocStatus.DONE && d.chunked) DocStatus.INDEXING else d.status) }
+        invalidate()
+    }
+
     private fun countTopics(chunks: List<Chunk>): List<Int> {
         val counts = IntArray(14)
         chunks.forEach { c -> c.topics.filter { it in 0..13 }.forEach { counts[it]++ } }

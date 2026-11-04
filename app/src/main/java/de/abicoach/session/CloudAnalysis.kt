@@ -65,29 +65,30 @@ class CloudJobStore(context: Context) {
     }
 }
 
-/** The job is still running in the cloud when the worker's time is up: the worker looks again a little later. */
-class CloudPending : Exception("Die Auswertung läuft noch in der Cloud.")
-
 /**
  * The evaluation in Google's cloud. The phone uploads the recording and hands the grading (and the independent second
  * grading) to Gemini as background jobs – from then on nothing depends on the phone: the app may be closed, the phone
  * locked or offline. When the app (or its background worker) runs again, it picks up the result. Both gradings run at
- * the same time, and the grader listens to the recording himself, so this is also faster than the step-by-step way.
+ * the same time, and the grader listens to the recording himself.
+ *
+ * It never loops: a job that failed, cannot be read or takes too long is stopped and the grading is done directly
+ * (see [AnalysisRunner]); only a lost connection lets the worker try again later, with the job kept.
  */
 object CloudAnalysis {
-    private const val POLL_MS = 4_000L
+    private const val POLL_MS = 3_000L
 
-    /** How long one run of the background worker waits before it hands over to the next run. */
-    private const val WINDOW_MS = 8 * 60_000L
+    /** A grading normally takes one to three minutes; after this it is given up and graded directly instead. */
+    private const val LIMIT_MS = 6 * 60_000L
 
-    /** After this the job is given up and the grading starts again. */
-    private const val MAX_AGE_MS = 6 * 60 * 60_000L
+    /** When the app comes back to an older job, it still looks this long before giving up. */
+    private const val RESUME_GRACE_MS = 90_000L
 
     /** How long the result waits for a second grading that is not finished yet. */
-    private const val SECOND_GRACE_MS = 120_000L
+    private const val SECOND_GRACE_MS = 60_000L
 
-    suspend fun run(app: AbiCoachApp, record: SessionRecord, onProgress: (String) -> Unit): Debrief {
-        val job = app.cloudJobs.get(record.id) ?: start(app, record, onProgress)
+    /** Picks up the running job of the session or, if [allowStart], starts a new one. */
+    suspend fun run(app: AbiCoachApp, record: SessionRecord, allowStart: Boolean, onProgress: (String) -> Unit): Debrief {
+        val job = app.cloudJobs.get(record.id) ?: if (allowStart) start(app, record, onProgress) else throw AiException("Keine Cloud-Auswertung", AiHub.NOT_OFFERED)
         return await(app, record, job, onProgress)
     }
 
@@ -128,44 +129,64 @@ object CloudAnalysis {
     private suspend fun await(app: AbiCoachApp, record: SessionRecord, job: CloudJob, onProgress: (String) -> Unit): Debrief {
         val gemini = app.ai.gemini
         val began = System.currentTimeMillis()
+        val deadline = maxOf(job.startedAt + LIMIT_MS, began + RESUME_GRACE_MS)
         var gradeDoneAt = 0L
         var second: GeminiRest.CloudState? = null
         val label = AiHub.pretty(job.gradeModel)
         while (true) {
             val now = System.currentTimeMillis()
-            val grade = gemini.cloudState(job.gradeId)
+            val grade =
+                try {
+                    gemini.cloudState(job.gradeId)
+                } catch (e: AiException) {
+                    // The job is unknown or gone at Google: it will never come.
+                    if (e.isPermanent) {
+                        app.cloudJobs.remove(record.id)
+                        throw CloudGaveUp("Google kennt den Auftrag nicht mehr")
+                    }
+                    throw e
+                }
             if (job.secondId.isNotBlank() && (second == null || second.running)) {
                 second = runCatching { gemini.cloudState(job.secondId) }.getOrNull() ?: second
             }
-            if (grade.done) {
-                if (gradeDoneAt == 0L) gradeDoneAt = now
-                val waitForSecond = second?.running == true && now - gradeDoneAt < SECOND_GRACE_MS
-                if (!waitForSecond) return finish(app, record, job, grade, second)
-                onProgress("Die erste Bewertung ist fertig – die zweite Prüferin braucht noch einen Moment …")
-            } else if (!grade.running) {
-                // Failed or cancelled in the cloud: the next try starts a new job.
-                app.cloudJobs.remove(record.id)
-                throw AiException("Die Bewertung in der Cloud hat nicht geklappt (${grade.status}${if (grade.error.isNotBlank()) ": ${grade.error}" else ""})", 503)
-            } else {
-                val minutes = (now - job.startedAt) / 60_000L
-                val seconds = (now - job.startedAt) / 1000L % 60
-                onProgress(
-                    "$label bewertet deine Leistung in Googles Cloud" + (if (job.secondId.isNotBlank()) ", zusammen mit einer zweiten Prüferin" else "") +
-                        " (seit $minutes:${"%02d".format(seconds)}) – du kannst die App ruhig schließen.",
-                )
+            when {
+                grade.done -> {
+                    if (gradeDoneAt == 0L) gradeDoneAt = now
+                    val waitForSecond = second?.running == true && now - gradeDoneAt < SECOND_GRACE_MS
+                    if (!waitForSecond) return finish(app, record, job, grade, second)
+                    onProgress("Die erste Bewertung ist fertig – die zweite Prüferin braucht noch einen Moment …")
+                }
+                grade.ended -> {
+                    cancel(app, record.id)
+                    throw CloudGaveUp("Google meldet „${grade.status}“${if (grade.error.isNotBlank()) ": ${grade.error.take(120)}" else ""}")
+                }
+                else -> {
+                    val minutes = (now - job.startedAt) / 60_000L
+                    val seconds = (now - job.startedAt) / 1000L % 60
+                    onProgress(
+                        "$label bewertet deine Leistung in Googles Cloud" + (if (job.secondId.isNotBlank()) ", zusammen mit einer zweiten Prüferin" else "") +
+                            " (seit $minutes:${"%02d".format(seconds)}) – du kannst die App ruhig schließen.",
+                    )
+                }
             }
-            if (now - job.startedAt > MAX_AGE_MS) {
-                app.cloudJobs.remove(record.id)
-                throw AiException("Die Auswertung in der Cloud hat zu lange gedauert – sie wird neu gestartet.", 504)
+            if (now > deadline && gradeDoneAt == 0L) {
+                cancel(app, record.id)
+                throw CloudGaveUp("die Cloud hat länger als ${LIMIT_MS / 60_000} Minuten gebraucht")
             }
-            if (now - began > WINDOW_MS) throw CloudPending()
             delay(POLL_MS)
         }
     }
 
     private suspend fun finish(app: AbiCoachApp, record: SessionRecord, job: CloudJob, grade: GeminiRest.CloudState, second: GeminiRest.CloudState?): Debrief {
         val label = AiHub.pretty(job.gradeModel)
-        val json = GeminiRest.parseJsonLoose(grade.text)
+        val json =
+            try {
+                GeminiRest.parseJsonLoose(grade.text)
+            } catch (e: AiException) {
+                // A broken answer stays broken: never read it again, grade directly.
+                cancel(app, record.id)
+                throw CloudGaveUp("die Antwort aus der Cloud war unvollständig")
+            }
         var debrief =
             Analyzer.keepOwnGoals(
                 record,
@@ -175,7 +196,7 @@ object CloudAnalysis {
             runCatching { GeminiRest.parseJsonLoose(second.text) }.getOrNull()?.let { debrief = Analyzer.combine(debrief, it, AiHub.pretty(job.secondModel)) }
         } else if (job.secondId.isNotBlank()) {
             // Not ready in time: the result comes without the second grading.
-            app.ai.gemini.cancelCloud(job.secondId)
+            runCatching { app.ai.gemini.cancelCloud(job.secondId) }
         }
         app.cloudJobs.remove(record.id)
         return debrief
@@ -185,7 +206,10 @@ object CloudAnalysis {
     suspend fun cancel(app: AbiCoachApp, sessionId: String) {
         val job = app.cloudJobs.get(sessionId) ?: return
         app.cloudJobs.remove(sessionId)
-        app.ai.gemini.cancelCloud(job.gradeId)
-        if (job.secondId.isNotBlank()) app.ai.gemini.cancelCloud(job.secondId)
+        runCatching { app.ai.gemini.cancelCloud(job.gradeId) }
+        if (job.secondId.isNotBlank()) runCatching { app.ai.gemini.cancelCloud(job.secondId) }
     }
 }
+
+/** The cloud cannot deliver this grading (failed, unreadable, too slow): it is graded directly instead. */
+class CloudGaveUp(reason: String) : Exception(reason)

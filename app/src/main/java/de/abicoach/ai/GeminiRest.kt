@@ -226,26 +226,86 @@ class GeminiRest(private val http: OkHttpClient, private val apiKey: () -> Strin
             }
         }
 
-    /** Text to speech; returns 16-bit PCM mono at 24 kHz. */
+    private fun ttsBody(text: String, voice: String): JSONObject {
+        val config =
+            JSONObject()
+                .put("responseModalities", JSONArray().put("AUDIO"))
+                .put(
+                    "speechConfig",
+                    JSONObject().put("voiceConfig", JSONObject().put("prebuiltVoiceConfig", JSONObject().put("voiceName", voice))),
+                )
+        return JSONObject()
+            .put("contents", JSONArray().put(JSONObject().put("role", "user").put("parts", JSONArray().put(textPart(text)))))
+            .put("generationConfig", config)
+    }
+
+    /** Models whose speech cannot be streamed: they answer in one piece. */
+    private val noStreamTts = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
+    /**
+     * Text to speech, streamed: [onChunk] gets each piece of 16-bit PCM (mono, 24 kHz) as soon as Google sends it, so
+     * playback starts before the whole sentence is made. Returns all of it. Falls back to one piece if streaming is
+     * not offered for the model.
+     */
+    suspend fun ttsStream(model: String, text: String, voice: String, onChunk: (ByteArray) -> Unit): ByteArray {
+        val clean = model.removePrefix("models/")
+        if (clean !in noStreamTts) {
+            var sent = false
+            try {
+                return ttsStreamOnce(clean, text, voice) { pcm ->
+                    sent = true
+                    onChunk(pcm)
+                }
+            } catch (e: GeminiException) {
+                if (sent || (e.code != 400 && e.code != 404 && e.code != 405)) throw e
+                noStreamTts += clean
+            }
+        }
+        return tts(clean, text, voice).also(onChunk)
+    }
+
+    private suspend fun ttsStreamOnce(model: String, text: String, voice: String, onChunk: (ByteArray) -> Unit): ByteArray {
+        val request =
+            Request.Builder()
+                .url("$base/models/$model:streamGenerateContent?alt=sse")
+                .header("x-goog-api-key", apiKey())
+                .post(ttsBody(text, voice).toString().toRequestBody(jsonType))
+                .build()
+        return try {
+            http.streamCall(request) { response ->
+                if (!response.isSuccessful) {
+                    val body = response.body?.string().orEmpty()
+                    throw GeminiException(errorMessage(body, response.code), response.code)
+                }
+                val source = response.body?.source() ?: throw GeminiException("Keine Audiodaten erhalten", 500)
+                val aligner = SampleAligner(onChunk)
+                while (true) {
+                    val line = source.readUtf8Line() ?: break
+                    if (!line.startsWith("data:")) continue
+                    val json = runCatching { JSONObject(line.removePrefix("data:").trim()) }.getOrNull() ?: continue
+                    json.optJSONObject("error")?.let { err -> throw GeminiException(err.optString("message", "Fehler beim Sprechen"), err.optInt("code", 500)) }
+                    val parts = json.optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts") ?: continue
+                    for (i in 0 until parts.length()) {
+                        val data = parts.optJSONObject(i)?.optJSONObject("inlineData")?.optString("data").orEmpty()
+                        if (data.isNotEmpty()) aligner.add(Base64.decode(data, Base64.DEFAULT))
+                    }
+                }
+                aligner.result().also { if (it.isEmpty()) throw GeminiException("Keine Audiodaten erhalten", 500) }
+            }
+        } catch (e: IOException) {
+            throw GeminiException("Netzwerkfehler: ${e.message ?: e.javaClass.simpleName}", 0)
+        }
+    }
+
+    /** Text to speech in one piece; returns 16-bit PCM mono at 24 kHz. */
     suspend fun tts(model: String, text: String, voice: String): ByteArray =
         withRetry(1) {
             withContext(Dispatchers.IO) {
-                val config =
-                    JSONObject()
-                        .put("responseModalities", JSONArray().put("AUDIO"))
-                        .put(
-                            "speechConfig",
-                            JSONObject().put("voiceConfig", JSONObject().put("prebuiltVoiceConfig", JSONObject().put("voiceName", voice))),
-                        )
-                val body =
-                    JSONObject()
-                        .put("contents", JSONArray().put(JSONObject().put("role", "user").put("parts", JSONArray().put(textPart(text)))))
-                        .put("generationConfig", config)
                 val request =
                     Request.Builder()
                         .url("$base/models/${model.removePrefix("models/")}:generateContent")
                         .header("x-goog-api-key", apiKey())
-                        .post(body.toString().toRequestBody(jsonType))
+                        .post(ttsBody(text, voice).toString().toRequestBody(jsonType))
                         .build()
                 execute(request) { root ->
                     val parts =
@@ -265,8 +325,17 @@ class GeminiRest(private val http: OkHttpClient, private val apiKey: () -> Strin
 
     /** State of a background job: "in_progress", "completed", "failed", "cancelled" … and, when done, the answer text. */
     data class CloudState(val status: String, val text: String, val error: String) {
-        val running: Boolean get() = status == "in_progress" || status.isBlank()
+        /** Still working or waiting for its turn at Google. */
+        val running: Boolean get() = status.isBlank() || status in WAITING
+
         val done: Boolean get() = status == "completed"
+
+        /** Ended without an answer: failed, cancelled, expired or incomplete. */
+        val ended: Boolean get() = !running && !done
+
+        private companion object {
+            val WAITING = setOf("in_progress", "queued", "pending", "created", "running", "scheduled")
+        }
     }
 
     /** Models whose background jobs do not accept a separate system instruction: it goes into the input instead. */

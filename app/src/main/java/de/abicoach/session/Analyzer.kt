@@ -13,6 +13,9 @@ import de.abicoach.data.objects
 import de.abicoach.data.strings
 import de.abicoach.memory.Hit
 import de.abicoach.profile.Skill
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
 
 /** Creates new, unknown exam material for part 1 (like the examiner's "Prüfungsvorlage"), from the student's course. */
@@ -26,6 +29,8 @@ object MaterialGenerator {
         val instruction: String = "",
         /** A specific original exam task (Source.REAL); empty = pick one. */
         val unitId: String = "",
+        /** The topic fields of the exam conversation chosen by the student; empty = those he needs most. */
+        val part2Topics: List<Int> = emptyList(),
     )
 
     /** Returns the material and, if the wished source was not possible, a note for the student. */
@@ -111,17 +116,24 @@ object MaterialGenerator {
             if (request.short) "\nIMPORTANT: This is a short placement test. The text must have only 170 to 220 words; keep the three tasks simple." else ""
         val levelLine = if (request.instruction.isNotBlank()) "\nIMPORTANT – requirement of this exercise: ${request.instruction}" else ""
         val adaptLine = adapt?.let { "\n${it.instruction}" }.orEmpty()
-        // The exam conversation goes to the topic fields the student needs most (weak, unsure or never practised).
-        val p2a = de.abicoach.learn.LearningBrain.pickTopic(app, exclude = setOf(request.topicId))
-        val p2b = de.abicoach.learn.LearningBrain.pickTopic(app, exclude = setOf(request.topicId, p2a))
-        val part2Line = "\nFor part2_topics use these two topic fields, which the student needs most: $p2a = ${Knowledge.topic(p2a)?.english ?: "any"}; $p2b = ${Knowledge.topic(p2b)?.english ?: "any"}."
+        // The exam conversation goes to the topic fields the student chose – or to those he needs most (weak, unsure or never practised).
+        val chosen = request.part2Topics.filter { it in 0..13 && it != request.topicId }.distinct()
+        val part2Line =
+            if (chosen.isNotEmpty()) {
+                "\nFor part2_topics use exactly these ${chosen.size} topic field(s), chosen by the student, one entry each (link them in the questions where it makes sense): " +
+                    chosen.joinToString("; ") { "$it = ${Knowledge.topic(it)?.english ?: "any"}" } + "."
+            } else {
+                val p2a = de.abicoach.learn.LearningBrain.pickTopic(app, exclude = setOf(request.topicId))
+                val p2b = de.abicoach.learn.LearningBrain.pickTopic(app, exclude = setOf(request.topicId, p2a))
+                "\nFor part2_topics use these two topic fields, which the student needs most: $p2a = ${Knowledge.topic(p2a)?.english ?: "any"}; $p2b = ${Knowledge.topic(p2b)?.english ?: "any"}."
+            }
         onProgress("${app.ai.brainLabel()} schreibt Text und Aufgaben …")
         val answer = app.ai.brainJson(Prompts.MATERIAL_SYSTEM, finalPrompt + shortLine + levelLine + adaptLine + part2Line, Prompts.materialSchema)
-        val task = parse(app, answer.json, request.topicId, source.name.lowercase())
+        val task = parse(app, answer.json, request.topicId, source.name.lowercase(), chosen)
         return task.copy(adapted = adapt?.summary.orEmpty()) to note
     }
 
-    private fun parse(app: AbiCoachApp, json: JSONObject, topicId: Int, source: String): ExamTask {
+    private fun parse(app: AbiCoachApp, json: JSONObject, topicId: Int, source: String, chosen: List<Int> = emptyList()): ExamTask {
         val tasks =
             json.optJSONArray("tasks").objects().map {
                 TaskItem(it.optString("operator"), it.optString("afb"), it.optString("instruction"), it.optJSONArray("expectations").strings())
@@ -132,12 +144,17 @@ object MaterialGenerator {
             json.optJSONArray("part2_topics").objects()
                 .map { Part2Topic(it.optInt("topic_id", -1), it.optString("question")) }
                 .filter { it.question.isNotBlank() }
-                .map { p ->
-                    val id = if (p.topicId in 0..13 && p.topicId != topicId) p.topicId else app.course.pickTopicFromCourse(exclude = setOf(topicId))
+                .mapIndexed { i, p ->
+                    val id =
+                        when {
+                            chosen.isNotEmpty() -> if (p.topicId in chosen) p.topicId else chosen.getOrElse(i) { chosen.last() }
+                            p.topicId in 0..13 && p.topicId != topicId -> p.topicId
+                            else -> app.course.pickTopicFromCourse(exclude = setOf(topicId))
+                        }
                     p.copy(topicId = id, courseFacts = app.course.factsFor(id, 6))
                 }
                 .distinctBy { it.topicId }
-                .take(2)
+                .take(if (chosen.isNotEmpty()) chosen.size else 2)
         return ExamTask(
             topicId = topicId,
             title = json.optString("title").ifBlank { "Text" },
@@ -153,9 +170,10 @@ object MaterialGenerator {
 }
 
 /**
- * The full debrief after a session, all by Gemini: first the recording is listened to (pronunciation, intonation,
- * fluency), then the strongest model grades the transcript with the NRW scheme and that listening result.
- * The grader never sees earlier points, so every session is judged on its own.
+ * The full debrief after a session: first the recording is listened to (pronunciation, intonation, fluency), then
+ * the strongest model grades the transcript with the NRW scheme and that listening result – and, for long sessions,
+ * an independent second grader at the same time. The grader never sees earlier points, so every session is judged
+ * on its own.
  */
 class Analyzer(private val app: AbiCoachApp) {
     suspend fun analyze(record: SessionRecord, onProgress: (String) -> Unit): Debrief {
@@ -170,55 +188,109 @@ class Analyzer(private val app: AbiCoachApp) {
         var listenedBy = ""
         if (audioParts.isNotEmpty()) {
             onProgress("${hub.listenerLabel()} hört deine Aufnahme an …")
-            runCatching {
-                val intro =
-                    if (record.studentText.isBlank()) "Es liegt kein Transkript vor – schreibe das Gesagte in transcript mit." else "Ein Transkript liegt bereits vor; transcript bleibt leer."
-                hub.listenJson(Prompts.LISTEN_SYSTEM, listOf(GeminiRest.textPart(intro)) + audioParts, Prompts.listenSchema)
-            }.onSuccess {
-                listening = it.json
-                listenedBy = it.by
-            }.onFailure { onProgress("Aufnahme konnte nicht angehört werden: ${it.message}") }
+            // Listening is a bonus: if it takes too long, the grading goes on with the transcript alone.
+            val heard =
+                withTimeoutOrNull(LISTEN_LIMIT_MS) {
+                    attempt {
+                        val intro =
+                            if (record.studentText.isBlank()) "Es liegt kein Transkript vor – schreibe das Gesagte in transcript mit." else "Ein Transkript liegt bereits vor; transcript bleibt leer."
+                        hub.listenJson(Prompts.LISTEN_SYSTEM, listOf(GeminiRest.textPart(intro)) + audioParts, Prompts.listenSchema)
+                    }
+                }
+            when {
+                heard == null -> onProgress("Das Anhören dauert zu lange – bewerte ohne Aufnahme weiter …")
+                heard.isSuccess -> {
+                    listening = heard.getOrThrow().json
+                    listenedBy = heard.getOrThrow().by
+                }
+                else -> onProgress("Aufnahme konnte nicht angehört werden: ${heard.exceptionOrNull()?.message}")
+            }
         }
-        onProgress("${hub.brainLabel()} bewertet deine Leistung …")
         val listened = listening?.let { Prompts.listeningSummary(it) }
         val context = Prompts.analysisContext(record, courseContext, teacherNotes, listened, profileNote, app.insights.knownTexts())
-        val answer = hub.brainJson(Prompts.ANALYSIS_SYSTEM, context, Prompts.analysisSchema)
-        val parsed = Prompts.parseDebrief(answer.json, record.studentText, listening != null, listening, answer.by, listenedBy)
-        val first = keepOwnGoals(record, parsed)
-        if (!needsSecondOpinion(app, record)) return first
-        // Like the committee in the Abitur: an independent second grading, the result is the mean of both.
-        onProgress("Zweitbewertung: eine zweite Prüferin bewertet unabhängig …")
-        return try {
-            // The second examiner sees the same session, but neither the first grade nor the goals or the profile.
-            val second = hub.brainJson(Prompts.SECOND_SYSTEM, Prompts.analysisContext(record.copy(goals = emptyList()), courseContext, teacherNotes, listened, ""), Prompts.secondSchema)
-            combine(first, second.json, second.by)
-        } catch (e: kotlinx.coroutines.CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            onProgress("Zweitbewertung übersprungen: ${e.message}")
-            first
+        val second = needsSecondOpinion(app, record)
+        onProgress(if (second) "${hub.brainLabel()} bewertet deine Leistung – zwei Prüferinnen gleichzeitig …" else "${hub.brainLabel()} bewertet deine Leistung …")
+        return coroutineScope {
+            // Like the committee in the Abitur: an independent second grading at the same time, the result is the mean of both.
+            // The second examiner sees the same session, but neither the goals nor the profile.
+            val secondJob =
+                if (second) {
+                    async {
+                        attempt {
+                            hub.brainJson(Prompts.SECOND_SYSTEM, Prompts.analysisContext(record.copy(goals = emptyList()), courseContext, teacherNotes, listened, ""), Prompts.secondSchema)
+                        }
+                    }
+                } else {
+                    null
+                }
+            val answer = hub.brainJson(Prompts.ANALYSIS_SYSTEM, context, Prompts.analysisSchema)
+            val parsed = Prompts.parseDebrief(answer.json, record.studentText, listening != null, listening, answer.by, listenedBy)
+            val first = keepOwnGoals(record, parsed)
+            if (secondJob == null) return@coroutineScope first
+            // The first grading is there: the second may take at most another minute.
+            val other = withTimeoutOrNull(SECOND_GRACE_MS) { secondJob.await() }
+            when {
+                other == null -> {
+                    secondJob.cancel()
+                    onProgress("Zweitbewertung zu langsam – das Ergebnis kommt ohne sie.")
+                    first
+                }
+                other.isSuccess -> combine(first, other.getOrThrow().json, other.getOrThrow().by)
+                else -> {
+                    onProgress("Zweitbewertung übersprungen: ${other.exceptionOrNull()?.message}")
+                    first
+                }
+            }
         }
     }
 
     companion object {
+        /** Listening to the recording may take this long; then the grading goes on without it. */
+        private const val LISTEN_LIMIT_MS = 90_000L
+
+        /** How long the result waits for the second grading after the first one is done. */
+        private const val SECOND_GRACE_MS = 60_000L
+
+        /** Like runCatching, but a cancellation (the student stops, a time limit) is passed on, never swallowed. */
+        internal inline fun <T> attempt(block: () -> T): Result<T> =
+            try {
+                Result.success(block())
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+
         /** What the course says about the topic field of the session (empty for a free session). */
         suspend fun courseContext(app: AbiCoachApp, record: SessionRecord): String =
             if (record.topicId >= 0) runCatching { app.course.forTopic(record.topicId, maxChars = 4_000) }.getOrDefault("") else ""
 
-        /** Uploads the recordings of the session (Files API) and returns them as parts for the model. */
+        /**
+         * The recordings of the session as parts for the model: at Google uploaded whole (Files API); at OpenAI as
+         * short pieces sent along (the audio model takes no long files); Claude cannot listen, so none.
+         */
         suspend fun uploadAudio(app: AbiCoachApp, record: SessionRecord, onProgress: (String) -> Unit): List<JSONObject> {
             val hub = app.ai
             val audioParts = mutableListOf<JSONObject>()
-            if (!app.settings.uploadAudio || !hub.hasGemini) return audioParts
+            if (!app.settings.uploadAudio || !hub.ready || !hub.hearsRecordings) return audioParts
             for (part in listOf(1, 2, 0)) {
                 val file = app.store.audioFile(record.id, part)
                 if (!file.exists() || file.length() < 64_000) continue
                 val label = when (part) { 1 -> "Teil 1"; 2 -> "Teil 2"; else -> "Training" }
-                onProgress("Lade die Aufnahme hoch ($label) …")
                 try {
-                    val uri = hub.gemini.uploadFile(file, "audio/wav", "abicoach-${record.id}-$part")
-                    audioParts += GeminiRest.textPart("Audioaufnahme des Prüflings ($label), nur sein Mikrofon:")
-                    audioParts += GeminiRest.filePart("audio/wav", uri)
+                    if (hub.provider == de.abicoach.ai.Provider.GOOGLE) {
+                        onProgress("Lade die Aufnahme hoch ($label) …")
+                        val uri = hub.gemini.uploadFile(file, "audio/wav", "abicoach-${record.id}-$part")
+                        audioParts += GeminiRest.textPart("Audioaufnahme des Prüflings ($label), nur sein Mikrofon:")
+                        audioParts += GeminiRest.filePart("audio/wav", uri)
+                    } else {
+                        val pieces = excerpts(file)
+                        pieces.forEach { (fromSec, wav) ->
+                            val what = if (pieces.size == 1) "Aufnahme" else "Ausschnitt (ab Sekunde $fromSec, $EXCERPT_SEC s) der Aufnahme"
+                            audioParts += GeminiRest.textPart("$what des Prüflings ($label), nur sein Mikrofon:")
+                            audioParts += GeminiRest.inlinePart("audio/wav", wav)
+                        }
+                    }
                 } catch (e: kotlinx.coroutines.CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -227,6 +299,29 @@ class Analyzer(private val app: AbiCoachApp) {
             }
             return audioParts
         }
+
+        private const val EXCERPT_SEC = 25
+
+        /** A short recording whole, a long one as three pieces of [EXCERPT_SEC] seconds (start, middle, end); 16 kHz WAV. */
+        private fun excerpts(file: java.io.File): List<Pair<Int, ByteArray>> {
+            val bytesPerSec = 32_000L
+            val dataBytes = (file.length() - 44).coerceAtLeast(0)
+            if (dataBytes < bytesPerSec * 4) return emptyList()
+            val piece = EXCERPT_SEC * bytesPerSec
+            if (dataBytes <= piece * 3) return listOf(0 to readWav(file, 0, dataBytes))
+            return listOf(dataBytes / 10, dataBytes / 2 - piece / 2, dataBytes - piece - dataBytes / 20).map { s ->
+                val start = s - s % 2
+                (start / bytesPerSec).toInt() to readWav(file, start, piece)
+            }
+        }
+
+        private fun readWav(file: java.io.File, start: Long, length: Long): ByteArray =
+            java.io.RandomAccessFile(file, "r").use { raf ->
+                val pcm = ByteArray((minOf(length, raf.length() - 44 - start).toInt()) and 1.inv())
+                raf.seek(44 + start)
+                raf.readFully(pcm)
+                de.abicoach.audio.Wav.of(pcm, 16_000)
+            }
 
         /** Only the goal results for goals this session really had. */
         fun keepOwnGoals(record: SessionRecord, d: Debrief): Debrief {
@@ -237,7 +332,7 @@ class Analyzer(private val app: AbiCoachApp) {
         /** Sessions that weigh much in the profile and are long enough for a fair second look. */
         fun needsSecondOpinion(app: AbiCoachApp, record: SessionRecord): Boolean {
             val words = record.studentText.split(Regex("\\s+")).count { it.isNotBlank() }
-            if (words < 150 || !app.ai.hasGemini) return false
+            if (words < 150 || !app.ai.ready) return false
             return when (record.kind) {
                 de.abicoach.data.SessionKind.SIMULATION, de.abicoach.data.SessionKind.PLACEMENT -> true
                 de.abicoach.data.SessionKind.PART1 -> record.focusTask == 0 && record.retryOf.isBlank()
