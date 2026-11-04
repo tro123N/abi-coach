@@ -23,7 +23,11 @@ Android-App zur Vorbereitung auf die **mündliche Abiturprüfung Englisch in NRW
 - **Alles läuft im Hintergrund weiter:** Auswertung, Einlesen von Kursmaterial und das Schreiben des Prüfungstexts laufen weiter, wenn du die App schließt oder das Handy sperrst, und melden sich mit einer Benachrichtigung. Der nächste Prüfungstext wird auf Wunsch schon vorab erstellt, damit der Start sofort geht.
 - **Vorbereitung geht nicht verloren:** Text, Aufgaben und deine Notizen werden gespeichert; wenn die Vorbereitungszeit zu Ende ist, klingelt eine Benachrichtigung – auch bei gesperrtem Handy.
 - **Live bleibt zuverlässig:** Während des Gesprächs bleibt der Bildschirm an und ein Mikrofon-Dienst („AbiCoach hört zu“) hält die Verbindung am Leben, auch wenn du kurz in eine andere App wechselst.
-- **Flüstern und Coach** prüfen jeden Satz sofort (nach etwa 2–3 Sekunden). Beim Vortrag (Aufgabe 1–3) wirst du nie unterbrochen; danach folgt eine kurze **Korrekturrunde**: die drei wichtigsten Fehler sagst du noch einmal richtig, die KI hört zu und antwortet sofort.
+- **Das Ohr (Flüstern und Coach):** Die App erkennt selbst, wann du eine Pause machst, und Gemini hört sich jede Äußerung direkt an – Mitschrift und Fehler in einem Schritt, meist 2–3 Sekunden nach der Pause. Das funktioniert auch, wenn die Live-Mitschrift hängt, und vermeidet falsche Hinweise durch verhörte Wörter. Der **Coach** spricht in allen Teilen: im Gespräch sagt der Prüfer die Korrektur selbst, im Vortrag eine Coach-Stimme; danach wartet er, bis du den Satz richtig wiederholst (✓ auf dem Bildschirm). Wichtig sind ihm vor allem deine bekannten Fehlermuster. Nach dem Vortrag folgt eine kurze **Korrekturrunde**.
+- **Live-Status und Technik-Protokoll:** Kleine Anzeigen zeigen während des Übens, ob Mikrofon, Mitschrift, Ohr, Coach und Prüfer arbeiten; in der Auswertung steht ein kopierbares Protokoll. Unter Einstellungen → System prüfen gibt es zusätzlich einen **Mikrofon-Test**, bei dem du selbst einen Satz mit Fehler sagst.
+- **Fehlergedächtnis:** Jede Fehlerart (z. B. „third person -s“, „since vs for“) aus Übungen, Auswertungen und Klausuren wird mit Beispielen und Verlauf gespeichert: neu, aktiv, wird besser, behoben. Der Prüfer stellt in Übungen gezielt Fragen, die genau diese Strukturen verlangen.
+- **Sprech-Training:** Kurze Sprech-Übungen (richtig sagen, umformen, Satz vollenden, Redemittel einsetzen, kurz antworten) aus deinen eigenen Fehlern, mit Sätzen zu deinen Kursthemen. Gemini hört sofort zu; was sitzt, kommt seltener wieder, was hakt, bald wieder.
+- **Musterfassung:** In der Auswertung schreibt die KI deinen eigenen Vortrag (oder deine Antworten) auf 15-Punkte-Niveau um – mit deinen Ideen, Top-Sprache und dem, was gefehlt hat, zum Anhören.
 - **Sag es richtig:** Bei jedem Fehler und jedem „So klingt es nach 15 Punkten“-Satz gibt es einen Knopf – du sprichst den Satz nach und bekommst gleich Rückmeldung.
 - **Zweiter Versuch:** Nach der Auswertung kannst du die schwächste Aufgabe mit demselben Text noch einmal machen (2 Min. Vorbereitung). Die Auswertung zeigt vorher/nachher; die Bewertung selbst kennt frühere Punkte nicht und bleibt fair.
 - **Fortschritt:** Die Auswertung vergleicht mit der letzten Sitzung: „behoben ✓“ und „noch 3× aufgetreten“.
@@ -36,8 +40,11 @@ Android-App zur Vorbereitung auf die **mündliche Abiturprüfung Englisch in NRW
 - Aus **Klausuren** lernt die App deine typischen Fehler und die Kommentare deiner Lehrkraft.
 - **Alles hängt zusammen:** Prüfungstexte entstehen passend zu deinem Kurs oder direkt aus deinem Material, der Prüfer fragt nach euren Unterrichtsinhalten, die Auswertung nennt Beispiele aus deinem Kurs.
 - **Frag dein Material:** Chat mit dem KI-Coach, der mit Fundstellen aus deinem Material antwortet.
+- **Themen-Dossiers:** Für jedes Themenfeld verdichtet die KI alles Material zu einem Dossier: Kernwissen, Beispiele mit Fundstelle, Zitate, Wortschatz, Argumente pro/contra, Verbindungen zu anderen Themenfeldern und typische Prüferfragen. Prüfer, Prüfungstexte, Bewertung und Coach nutzen es; es aktualisiert sich bei neuem Material von selbst.
+- **Echte Abi-Prüfungsaufgaben:** Lädst du echtes Abi-Material hoch (Art „Echte Abi-Prüfungsaufgaben“ oder „Abi-Vorbereitung“), findet die App darin Text, Original-Aufgaben, Erwartungshorizont und Lösungsvorschlag. Du übst genau diese Aufgaben und wirst nach dem Original bewertet; neue Texte richten sich nach ihrem Stil.
 
 ### Statistik
+- **Prüfungsbereitschaft** je Prüfungsteil, **Trends** je Kompetenz (↑/↓), **Fehlergedächtnis** und **Themen-Kompass** (wie gut jedes Themenfeld sitzt, welche du noch nie geübt hast). Lange nicht geübte Kompetenzen werden mit der Zeit wieder unsicherer und kommen zurück in den Plan.
 - **So bewertet deine Lehrkraft:** Kommentare und häufigste Anstreichungen aus deinen Klausuren.
 - Verlauf der Prognose, alle Kompetenzen, Übungszeit pro Tag, häufigste Fehler (Übungen und Klausuren) mit „Gezielt üben“, Themenfelder (geübt und Material), alle Sitzungen.
 
@@ -50,7 +57,9 @@ Alles kommt von **einem Anbieter: Google**. Du brauchst nur einen Schlüssel.
 | Prüfer im Gespräch (hört und spricht gleichzeitig) | **Gemini 3.8 Live** |
 | Wortgetreue Mitschrift | **Gemini 3.5 Transcribe Live** (Modus VERBATIM) |
 | Bewertung, Aufgaben, Coach | **Gemini 4 Argon** (mit Denkstufe) → Ausweichmodell Gemini 3.8 Flash |
-| Fehlerprüfung beim Sprechen, Sag-es-richtig | **Gemini 3.8 Flash** (niedrige Denkstufe, schnell) |
+| Ohr: hört jede Äußerung an (Fehler, Mitschrift), Sag-es-richtig, Sprech-Training | **Gemini 3.8 Flash** (Audio, niedrige Denkstufe, schnell) |
+| Coach-Stimme im Vortrag | **Gemini 3.8 Flash TTS** → Android-Stimme |
+| Themen-Dossiers, Sprech-Übungen, Musterfassung, echte Aufgaben auslesen | **Gemini 4 Argon** → Gemini 3.8 Flash |
 | Material lesen | **Gemini 3.8 Flash** |
 | Suche im Material | **Gemini Embedding 2** |
 | Aufnahme anhören | **Gemini 4 Argon** → Gemini 3.8 Flash |
@@ -77,6 +86,8 @@ Den Schlüssel gibt es kostenlos zu erstellen unter aistudio.google.com/apikey. 
 - `profile/` – Lernprofil nach dem NRW-Raster, Prognose, Hebel
 - `path/` – Abi-Weg: Welten und Levels (`Curriculum`), Freischalten, Sterne und Wiederholungsplan (`PathEngine`), Erinnerung
 - `practice/` – Wortschatz-Karten mit Wiederholungsplan, Vortrags-Kennzahlen, Aussprache-Labor, „Sag es richtig“
+- `learn/` – Fehlergedächtnis (Fehlermuster mit Zustand und Wiederholplan) und Sprech-Training
+- `memory/` zusätzlich: Themen-Dossiers (`Dossier.kt`) und echte Prüfungsaufgaben (`ExamUnits.kt`)
 - `session/` – Prompts, Live-Gespräch (mit Mikrofon-Dienst), Live-Fehlerprüfung, Material im Hintergrund, gespeicherte Vorbereitung und Alarm, Auswertung und Fortschritt, Systemprüfung
 - `ui/` – Oberfläche im Stil von Mental Math Plus (Farbthemen, Karten, Sterne, Töne)
 

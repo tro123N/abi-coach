@@ -1110,9 +1110,51 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     // ---------- learning system: error memory, speaking training, dossiers, real exam tasks ----------
 
-    /** The student's error patterns for the examiner of a practice conversation (never in an exam simulation). */
-    private fun patternBlockFor(feedback: FeedbackMode): String =
-        if (feedback == FeedbackMode.PRUEFUNG) "" else Prompts.patternBlock(app.errorMemory.examinerLines(5), feedback == FeedbackMode.COACH)
+    /**
+     * What the examiner of a practice conversation should know: the student's persistent error patterns and his level,
+     * so that he elicits exactly these structures and asks at the right difficulty. Never in an exam simulation.
+     */
+    private fun patternBlockFor(feedback: FeedbackMode): String {
+        if (feedback == FeedbackMode.PRUEFUNG) return ""
+        val patterns = Prompts.patternBlock(app.errorMemory.examinerLines(5), feedback == FeedbackMode.COACH)
+        val level =
+            app.profiles.profile.value.prognosis()?.let { p ->
+                "\n\nThe student's current level is about ${p.points} of 15 points. " +
+                    if (p.points >= 11) {
+                        "Challenge him: demanding AFB III questions, counter-positions and links between topic fields."
+                    } else {
+                        "Start with clear, concrete questions and raise the level step by step (describe → explain → compare → evaluate)."
+                    }
+            }.orEmpty()
+        return patterns + level
+    }
+
+    /** The model version at 15-point level is being written for this session. */
+    var modelBusy by mutableStateOf<String?>(null)
+        private set
+
+    fun makeModel(id: String) {
+        val record = app.store.get(id) ?: return
+        if (record.debrief == null || modelBusy != null) return
+        if (!app.ai.hasGemini) {
+            errorMessage = "Dafür brauchst du den Google-Schlüssel (Einstellungen → KI)."
+            return
+        }
+        modelBusy = id
+        viewModelScope.launch {
+            try {
+                val parts = withContext(Dispatchers.Default) { de.abicoach.session.ModelTalk.make(app, record) }
+                app.store.get(id)?.let { r -> r.debrief?.let { d -> app.store.save(r.copy(debrief = d.copy(model = parts))) } }
+                app.feedback.play(FeedbackType.ENABLE)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                errorMessage = "Die Musterfassung konnte nicht erstellt werden: ${e.message}"
+            } finally {
+                modelBusy = null
+            }
+        }
+    }
 
     private fun joinTech(a: String, b: String): String = listOf(a, b).filter { it.isNotBlank() }.joinToString("\n\n")
 

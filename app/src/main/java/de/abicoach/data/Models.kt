@@ -169,6 +169,15 @@ data class TaskReview(val number: Int, val points: Int, val covered: List<String
     }
 }
 
+/** One part of a model answer at 15-point level: a task of the presentation or an answer in the conversation. */
+data class ModelPart(val title: String, val text: String, val notes: List<String> = emptyList()) {
+    fun toJson(): JSONObject = JSONObject().put("title", title).put("text", text).put("notes", notes.toJsonArray())
+
+    companion object {
+        fun fromJson(o: JSONObject) = ModelPart(o.optString("title"), o.optString("text"), o.optJSONArray("notes").strings())
+    }
+}
+
 /** What changed since an earlier session: points, mistake types that did not come back and those that did. */
 data class Progress(
     val comparedTo: String,
@@ -233,6 +242,8 @@ data class Debrief(
     val readingAloud: Boolean = false,
     /** Comparison with the last session (or with the first attempt, for a second attempt). */
     val progress: Progress? = null,
+    /** The student's own presentation (or answers) rewritten at 15-point level, made on request. */
+    val model: List<ModelPart> = emptyList(),
 ) {
     val stars: Int get() = when {
         totalPoints >= 13 -> 3
@@ -264,6 +275,7 @@ data class Debrief(
             .put("segments", segments.toJsonArray { JSONObject().put("number", it.first).put("firstWords", it.second) })
             .put("readingAloud", readingAloud)
             .put("progress", progress?.toJson() ?: JSONObject.NULL)
+            .put("model", model.toJsonArray { it.toJson() })
     }
 
     companion object {
@@ -293,6 +305,7 @@ data class Debrief(
                 segments = o.optJSONArray("segments").objects().map { it.optInt("number") to it.optString("firstWords") },
                 readingAloud = o.optBoolean("readingAloud"),
                 progress = o.optJSONObject("progress")?.let { Progress.fromJson(it) },
+                model = o.optJSONArray("model").objects().map { ModelPart.fromJson(it) },
             )
         }
     }

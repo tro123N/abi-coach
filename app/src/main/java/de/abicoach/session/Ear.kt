@@ -121,7 +121,7 @@ class SpeechSegmenter(private val onSegment: (SpeechSegment) -> Unit) {
         private const val TAIL_FRAMES = 2
         private const val MIN_VOICED_MS = 700L
         private const val MAX_MS = 7_000L
-        private const val MIN_LEVEL = 0.045f
+        private const val MIN_LEVEL = 0.03f
     }
 }
 

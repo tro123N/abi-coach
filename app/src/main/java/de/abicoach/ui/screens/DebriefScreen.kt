@@ -50,6 +50,7 @@ import de.abicoach.ui.components.Gap
 import de.abicoach.ui.components.GoalRow
 import de.abicoach.ui.components.LevelBadge
 import de.abicoach.ui.components.PopUp
+import de.abicoach.ui.components.ProgressLine
 import de.abicoach.ui.components.StarRow
 import de.abicoach.ui.components.Tab
 import de.abicoach.ui.components.TopBarAction
@@ -172,6 +173,7 @@ fun DebriefScreen(vm: AppViewModel, id: String) {
                 }
             }
         }
+        if (record.utterances.any { it.speaker == Speaker.STUDENT }) ModelCard(vm, record, d)
         if (d.pronunciation.isNotEmpty()) {
             AbiCard {
                 CardTitle("Aussprache", icon = R.drawable.graphic_eq_24dp)
@@ -339,6 +341,47 @@ private fun TaskReviewCard(record: SessionRecord, d: Debrief) {
             r.covered.forEach { GoalRow(ok = true, text = it) }
             r.missing.forEach { GoalRow(ok = false, text = it) }
             if (r.tip.isNotBlank()) CaptionText("Tipp: " + r.tip, color = accent)
+        }
+    }
+}
+
+/** The student's own performance rewritten at 15-point level (made on request). */
+@Composable
+private fun ModelCard(vm: AppViewModel, record: SessionRecord, d: Debrief) {
+    val presentation = record.kind.hasPart1 && record.utterances.any { it.part == 1 }
+    AbiCard(modifier = Modifier.testTag("debrief_model")) {
+        CardTitle(if (presentation) "Dein Vortrag auf 15-Punkte-Niveau" else "Deine Antworten auf 15-Punkte-Niveau", icon = R.drawable.workspace_premium_24dp, iconTint = green)
+        if (d.model.isEmpty()) {
+            CaptionText("Die KI schreibt deine eigene Leistung so um, wie sie für 15 Punkte klingen würde: deine Ideen und dein Aufbau, aber mit Top-Sprache und allem, was gefehlt hat.")
+            Gap(8.dp)
+            if (vm.modelBusy == record.id) {
+                ProgressLine(null)
+                CaptionText("Wird geschrieben … (ca. 20–40 Sekunden)")
+            } else {
+                ActionButton(
+                    "Musterfassung erstellen",
+                    R.drawable.auto_awesome_24dp,
+                    accent,
+                    { vm.tap(); vm.makeModel(record.id) },
+                    container = MaterialTheme.colorScheme.background,
+                    modifier = Modifier.testTag("debrief_model_make"),
+                )
+            }
+        } else {
+            d.model.forEachIndexed { i, part ->
+                if (i > 0) Gap(14.dp)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(part.title, fontSize = AbiTheme.dimens.fonts.body, color = accent, modifier = Modifier.weight(1f))
+                    SpeakButton(vm, part.text)
+                }
+                BodyText(part.text)
+                if (part.notes.isNotEmpty()) {
+                    Gap(4.dp)
+                    part.notes.forEach { GoalRow(ok = true, text = it) }
+                }
+            }
+            Gap(8.dp)
+            CaptionText("Tipp: Einmal laut lesen, dann nur mit Stichpunkten frei nachsprechen – so wird es deins.")
         }
     }
 }
