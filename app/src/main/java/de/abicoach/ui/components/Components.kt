@@ -186,7 +186,8 @@ fun ActionButton(
                 .heightIn(min = dimens.components.button * 0.8f)
                 .squish(interaction, 0.97f)
                 .glass(flow, 20.dp, fill, shadow = !onCard, edge = !onCard)
-                .clickable(interactionSource = interaction, indication = LocalIndication.current, enabled = enabled, onClick = onClick)
+                .touchLight(interaction, flow.touch)
+                .clickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = onClick)
                 .padding(horizontal = 12.dp, vertical = 10.dp)
                 .alpha(if (enabled) 1f else 0.42f),
     ) {
@@ -238,11 +239,12 @@ fun StartButton(
                 .fillMaxWidth()
                 .height(height)
                 .squish(interaction, 0.96f)
-                .softShadow(height / 2, if (enabled) flow.accent.copy(alpha = 0.3f) else Color.Transparent, blur = 20.dp, offsetY = 8.dp)
+                .softShadow(height / 2, if (enabled) flow.hero1.copy(alpha = 0.32f) else Color.Transparent, blur = 20.dp, offsetY = 8.dp)
                 .clip(capsule)
-                .background(if (enabled) Brush.linearGradient(listOf(flow.accent, flow.accent2)) else SolidColor(flow.text.copy(alpha = 0.1f)))
+                .background(if (enabled) Brush.linearGradient(listOf(flow.hero1, flow.hero2)) else SolidColor(flow.text.copy(alpha = 0.1f)))
                 .border(1.dp, Color.White.copy(alpha = if (enabled) 0.3f else 0.1f), capsule)
-                .clickable(interactionSource = interaction, indication = LocalIndication.current, enabled = enabled, onClick = onClick),
+                .touchLight(interaction, Color.White.copy(alpha = 0.25f))
+                .clickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = onClick),
     ) {
         Box(
             contentAlignment = Alignment.Center,
@@ -486,7 +488,8 @@ fun MiniAction(
                 .let { if (tag != null) it.testTag(tag) else it }
                 .squish(interaction, 0.92f)
                 .glass(flow, 20.dp, MaterialTheme.colorScheme.background, shadow = false, edge = true)
-                .clickable(interactionSource = interaction, indication = LocalIndication.current, onClick = onClick)
+                .touchLight(interaction, flow.touch)
+                .clickable(interactionSource = interaction, indication = null, onClick = onClick)
                 .padding(vertical = 12.dp, horizontal = 4.dp),
     ) {
         Box {

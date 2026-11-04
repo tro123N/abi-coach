@@ -440,11 +440,12 @@ private fun LazyListScope.freePractice(
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
             Tile(
                 title = "Simulation",
-                subtitle = "Wie im Abi: 30 Min. Vorbereitung, Vortrag, Gespräch" + (last(SessionKind.SIMULATION)?.let { " · zuletzt $it P." } ?: ""),
+                subtitle = "Vorbereitung, Vortrag und Gespräch – wie im Abi",
                 icon = R.drawable.workspace_premium_24dp,
                 tint = green,
                 onClick = { open(SessionSetup.defaults(SessionKind.SIMULATION, 0, feedback)) },
                 modifier = Modifier.weight(1.3f).fillMaxHeight(),
+                chip = last(SessionKind.SIMULATION)?.let { "$it P." to Color.White },
                 hero = true,
                 tag = "train_simulation",
             )

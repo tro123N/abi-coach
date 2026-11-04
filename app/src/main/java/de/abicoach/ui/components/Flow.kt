@@ -6,7 +6,9 @@ Lizenz: GNU GPL v3 oder neuer.
 
 package de.abicoach.ui.components
 
+import android.os.Build
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
@@ -23,6 +25,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.InteractionSource
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -53,6 +56,7 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -64,17 +68,25 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.isSpecified
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.ClipOp
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
@@ -88,6 +100,7 @@ import de.abicoach.ui.theme.AbiTheme
 import de.abicoach.ui.theme.Flow
 import de.abicoach.ui.theme.readable
 import de.abicoach.ui.theme.red
+import kotlinx.coroutines.launch
 
 // ---------------------------------------------------------------- motion
 
@@ -105,6 +118,56 @@ fun Modifier.squish(interaction: InteractionSource, pressedScale: Float = 0.96f)
             scaleY = scale
         }
     }
+
+/**
+ * A soft light that appears where the finger touches the glass and fades when it lets go – the "luminous"
+ * touch of Living Flow (instead of the usual ripple).
+ */
+fun Modifier.touchLight(interaction: InteractionSource, color: Color): Modifier =
+    composed {
+        var center by remember { mutableStateOf(Offset.Unspecified) }
+        val glow = remember { Animatable(0f) }
+        LaunchedEffect(interaction) {
+            interaction.interactions.collect { i ->
+                when (i) {
+                    is PressInteraction.Press -> {
+                        center = i.pressPosition
+                        launch { glow.animateTo(1f, tween(110)) }
+                    }
+                    is PressInteraction.Release, is PressInteraction.Cancel -> launch { glow.animateTo(0f, tween(480)) }
+                }
+            }
+        }
+        drawWithContent {
+            drawContent()
+            val g = glow.value
+            if (g > 0.01f && center.isSpecified) {
+                val radius = size.maxDimension * 0.75f
+                drawCircle(
+                    brush = Brush.radialGradient(listOf(color.copy(alpha = color.alpha * g), Color.Transparent), center = center, radius = radius),
+                    radius = radius,
+                    center = center,
+                )
+            }
+        }
+    }
+
+/** The colour of the touch light on glass. */
+val Flow.touch: Color get() = if (dark) Color.White.copy(alpha = 0.16f) else accent.copy(alpha = 0.16f)
+
+/**
+ * Scrolling content fades out towards its top edge instead of being cut off: fully hidden above [hiddenUntil],
+ * fully visible below [visibleFrom] (both measured from the top of the list).
+ */
+fun Modifier.fadeTopEdge(hiddenUntil: Dp, visibleFrom: Dp): Modifier =
+    graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+        .drawWithContent {
+            drawContent()
+            drawRect(
+                brush = Brush.verticalGradient(0f to Color.Transparent, 1f to Color.Black, startY = hiddenUntil.toPx(), endY = visibleFrom.toPx()),
+                blendMode = BlendMode.DstIn,
+            )
+        }
 
 // ---------------------------------------------------------------- the flowing light
 
@@ -179,28 +242,46 @@ fun LivingBackground(mood: Int, modifier: Modifier = Modifier) {
 
 // ---------------------------------------------------------------- glass
 
-/** A soft shadow around a rounded shape, drawn only outside of it – so translucent glass stays clear. */
+/**
+ * A soft shadow around a rounded shape, drawn only outside of it – so translucent glass stays clear. From
+ * Android 9 on it is a real blurred shadow; older phones get a few stacked soft layers.
+ */
 fun Modifier.softShadow(radius: Dp, color: Color, blur: Dp = 18.dp, offsetY: Dp = 6.dp): Modifier =
     if (color.alpha <= 0f) {
         this
     } else {
-        drawBehind {
-            val r = radius.toPx()
+        drawWithCache {
+            val r = radius.toPx().coerceAtMost(size.minDimension / 2f)
             val b = blur.toPx()
             val dy = offsetY.toPx()
             val outline = Path().apply { addRoundRect(RoundRect(0f, 0f, size.width, size.height, CornerRadius(r))) }
-            clipPath(outline, ClipOp.Difference) {
-                val steps = 7
-                val layer = color.copy(alpha = (color.alpha * 1.6f / steps).coerceAtMost(1f))
-                for (i in steps downTo 1) {
-                    val f = i / steps.toFloat()
-                    val grow = b * f
-                    drawRoundRect(
-                        color = layer,
-                        topLeft = Offset(-grow * 0.8f, -grow * 0.5f + dy * f),
-                        size = Size(size.width + grow * 1.6f, size.height + grow * 1.2f),
-                        cornerRadius = CornerRadius(r + grow),
-                    )
+            val paint =
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                        this.color = android.graphics.Color.BLACK
+                        setShadowLayer((b * 0.6f).coerceAtLeast(1f), 0f, dy, color.toArgb())
+                    }
+                } else {
+                    null
+                }
+            onDrawBehind {
+                clipPath(outline, ClipOp.Difference) {
+                    if (paint != null) {
+                        drawIntoCanvas { it.nativeCanvas.drawRoundRect(0f, 0f, size.width, size.height, r, r, paint) }
+                    } else {
+                        val steps = 7
+                        val layer = color.copy(alpha = (color.alpha * 1.6f / steps).coerceAtMost(1f))
+                        for (i in steps downTo 1) {
+                            val f = i / steps.toFloat()
+                            val grow = b * f
+                            drawRoundRect(
+                                color = layer,
+                                topLeft = Offset(-grow * 0.8f, -grow * 0.5f + dy * f),
+                                size = Size(size.width + grow * 1.6f, size.height + grow * 1.2f),
+                                cornerRadius = CornerRadius(r + grow),
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -245,7 +326,9 @@ fun GlassSurface(
     var m = modifier
     if (onClick != null) m = m.squish(interaction, 0.975f)
     m = m.glass(flow, radius, fill ?: flow.glass, shadow, border = border)
-    if (onClick != null) m = m.clickable(interactionSource = interaction, indication = LocalIndication.current, enabled = enabled, onClick = onClick)
+    if (onClick != null) {
+        m = m.touchLight(interaction, flow.touch).clickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = onClick)
+    }
     CompositionLocalProvider(LocalContentColor provides flow.text) {
         Box(m, content = content)
     }
@@ -409,11 +492,11 @@ fun HeroCard(modifier: Modifier = Modifier, onClick: (() -> Unit)? = null, conte
         modifier
             .fillMaxWidth()
             .let { if (onClick != null) it.squish(interaction, 0.98f) else it }
-            .softShadow(28.dp, flow.accent.copy(alpha = if (flow.dark) 0.18f else 0.24f), blur = 22.dp, offsetY = 10.dp)
+            .softShadow(28.dp, flow.hero1.copy(alpha = if (flow.dark) 0.3f else 0.26f), blur = 22.dp, offsetY = 10.dp)
             .clip(shape)
-            .background(Brush.linearGradient(listOf(flow.accent.copy(alpha = 0.94f), flow.accent2.copy(alpha = 0.9f))))
+            .background(Brush.linearGradient(listOf(flow.hero1.copy(alpha = 0.95f), flow.hero2.copy(alpha = 0.92f))))
             .border(1.dp, Color.White.copy(alpha = 0.3f), shape)
-    if (onClick != null) m = m.clickable(interactionSource = interaction, indication = LocalIndication.current, onClick = onClick)
+    if (onClick != null) m = m.touchLight(interaction, Color.White.copy(alpha = 0.22f)).clickable(interactionSource = interaction, indication = null, onClick = onClick)
     CompositionLocalProvider(LocalContentColor provides Color.White) {
         Column(m.padding(18.dp), content = content)
     }
@@ -499,9 +582,9 @@ fun Tile(
     val surface =
         if (hero) {
             base
-                .softShadow(24.dp, flow.accent.copy(alpha = 0.26f), blur = 18.dp, offsetY = 8.dp)
+                .softShadow(24.dp, flow.hero1.copy(alpha = 0.28f), blur = 18.dp, offsetY = 8.dp)
                 .clip(shape)
-                .background(Brush.linearGradient(listOf(flow.accent.copy(alpha = 0.94f), flow.accent2.copy(alpha = 0.9f))))
+                .background(Brush.linearGradient(listOf(flow.hero1.copy(alpha = 0.95f), flow.hero2.copy(alpha = 0.92f))))
                 .border(1.dp, Color.White.copy(alpha = 0.3f), shape)
         } else {
             base.glass(flow, 24.dp, border = if (highlight) flow.accent.copy(alpha = 0.7f) else null)
@@ -511,7 +594,8 @@ fun Tile(
         verticalArrangement = Arrangement.spacedBy(4.dp),
         modifier =
             surface
-                .clickable(interactionSource = interaction, indication = LocalIndication.current, onClick = onClick)
+                .touchLight(interaction, if (hero) Color.White.copy(alpha = 0.22f) else flow.touch)
+                .clickable(interactionSource = interaction, indication = null, onClick = onClick)
                 .padding(14.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {

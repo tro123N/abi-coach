@@ -84,6 +84,9 @@ data class Flow(
     val accent: Color,
     /** Second colour of the accent gradient (hero cards, the start button). */
     val accent2: Color,
+    /** The gradient of hero cards and the start button; a little deeper in dark mode so white text stays clear. */
+    val hero1: Color,
+    val hero2: Color,
 )
 
 private class Spec(
@@ -154,6 +157,8 @@ fun flowFor(palette: Palette, dark: Boolean): Flow {
         subtle = text.copy(alpha = 0.66f),
         accent = Color(s.accent),
         accent2 = Color(s.accent2),
+        hero1 = if (dark) androidx.compose.ui.graphics.lerp(Color(s.accent), Color.Black, 0.3f) else Color(s.accent),
+        hero2 = if (dark) androidx.compose.ui.graphics.lerp(Color(s.accent2), Color.Black, 0.3f) else Color(s.accent2),
     )
 }
 

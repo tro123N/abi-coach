@@ -97,7 +97,9 @@ class SmokeTest {
 
     private fun shot(name: String) {
         compose.waitForIdle()
-        Thread.sleep(700)
+        // The emulator draws glass and blur in software: give it time to put the new frame on screen.
+        Thread.sleep(1200)
+        compose.waitForIdle()
         val bitmap = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot() ?: return
         val scaled = Bitmap.createScaledBitmap(bitmap, bitmap.width / 2, bitmap.height / 2, true)
         counter++

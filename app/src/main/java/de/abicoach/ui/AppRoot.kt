@@ -56,7 +56,7 @@ import de.abicoach.ui.components.GlassDock
 import de.abicoach.ui.components.LargeHeader
 import de.abicoach.ui.components.LivingBackground
 import de.abicoach.ui.components.Tab
-import de.abicoach.ui.components.TopFade
+import de.abicoach.ui.components.fadeTopEdge
 import de.abicoach.ui.components.dockSource
 import de.abicoach.ui.components.dockSpace
 import de.abicoach.ui.components.rememberDockBlur
@@ -195,19 +195,17 @@ fun TabScaffold(
 ) {
     val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val bottom = dockSpace()
-    Box(Modifier.fillMaxSize()) {
-        LazyColumn(
-            state = state,
-            modifier = Modifier.fillMaxSize().testTag("list_${tab.name.lowercase()}"),
-            contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = top + 10.dp, bottom = bottom),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-            content = {
-                item(key = "header") { LargeHeader(title, caption, actions = actions) }
-                content()
-            },
-        )
-        TopFade(Modifier.align(Alignment.TopCenter))
-    }
+    // Cards fade out under the status bar instead of being cut off; the bar at the bottom floats above them.
+    LazyColumn(
+        state = state,
+        modifier = Modifier.fillMaxSize().fadeTopEdge(hiddenUntil = top - 6.dp, visibleFrom = top + 8.dp).testTag("list_${tab.name.lowercase()}"),
+        contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = top + 10.dp, bottom = bottom),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+        content = {
+            item(key = "header") { LargeHeader(title, caption, actions = actions) }
+            content()
+        },
+    )
 }
 
 /** A screen on top of an area: transparent bar with a round back button, scrolling content. */
@@ -233,7 +231,14 @@ fun DetailScaffold(
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
             pinned()
             Column(
-                modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).testTag(tag).padding(horizontal = 18.dp, vertical = 12.dp),
+                modifier =
+                    Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .fadeTopEdge(hiddenUntil = 0.dp, visibleFrom = 12.dp)
+                        .verticalScroll(rememberScrollState())
+                        .testTag(tag)
+                        .padding(horizontal = 18.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
                 content = {
                     content()
