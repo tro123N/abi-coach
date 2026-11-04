@@ -231,10 +231,8 @@ class IngestPipeline(private val app: AbiCoachApp) {
         var digest = parseDigest(json, doc)
         // Real Abitur material: find the original exam tasks with their Erwartungshorizont.
         if (doc.kind == DocKind.PRUEFUNG || doc.kind == DocKind.ABI_BUCH) {
-            store.update(doc.id) { it.copy(error = "Suche die Original-Prüfungsaufgaben …") }
             val units = runCatching { ExamUnits.extract(app, doc, text) }.getOrElse { e -> if (e is CancellationException) throw e else emptyList() }
             digest = digest.copy(examUnits = units)
-            store.update(doc.id) { it.copy(error = null) }
         }
         store.saveDigest(doc.id, digest)
         app.vocab.addAll(de.abicoach.practice.PracticeFeed.fromDigest(digest))

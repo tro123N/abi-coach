@@ -249,7 +249,12 @@ private fun statusLine(d: CourseDoc): String =
     when (d.status) {
         DocStatus.READING -> "Liest „${d.title}“: Seite ${d.pagesRead + 1} von ${d.pageCount}"
         DocStatus.INDEXING -> "Verknüpft „${d.title}“ für die Suche …"
-        DocStatus.DIGESTING -> "Wertet „${d.title}“ aus: Themen, Fakten, Wortschatz …"
+        DocStatus.DIGESTING ->
+            if (d.kind == DocKind.PRUEFUNG || d.kind == DocKind.ABI_BUCH) {
+                "Wertet „${d.title}“ aus: Themen, Original-Aufgaben, Erwartungshorizont …"
+            } else {
+                "Wertet „${d.title}“ aus: Themen, Fakten, Wortschatz …"
+            }
         DocStatus.QUEUED -> "„${d.title}“ ist als Nächstes dran"
         else -> d.status.label
     }

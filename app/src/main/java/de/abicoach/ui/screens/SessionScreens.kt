@@ -472,7 +472,7 @@ fun LiveScreen(vm: AppViewModel) {
                 }
             }
             Gap(10.dp)
-            TechChips(state, draft?.feedback ?: FeedbackMode.PRUEFUNG)
+            TechChips(state, draft?.feedback ?: FeedbackMode.FLUESTERN)
             Gap(12.dp)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(mmss(state.elapsedSec), fontSize = dimens.fonts.body, color = MaterialTheme.colorScheme.onPrimary)
