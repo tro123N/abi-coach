@@ -417,6 +417,7 @@ fun SettingsScreen(vm: AppViewModel) {
         }
             }
             SettingsSection.UEBER -> {
+                UpdateCard(vm)
         AbiCard {
             CardTitle("Über AbiCoach", icon = R.drawable.info_24dp)
             ActionButton("Tour durch die App", R.drawable.explore_24dp, accent, { vm.startTour() }, subtitle = "Die App zeigt dir Schritt für Schritt, was wo ist", container = MaterialTheme.colorScheme.background, modifier = Modifier.testTag("settings_tour"))
@@ -711,7 +712,7 @@ enum class SettingsSection(val title: String, val icon: Int) {
     ANZEIGE("Aufnahme, Anzeige, Erinnerung", R.drawable.mic_24dp),
     DESIGN("Aussehen und Töne", R.drawable.palette_24dp),
     DATEN("Daten und Sicherung", R.drawable.folder_24dp),
-    UEBER("Hilfe und Über AbiCoach", R.drawable.info_24dp),
+    UEBER("Update, Hilfe, Über", R.drawable.info_24dp),
     ;
 
     companion object {
@@ -726,6 +727,7 @@ private fun SettingsMenu(vm: AppViewModel) {
     val s = app.settings
     val keyOk = app.ai.ready
     val date = runCatching { LocalDate.parse(s.examDate) }.getOrNull()
+    val update by de.abicoach.update.AppUpdater.state.collectAsState()
     if (!keyOk) {
         Banner("Der KI-Schlüssel fehlt – ohne ihn kann die App nicht prüfen und bewerten.", red, icon = R.drawable.key_24dp, modifier = Modifier.clickable { vm.tap(); vm.settingsSection = SettingsSection.KI.name })
     }
@@ -738,7 +740,11 @@ private fun SettingsMenu(vm: AppViewModel) {
                 SettingsSection.ANZEIGE -> (if (s.uploadAudio) "Aufnahme wird mitbewertet" else "nur Transkript") + " · Erinnerung " + if (s.reminderOn) "an" else "aus"
                 SettingsSection.DESIGN -> "${s.themeMode.label} · ${s.palette.label}"
                 SettingsSection.DATEN -> "Lernstand sichern und laden, löschen"
-                SettingsSection.UEBER -> "Tour durch die App, Einrichtung, Version"
+                SettingsSection.UEBER ->
+                    when (val u = update) {
+                        is de.abicoach.update.AppUpdater.State.Available -> "Update verfügbar: Build ${u.release.build} · Tour, Einrichtung"
+                        else -> "Version ${versionName(vm)} · nach Update suchen · Tour, Einrichtung"
+                    }
             }
         ActionButton(
             section.title,
@@ -748,5 +754,143 @@ private fun SettingsMenu(vm: AppViewModel) {
             subtitle = summary,
             modifier = Modifier.testTag("settings_section_${section.name.lowercase()}"),
         )
+    }
+}
+
+private fun versionName(vm: AppViewModel): String =
+    runCatching { vm.app.packageManager.getPackageInfo(vm.app.packageName, 0).versionName }.getOrNull() ?: "?"
+
+/**
+ * Updates the app without leaving it: asks GitHub for the newest build, downloads it with a progress bar and hands
+ * it to Android's installer. The GitHub token (read-only) is needed because the project is private.
+ */
+@Composable
+private fun UpdateCard(vm: AppViewModel) {
+    val app = vm.app
+    val context = LocalContext.current
+    val uri = LocalUriHandler.current
+    val state by de.abicoach.update.AppUpdater.state.collectAsState()
+    val installed = remember { de.abicoach.update.AppUpdater.installedBuild(context) }
+    var askPermission by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf(app.settings.githubToken.isBlank()) }
+    var token by remember { mutableStateOf("") }
+    if (askPermission) {
+        PopUp(
+            title = "Updates erlauben",
+            description = "Damit AbiCoach sich selbst aktualisieren kann, musst du es einmal erlauben: Im nächsten Fenster „Aus dieser Quelle zulassen“ einschalten, dann zurück und noch einmal auf „Jetzt aktualisieren“ tippen.",
+            confirmText = "Einstellung öffnen",
+            onConfirm = {
+                askPermission = false
+                runCatching {
+                    context.startActivity(
+                        android.content.Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, android.net.Uri.parse("package:" + context.packageName))
+                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                    )
+                }
+            },
+            onDismiss = { askPermission = false },
+        )
+    }
+    AbiCard(modifier = Modifier.testTag("settings_update")) {
+        CardTitle("App-Update", icon = R.drawable.download_24dp)
+        CaptionText("Installiert: Version ${versionName(vm)} (Build $installed)")
+        Gap(8.dp)
+        when (val s = state) {
+            is de.abicoach.update.AppUpdater.State.Available -> {
+                Banner("Neue Version: Build ${s.release.build}" + (if (s.release.size > 0) " · %.1f MB".format(s.release.size / 1_048_576.0) else ""), green, icon = R.drawable.download_24dp)
+                Gap(8.dp)
+                ActionButton(
+                    "Jetzt aktualisieren",
+                    R.drawable.download_24dp,
+                    green,
+                    { if (de.abicoach.update.AppUpdater.canInstall(context)) vm.installUpdate(s.release) else askPermission = true },
+                    subtitle = "Lädt die neue Version und installiert sie – du bleibst in der App. Dein Lernstand bleibt erhalten.",
+                    container = MaterialTheme.colorScheme.background,
+                    modifier = Modifier.testTag("update_install"),
+                )
+            }
+            is de.abicoach.update.AppUpdater.State.Downloading -> {
+                ProgressLine(s.progress)
+                Gap(4.dp)
+                CaptionText("Lade Build ${s.release.build} herunter … " + (s.progress?.let { "${(it * 100).toInt()} %" } ?: ""))
+            }
+            is de.abicoach.update.AppUpdater.State.Installing -> {
+                ProgressLine(null)
+                Gap(4.dp)
+                CaptionText("Android installiert Build ${s.release.build}. Fragt Android nach, tippe auf „Aktualisieren“. AbiCoach schließt sich dabei kurz und meldet sich, sobald die neue Version da ist.")
+            }
+            else -> {
+                ActionButton(
+                    if (s is de.abicoach.update.AppUpdater.State.Checking) "Suche …" else "Nach Update suchen",
+                    R.drawable.refresh_24dp,
+                    accent,
+                    { vm.checkUpdate() },
+                    enabled = s !is de.abicoach.update.AppUpdater.State.Checking,
+                    subtitle =
+                        when (s) {
+                            is de.abicoach.update.AppUpdater.State.UpToDate -> "Du hast die neueste Version (Build ${s.build})."
+                            else -> "Schaut auf GitHub nach der neuesten Version"
+                        },
+                    container = MaterialTheme.colorScheme.background,
+                    modifier = Modifier.testTag("update_check"),
+                )
+                if (s is de.abicoach.update.AppUpdater.State.Failed) {
+                    Gap(6.dp)
+                    CaptionText(s.message, color = red)
+                }
+            }
+        }
+        Gap(12.dp)
+        // The key for GitHub: the project is private, so even reading the releases needs a token.
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                BodyText("GitHub-Schlüssel (nur Lesen)")
+                CaptionText("Nötig, weil das AbiCoach-Projekt auf GitHub privat ist.")
+            }
+            Text(
+                if (app.settings.githubToken.isBlank()) "fehlt" else "✓ eingetragen",
+                fontSize = AbiTheme.dimens.fonts.caption,
+                color = if (app.settings.githubToken.isBlank()) red else green,
+            )
+        }
+        Gap(6.dp)
+        if (editing) {
+            AbiTextField(token, { token = it }, label = "GitHub-Schlüssel einfügen", secret = true, tag = "update_token")
+            Gap(6.dp)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ActionButton(
+                    "Speichern",
+                    R.drawable.check_24dp,
+                    green,
+                    {
+                        app.settings.githubToken = token.trim()
+                        token = ""
+                        editing = false
+                        vm.checkUpdate()
+                    },
+                    Modifier.weight(1f),
+                    enabled = token.isNotBlank(),
+                    container = MaterialTheme.colorScheme.background,
+                )
+                ActionButton(
+                    "Schlüssel holen",
+                    R.drawable.open_in_new_24dp,
+                    accent,
+                    { runCatching { uri.openUri("https://github.com/settings/personal-access-tokens/new") } },
+                    Modifier.weight(1f),
+                    container = MaterialTheme.colorScheme.background,
+                )
+            }
+            Gap(4.dp)
+            CaptionText(
+                "So geht's: Bei GitHub „Fine-grained token“ erstellen → bei „Repository access“ nur „abi-coach“ wählen → bei „Permissions“ „Contents: Read-only“ → erstellen, kopieren, hier einfügen. " +
+                    "Er bleibt verschlüsselt auf dem Handy und kommt nie in eine Sicherung.",
+            )
+        } else {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ActionButton("Ändern", R.drawable.key_24dp, MaterialTheme.colorScheme.onPrimary, { vm.tap(); editing = true }, Modifier.weight(1f), container = MaterialTheme.colorScheme.background)
+                ActionButton("Entfernen", R.drawable.delete_24dp, red, { vm.tap(); app.settings.githubToken = ""; editing = true }, Modifier.weight(1f), container = MaterialTheme.colorScheme.background)
+            }
+        }
     }
 }

@@ -87,6 +87,13 @@ Danach startet auf Wunsch eine **geführte Tour durch die echte App**: Der Bilds
 
 Die Einstellungen sind in sieben Bereiche geordnet, jeder mit einer Zeile, was gerade eingestellt ist: **KI und Schlüssel** (Firma, Qualität, Schlüssel, System prüfen, wer was macht, Modelle), **Prüfung und Üben** (Termin, Übungszeit, Rückmeldung, Kursthemen), **Prüfer und Stimmen** (Gesprächsstil, Härte, Knopf halten, Stimmen), **Aufnahme, Anzeige, Erinnerung**, **Aussehen und Töne**, **Daten und Sicherung** sowie **Hilfe und Über AbiCoach** (Tour, Einrichtung, Version). Beim Einrichten einer Übung sind die Prüfer-Optionen und die KI-Übersicht zusammengeklappt – mit einer Zusammenfassung, was gilt.
 
+## Update direkt in der App
+
+Unter Einstellungen → **Update, Hilfe, Über** sucht „Nach Update suchen“ auf GitHub nach dem neuesten Build. Ist einer da, lädt „Jetzt aktualisieren“ die APK mit Fortschrittsbalken herunter, prüft, dass es wirklich eine neuere AbiCoach-Version ist, und übergibt sie direkt an den Android-Installer – ohne Browser und ohne Datei suchen. Die App fragt außerdem höchstens alle 12 Stunden von selbst nach und zeigt auf „Heute“ einen Hinweis, wenn es ein Update gibt.
+
+- Weil das Projekt auf GitHub privat ist, braucht die App einmal einen **GitHub-Schlüssel nur zum Lesen** (Fine-grained Token: nur das Repository „abi-coach“, Berechtigung „Contents: Read-only“). Er bleibt verschlüsselt auf dem Handy und kommt nie in eine Sicherung.
+- Beim ersten Update fragt Android einmal, ob AbiCoach Apps installieren darf („Aus dieser Quelle zulassen“). Je nach Android-Version bestätigst du die Installation noch mit „Aktualisieren“; AbiCoach schließt sich dabei kurz und meldet sich mit einer Benachrichtigung, sobald die neue Version da ist. Der Lernstand bleibt erhalten.
+
 ## Welche KI was macht
 
 Unter Einstellungen → KI wählst du **eine Firma, die alles macht**: **Google**, **OpenAI** oder **Anthropic** – zum Vergleichen kannst du jederzeit wechseln. Jede Firma braucht ihren eigenen Schlüssel.

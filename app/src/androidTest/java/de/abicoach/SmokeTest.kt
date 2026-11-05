@@ -420,6 +420,15 @@ class SmokeTest {
             shot("einstellungen_" + section.name.lowercase())
             swipeShot("settings", "einstellungen_" + section.name.lowercase() + "_unten", 2)
         }
+        // An update on GitHub: the banner on "Heute" and the card in the settings.
+        val demoRelease = de.abicoach.update.AppUpdater.Release(999, "AbiCoach 1.0 Stable (Build 999)", "", "", 15_700_000, "")
+        ui { de.abicoach.update.AppUpdater.demo(de.abicoach.update.AppUpdater.State.Available(demoRelease)); vm.settingsSection = "UEBER" }
+        shot("einstellungen_update_verfuegbar")
+        ui { de.abicoach.update.AppUpdater.demo(de.abicoach.update.AppUpdater.State.Downloading(demoRelease, 0.42f)) }
+        shot("einstellungen_update_laedt")
+        ui { de.abicoach.update.AppUpdater.demo(de.abicoach.update.AppUpdater.State.Available(demoRelease)); vm.settingsSection = null; vm.nav.openTab(Tab.WEG) }
+        shot("heute_update_verfuegbar")
+        ui { de.abicoach.update.AppUpdater.demo(de.abicoach.update.AppUpdater.State.Idle); vm.nav.push(Screen.Settings) }
         // The other AI companies (the settings change only what is shown here; no key is needed for the picture).
         ui { app.settings.provider = de.abicoach.ai.Provider.OPENAI; vm.settingsSection = "KI" }
         runCatching { compose.onNodeWithTag("settings_ai").performScrollTo() }

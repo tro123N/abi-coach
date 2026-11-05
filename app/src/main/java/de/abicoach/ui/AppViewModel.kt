@@ -1645,6 +1645,19 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             }
     }
 
+    // ---------- update inside the app ----------
+
+    fun checkUpdate() {
+        tap()
+        viewModelScope.launch { de.abicoach.update.AppUpdater.check(app) }
+    }
+
+    /** Downloads and installs [release]; the installation goes on in Android's installer. */
+    fun installUpdate(release: de.abicoach.update.AppUpdater.Release) {
+        tap()
+        viewModelScope.launch { de.abicoach.update.AppUpdater.update(app, release) }
+    }
+
     /** The open area of the settings (SettingsSection name), null = the overview. */
     var settingsSection by mutableStateOf<String?>(null)
 
@@ -1833,6 +1846,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         watchAnalysis()
         watchMaterial()
         restoreWork()
+        // A new version on GitHub? Asked by itself at most every 12 hours, quietly (a banner only if there is one).
+        if (System.currentTimeMillis() - app.settings.lastUpdateCheck > 12 * 3_600_000L) {
+            viewModelScope.launch { runCatching { de.abicoach.update.AppUpdater.check(app, quiet = true) } }
+        }
         // The very first start: the setup shows what the app needs to work (someone who already uses it skips it).
         if (!app.settings.onboardingDone) {
             if (app.ai.ready && app.store.sessions.value.isNotEmpty()) app.settings.onboardingDone = true

@@ -99,6 +99,7 @@ private fun todayCaption(days: Long?): String {
 fun AbiWegScreen(vm: AppViewModel) {
     val app = vm.app
     val version by app.settings.version.collectAsState()
+    val update by de.abicoach.update.AppUpdater.state.collectAsState()
     val profile by app.profiles.profile.collectAsState()
     val sessions by app.store.sessions.collectAsState()
     val docs by app.memory.docs.collectAsState()
@@ -127,6 +128,18 @@ fun AbiWegScreen(vm: AppViewModel) {
                     { vm.openOnboarding() },
                     subtitle = "Der KI-Schlüssel fehlt noch – ohne ihn kann die App nicht prüfen und bewerten.",
                     modifier = Modifier.testTag("today_setup"),
+                )
+            }
+        }
+        (update as? de.abicoach.update.AppUpdater.State.Available)?.let { u ->
+            item(key = "update") {
+                ActionButton(
+                    "Update verfügbar: Build ${u.release.build}",
+                    R.drawable.download_24dp,
+                    green,
+                    { vm.tap(); vm.settingsSection = de.abicoach.ui.screens.SettingsSection.UEBER.name; vm.nav.push(Screen.Settings) },
+                    subtitle = "Tippe, um es direkt in der App zu installieren",
+                    modifier = Modifier.testTag("today_update"),
                 )
             }
         }

@@ -118,6 +118,19 @@ class Settings(context: Context) {
         get() = secret(KEY_ANTHROPIC)
         set(value) = putSecret(KEY_ANTHROPIC, value)
 
+    /** Read-only GitHub token for the in-app update (the repository is private); encrypted, never in a backup. */
+    var githubToken: String
+        get() = secret(KEY_GITHUB)
+        set(value) = putSecret(KEY_GITHUB, value)
+
+    /** Where the updates come from (GitHub "owner/repo"). */
+    var updateRepo by StringPref("update_repo", "tro123N/abi-coach")
+
+    /** When the app last asked GitHub for a new version (it asks by itself at most every 12 hours). */
+    var lastUpdateCheck: Long
+        get() = prefs.getLong("last_update_check", 0L)
+        set(value) = prefs.edit().putLong("last_update_check", value).apply()
+
     fun keyOf(provider: Provider): String =
         when (provider) {
             Provider.GOOGLE -> geminiKey
@@ -367,6 +380,7 @@ class Settings(context: Context) {
         private const val KEY_GEMINI = "gemini_key_enc"
         private const val KEY_OPENAI = "openai_api_key_enc"
         private const val KEY_ANTHROPIC = "anthropic_api_key_enc"
+        private const val KEY_GITHUB = "github_token_enc"
         val GEMINI_VOICES = listOf("Charon", "Kore", "Puck", "Fenrir", "Aoede", "Leda", "Orus", "Zephyr")
         val OPENAI_VOICES = listOf("cedar", "marin", "ash", "ballad", "coral", "sage", "verse", "alloy")
     }
