@@ -121,11 +121,14 @@ object MaterialGenerator {
         val part2Line =
             if (chosen.isNotEmpty()) {
                 "\nFor part2_topics use exactly these ${chosen.size} topic field(s), chosen by the student, one entry each (link them in the questions where it makes sense): " +
-                    chosen.joinToString("; ") { "$it = ${Knowledge.topic(it)?.english ?: "any"}" } + "."
+                    chosen.joinToString("; ") { "$it = ${Knowledge.topic(it)?.english ?: "any"}" } + "." +
+                    de.abicoach.memory.HalfYears.promptNote(app, request.topicId, chosen)
             } else {
-                val p2a = de.abicoach.learn.LearningBrain.pickTopic(app, exclude = setOf(request.topicId))
-                val p2b = de.abicoach.learn.LearningBrain.pickTopic(app, exclude = setOf(request.topicId, p2a))
-                "\nFor part2_topics use these two topic fields, which the student needs most: $p2a = ${Knowledge.topic(p2a)?.english ?: "any"}; $p2b = ${Knowledge.topic(p2b)?.english ?: "any"}."
+                // The ones the student needs most – from other Kurshalbjahre than part 1, so the whole course is covered.
+                val picked = de.abicoach.memory.HalfYears.part2Topics(app, request.topicId, 2)
+                "\nFor part2_topics use these ${picked.size} topic fields, which the student needs most: " +
+                    picked.joinToString("; ") { "$it = ${Knowledge.topic(it)?.english ?: "any"}" } + "." +
+                    de.abicoach.memory.HalfYears.promptNote(app, request.topicId, picked)
             }
         onProgress("${app.ai.brainLabel()} schreibt Text und Aufgaben …")
         val answer = app.ai.brainJson(Prompts.MATERIAL_SYSTEM, finalPrompt + shortLine + levelLine + adaptLine + part2Line, Prompts.materialSchema)

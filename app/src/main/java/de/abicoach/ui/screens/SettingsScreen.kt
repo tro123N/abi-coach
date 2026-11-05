@@ -79,6 +79,49 @@ fun SettingsScreen(vm: AppViewModel) {
     val context = LocalContext.current
     var showDate by remember { mutableStateOf(false) }
     var confirm by remember { mutableStateOf<String?>(null) }
+    var exportAsk by remember { mutableStateOf(false) }
+    var withMaterial by remember { mutableStateOf(false) }
+    val exportLauncher =
+        androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+            if (uri != null) vm.exportBackup(uri, withMaterial)
+        }
+    val importLauncher =
+        androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
+            if (uri != null) vm.inspectBackup(uri)
+        }
+    if (exportAsk) {
+        val megabytes = remember { (de.abicoach.data.Backup.materialBytes(app) / 1_048_576.0) }
+        PopUp(
+            title = "Lernstand sichern",
+            description = "Die Datei enthält alle Sitzungen mit ihren Auswertungen, dein Lernprofil, das Fehlergedächtnis mit den Notizen der Fehler-Werkstatt, den Abi-Weg, Wortschatz, Dossiers und deine Einstellungen. Die KI-Schlüssel bleiben auf dem Handy.",
+            confirmText = "Datei speichern",
+            onConfirm = {
+                exportAsk = false
+                exportLauncher.launch("AbiCoach-Lernstand-${java.time.LocalDate.now()}.zip")
+            },
+            onDismiss = { exportAsk = false },
+        ) {
+            SwitchRow(
+                "Kursmaterial mitnehmen",
+                if (megabytes < 0.1) "Noch kein Material hochgeladen." else "Etwa ${"%.0f".format(megabytes.coerceAtLeast(1.0))} MB mehr – sonst lädst du es auf dem neuen Handy neu hoch.",
+                withMaterial,
+                { withMaterial = it },
+            )
+        }
+    }
+    vm.pendingRestore?.let { (_, info) ->
+        val day = java.time.Instant.ofEpochMilli(info.exportedAt).atZone(java.time.ZoneId.systemDefault()).toLocalDate().format(DateTimeFormatter.ofPattern("dd.MM.yyyy"))
+        PopUp(
+            title = "Lernstand vom $day laden?",
+            description =
+                "Die Sicherung hat ${info.sessions} Sitzungen" + (if (info.withMaterial) " und dein Kursmaterial" else "") +
+                    ". Dein jetziger Lernstand auf diesem Handy wird dadurch ersetzt; deine Schlüssel bleiben. Die App startet danach neu.",
+            confirmText = "Laden",
+            onConfirm = { vm.restoreBackup() },
+            onDismiss = { vm.cancelRestore() },
+            confirmColor = yellow,
+        )
+    }
 
     DetailScaffold(title = "Einstellungen", onBack = { vm.tap(); vm.nav.pop() }, tag = "settings") {
         if (version < 0) return@DetailScaffold
@@ -149,6 +192,12 @@ fun SettingsScreen(vm: AppViewModel) {
             BodyText("Rückmeldung beim Üben (Standard)")
             Gap(6.dp)
             ChoiceChips(FeedbackMode.entries, settings.defaultFeedback, { it.label }, { vm.tap(); settings.defaultFeedback = it }, tagPrefix = "deffeedback")
+            Gap(12.dp)
+            BodyText("Gesprächsstil des Prüfers (Standard)")
+            Gap(6.dp)
+            ChoiceChips(de.abicoach.data.TalkStyle.entries, settings.talkStyle, { it.label }, { vm.tap(); settings.talkStyle = it }, tagPrefix = "deftalkstyle")
+            Gap(4.dp)
+            CaptionText(settings.talkStyle.description + " Für jede Übung kannst du das beim Einrichten ändern.")
             Gap(12.dp)
             var topics by remember { mutableStateOf(settings.courseTopics) }
             AbiTextField(
@@ -297,8 +346,38 @@ fun SettingsScreen(vm: AppViewModel) {
                 }
             }
         }
-        AbiCard {
+        AbiCard(modifier = Modifier.testTag("settings_data")) {
             CardTitle("Daten", icon = R.drawable.folder_24dp)
+            val busy = vm.backupBusy
+            if (busy != null) {
+                ProgressLine(null)
+                CaptionText(busy)
+                Gap(8.dp)
+            }
+            ActionButton(
+                "Lernstand sichern",
+                R.drawable.download_24dp,
+                green,
+                { vm.tap(); exportAsk = true },
+                subtitle = "Sitzungen, Lernprofil, Fehlergedächtnis, Abi-Weg, Wortschatz und Einstellungen als Datei",
+                enabled = busy == null,
+                container = MaterialTheme.colorScheme.background,
+                modifier = Modifier.testTag("data_export"),
+            )
+            Gap(8.dp)
+            ActionButton(
+                "Lernstand laden",
+                R.drawable.upload_24dp,
+                accent,
+                { vm.tap(); importLauncher.launch(arrayOf("application/zip", "application/octet-stream", "*/*")) },
+                subtitle = "Eine Sicherung zurückholen, z. B. auf einem neuen Handy",
+                enabled = busy == null,
+                container = MaterialTheme.colorScheme.background,
+                modifier = Modifier.testTag("data_import"),
+            )
+            Gap(8.dp)
+            CaptionText("Deine KI-Schlüssel kommen nie in die Sicherung – trag sie auf einem neuen Handy neu ein.")
+            Gap(12.dp)
             ActionButton("Alle Sitzungen löschen", R.drawable.delete_24dp, red, { confirm = "sessions" }, container = MaterialTheme.colorScheme.background)
             Gap(8.dp)
             ActionButton("Lernprofil zurücksetzen", R.drawable.refresh_24dp, yellow, { confirm = "profile" }, container = MaterialTheme.colorScheme.background)
@@ -307,6 +386,8 @@ fun SettingsScreen(vm: AppViewModel) {
         }
         AbiCard {
             CardTitle("Über AbiCoach", icon = R.drawable.info_24dp)
+            ActionButton("Tutorial ansehen", R.drawable.school_24dp, accent, { vm.openTutorial() }, subtitle = "So funktioniert die App – in acht kurzen Seiten", container = MaterialTheme.colorScheme.background, modifier = Modifier.testTag("settings_tutorial"))
+            Gap(10.dp)
             val versionName = runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "?"
             BodyText("Version $versionName")
             CaptionText(

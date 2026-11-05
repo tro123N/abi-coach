@@ -93,6 +93,8 @@ Regeln:
             sb.append("- Schlüssel: ").append(p.key).append(" | Regel: ").append(p.title).append(" | Kategorie: ").append(p.categoryLabel)
             val ex = p.examples.take(3).joinToString("; ") { "\"${it.wrong}\" → \"${it.right}\"" }
             if (ex.isNotBlank()) sb.append(" | Beispiele: ").append(ex)
+            // What the tutor of the Fehler-Werkstatt found still hard: the exercises go exactly there.
+            app.workshops.stillHard(p.key).takeIf { it.isNotBlank() }?.let { sb.append(" | Fällt noch schwer: ").append(it) }
             sb.append('\n')
         }
         val topics = app.course.coveredTopics().take(4).map { it.first }

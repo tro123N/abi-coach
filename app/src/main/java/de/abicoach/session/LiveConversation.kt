@@ -89,7 +89,12 @@ data class LiveUiState(
     val repeatTarget: String? = null,
     val repeatOk: Boolean = false,
     val repeatAt: Long = 0,
+    /** What the app itself said aloud (coach corrections, impulses in the presentation), for the transcript panel. */
+    val appSaid: List<AppLine> = emptyList(),
 )
+
+/** One sentence the app said aloud, [atMs] after the start of the part. */
+data class AppLine(val text: String, val atMs: Long)
 
 /**
  * One live part of a session: the examiner (Gemini Live, optional), the verbatim transcriber running in parallel,
@@ -122,6 +127,10 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
         val monologueSec: Int = 100,
         /** The error pattern (key in the error memory) that is a goal of this session: it gets priority in hints. */
         val goalPattern: String = "",
+        /** How the examiner leads: the director gives a responsive examiner more chances to follow the student's ideas. */
+        val talkStyle: de.abicoach.data.TalkStyle = de.abicoach.data.TalkStyle.AUSGEWOGEN,
+        /** The first topic of the conversation (English), the aim of the director's notes until the first switch. */
+        val mainTopic: String = "",
     )
 
     data class Result(
@@ -260,6 +269,8 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
 
     @Volatile private var nextElicitAt = 60_000L
 
+    @Volatile private var nextFollowAt = 75_000L
+
     @Volatile private var elicitIndex = 0
 
     /** Shows a prepared state without microphone or network (screenshots in the emulator test). */
@@ -360,7 +371,9 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
         if (config.part == 1 && seconds > 20 && now - lastSpeechAt > 25_000 && now - lastImpulseAt > 60_000) {
             lastImpulseAt = now
             muteUntil = now + 5_000
-            tts.say(Prompts.IMPULSES.random())
+            val impulse = Prompts.IMPULSES.random()
+            said(impulse, now)
+            tts.say(impulse)
         }
         // The transcriber heard speech for a long time but wrote nothing: its connection is probably dead.
         val ear = transcriber
@@ -439,7 +452,9 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
     private fun nextNote(now: Long, elapsed: Long): Pair<String, String>? {
         val target = config.targetSeconds * 1000L
         val switches = config.switchTopics
-        if (switchesSent < switches.size && elapsed >= target * 9 * (switchesSent + 1) / (10 * (switches.size + 1))) {
+        // A responsive examiner stays a little longer with the student's ideas before he moves on.
+        val pace = if (config.talkStyle == de.abicoach.data.TalkStyle.EINGEHEN) 11 else 9
+        if (switchesSent < switches.size && elapsed >= target * pace * (switchesSent + 1) / (10 * (switches.size + 1))) {
             val topic = switches[switchesSent]
             switchesSent++
             return "Themenwechsel ${switchesSent}/${switches.size}: ${topic.take(40)}" to Prompts.directorSwitch(topic, last = switchesSent == switches.size && switches.size > 1)
@@ -453,6 +468,11 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
             lastProbeAt = now
             synchronized(lock) { answers.clear() }
             return "kurze Antworten – der Prüfer fragt tiefer nach" to Prompts.DIRECTOR_PROBE
+        }
+        if (config.talkStyle == de.abicoach.data.TalkStyle.EINGEHEN && elapsed >= nextFollowAt && elapsed < target - 60_000) {
+            nextFollowAt = elapsed + 110_000
+            val topic = switches.getOrNull(switchesSent - 1) ?: config.mainTopic
+            return "auf den Gedanken des Schülers eingehen und zum Thema lenken" to Prompts.directorFollow(topic.ifBlank { "the topic of this conversation" })
         }
         if (config.elicit.isNotEmpty() && elapsed >= nextElicitAt && elapsed < target - 75_000) {
             nextElicitAt = elapsed + 150_000
@@ -794,6 +814,7 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
         val line = Prompts.coachSpeech(error)
         muteUntil = now + COACH_VOICE_MS + 300
         diag { it.copy(coachSpoken = it.coachSpoken + 1, coachByPhone = it.coachByPhone + 1) }
+        said(line, now)
         log("Coach spricht: $line")
         scope.launch {
             // 0 = not decided yet, 1 = the AI's voice plays, 2 = the phone's voice took over.
@@ -816,6 +837,11 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
                 tts.say(line)
             }
         }
+    }
+
+    /** Keeps what the app said aloud for the transcript panel (the student's record stays his own words and the examiner's). */
+    private fun said(text: String, now: Long) {
+        _state.update { it.copy(appSaid = (it.appSaid + AppLine(text, now - startedAt)).takeLast(40)) }
     }
 
     private fun expectRepeat(error: LiveError, now: Long) {

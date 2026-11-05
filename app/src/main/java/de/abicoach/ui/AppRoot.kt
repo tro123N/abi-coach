@@ -158,6 +158,10 @@ fun AppRoot(vm: AppViewModel) {
                             Screen.Errors -> de.abicoach.ui.screens.ErrorsScreen(vm)
                             is Screen.Dossier -> de.abicoach.ui.screens.DossierScreen(vm, screen.topic)
                             Screen.RealTasks -> de.abicoach.ui.screens.RealTasksScreen(vm)
+                            Screen.Workshop -> de.abicoach.ui.screens.WorkshopScreen(vm)
+                            Screen.Skills -> de.abicoach.ui.screens.SkillsScreen(vm)
+                            Screen.HalfYears -> de.abicoach.ui.screens.HalfYearsScreen(vm)
+                            Screen.Tutorial -> de.abicoach.ui.screens.TutorialScreen(vm)
                         }
                     }
                 }

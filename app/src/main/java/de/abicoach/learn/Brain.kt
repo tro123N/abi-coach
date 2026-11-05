@@ -386,22 +386,29 @@ object LearningBrain {
      * The topic field that needs practice most: covered in class but weak, unsure or never practised – not the one of
      * the last two sessions. With [random], one of the three most needed is drawn, so the student meets variety.
      */
-    fun pickTopic(app: AbiCoachApp, now: Long = System.currentTimeMillis(), random: Boolean = true, needDossier: Boolean = false, exclude: Set<Int> = emptySet()): Int {
+    /**
+     * The topic fields the student needs most, best first (weak, unsure, covered by much material, not practised just
+     * now) – with how much each is needed.
+     */
+    fun topicNeeds(app: AbiCoachApp, now: Long = System.currentTimeMillis(), exclude: Set<Int> = emptySet(), needDossier: Boolean = false): List<Pair<Int, Double>> {
         val profile = app.profiles.profile.value
         val covered = app.course.coveredTopics()
         val recent = app.store.sessions.value.take(2).map { it.topicId }.toSet()
         var pool = covered.map { it.first }.ifEmpty { Knowledge.TOPICS.map { it.id } }.filter { it !in exclude }
         if (needDossier) pool = pool.filter { app.dossiers.get(it) != null }
-        if (pool.isEmpty()) return if (needDossier) -1 else Knowledge.TOPICS.map { it.id }.filter { it !in exclude }.ifEmpty { listOf(0) }.random()
-        val need =
-            pool.associateWith { t ->
-                val st = profile.topics[t]
-                val mastery = st?.score ?: 7.0
-                val unsure = 1.0 - (st?.let { profile.effectiveConfidence(it, now) } ?: 0.0)
-                val material = covered.firstOrNull { it.first == t }?.second ?: 0
-                (15.0 - mastery) * (1.0 + 0.8 * unsure) * (1.0 + ln(1.0 + material) / 6.0) * (if (t in recent) 0.35 else 1.0)
-            }
-        val ranked = need.entries.sortedByDescending { it.value }
+        return pool.map { t ->
+            val st = profile.topics[t]
+            val mastery = st?.score ?: 7.0
+            val unsure = 1.0 - (st?.let { profile.effectiveConfidence(it, now) } ?: 0.0)
+            val material = covered.firstOrNull { it.first == t }?.second ?: 0
+            t to (15.0 - mastery) * (1.0 + 0.8 * unsure) * (1.0 + ln(1.0 + material) / 6.0) * (if (t in recent) 0.35 else 1.0)
+        }.sortedByDescending { it.second }
+    }
+
+    fun pickTopic(app: AbiCoachApp, now: Long = System.currentTimeMillis(), random: Boolean = true, needDossier: Boolean = false, exclude: Set<Int> = emptySet()): Int {
+        val needs = topicNeeds(app, now, exclude, needDossier)
+        if (needs.isEmpty()) return if (needDossier) -1 else Knowledge.TOPICS.map { it.id }.filter { it !in exclude }.ifEmpty { listOf(0) }.random()
+        val ranked = needs.map { java.util.AbstractMap.SimpleEntry(it.first, it.second) }
         if (!random) return ranked.first().key
         val top = ranked.take(3)
         val total = top.sumOf { it.value }
@@ -435,7 +442,7 @@ object LearningBrain {
         )
 
     /** Up to three concrete goals for a session: an error pattern, the weakest criterion of this task, a habit. */
-    fun goals(app: AbiCoachApp, kind: SessionKind, focusTask: Int): List<SessionGoal> {
+    fun goals(app: AbiCoachApp, kind: SessionKind, focusTask: Int, focusSkill: Skill? = null): List<SessionGoal> {
         if (kind == SessionKind.PLACEMENT) return emptyList()
         val now = System.currentTimeMillis()
         val profile = app.profiles.profile.value
@@ -462,8 +469,12 @@ object LearningBrain {
                 kind.hasPart1 -> listOf(Skill.STRUKTUR, Skill.AUFGABENBEZUG, Skill.ANALYSE, Skill.KOMMENTAR, Skill.FLUESSIGKEIT)
                 else -> listOf(Skill.INTERAKTION, Skill.SACHWISSEN, Skill.FLUESSIGKEIT, Skill.WORTSCHATZ)
             }
-        val weakest = relevant.minByOrNull { profile.skills[it]?.score ?: 9.0 } ?: relevant.first()
-        SKILL_GOALS[weakest]?.let { out += SessionGoal("skill", it.text, it.check, "skill", weakest.key) }
+        // A session that trains one competence on its own has exactly that one as its skill goal.
+        val weakest = focusSkill ?: relevant.minByOrNull { profile.skills[it]?.score ?: 9.0 } ?: relevant.first()
+        SKILL_GOALS[weakest]?.let { goal ->
+            val goalSkill = SessionGoal("skill", goal.text, goal.check, "skill", weakest.key)
+            if (focusSkill != null) out.add(0, goalSkill) else out += goalSkill
+        }
         val wantedArea = if (kind.hasPart1 && kind != SessionKind.SIMULATION) setOf("vortrag", "inhalt", "strategie", "sprache") else setOf("gespraech", "inhalt", "strategie", "sprache")
         val habit = app.insights.weaknesses(6).firstOrNull { it.area in wantedArea }
         if (habit != null) {

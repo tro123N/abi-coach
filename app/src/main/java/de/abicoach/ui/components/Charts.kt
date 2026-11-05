@@ -117,6 +117,110 @@ fun LineChart(
     }
 }
 
+/** One line of a [MultiLineChart]; null values are gaps (e.g. a competence that was not measured in that session). */
+data class ChartSeries(val values: List<Float?>, val color: Color, val label: String, val dashed: Boolean = false, val dots: Boolean = true)
+
+/**
+ * Several lines over the same x positions (e.g. the sessions in time order), with guides and x labels. The last value
+ * of the first line is written next to it.
+ */
+@Composable
+fun MultiLineChart(
+    series: List<ChartSeries>,
+    modifier: Modifier = Modifier,
+    guides: List<ChartGuide> = emptyList(),
+    labels: List<String> = emptyList(),
+    height: Dp = 170.dp,
+    minY: Float? = 0f,
+    maxY: Float? = null,
+    valueText: (Float) -> String = { it.roundToInt().toString() },
+) {
+    val measurer = rememberTextMeasurer()
+    val textColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f)
+    val gridColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.15f)
+    val dotFill = MaterialTheme.colorScheme.primary
+    val labelStyle = TextStyle(fontSize = 10.sp, color = textColor)
+    Canvas(modifier = modifier.fillMaxWidth().height(height)) {
+        val count = series.maxOfOrNull { it.values.size } ?: 0
+        if (count == 0) return@Canvas
+        val top = 14.dp.toPx()
+        val bottom = if (labels.any { it.isNotEmpty() }) 18.dp.toPx() else 6.dp.toPx()
+        val left = 6.dp.toPx()
+        val right = 44.dp.toPx()
+        val chartHeight = size.height - top - bottom
+        val chartWidth = size.width - left - right
+        val all = series.flatMap { s -> s.values.filterNotNull() } + guides.map { it.value }
+        var lo = minY ?: (all.minOrNull() ?: 0f)
+        var hi = maxY ?: (all.maxOrNull() ?: 1f)
+        if (hi - lo < 1e-3f) {
+            hi += 1f
+            lo -= if (minY == null) 1f else 0f
+        }
+        if (maxY == null) hi += (hi - lo) * 0.1f
+
+        fun y(v: Float) = top + chartHeight * (1f - (v - lo) / (hi - lo))
+
+        fun x(i: Int) = if (count == 1) left + chartWidth / 2 else left + chartWidth * i / (count - 1)
+
+        drawLine(gridColor, Offset(left, top + chartHeight), Offset(left + chartWidth, top + chartHeight), strokeWidth = 1.dp.toPx())
+        listOf(0.25f, 0.5f, 0.75f).forEach { f ->
+            val gy = top + chartHeight * f
+            drawLine(gridColor.copy(alpha = 0.07f), Offset(left, gy), Offset(left + chartWidth, gy), strokeWidth = 1.dp.toPx())
+        }
+        guides.forEach { g ->
+            val gy = y(g.value)
+            drawLine(
+                g.color.copy(alpha = 0.8f),
+                Offset(left, gy),
+                Offset(left + chartWidth, gy),
+                strokeWidth = 1.5.dp.toPx(),
+                pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 8f)),
+            )
+            val layout = measurer.measure(g.label, labelStyle.copy(color = g.color))
+            drawText(layout, topLeft = Offset(left + chartWidth + 4.dp.toPx(), gy - layout.size.height / 2f))
+        }
+        series.forEach { s ->
+            // Lines join the measured points; a gap (null) is bridged, so a competence measured now and then still shows its course.
+            val points = s.values.mapIndexedNotNull { i, v -> v?.let { Offset(x(i), y(it)) } }
+            if (points.size > 1) {
+                val path = Path()
+                points.forEachIndexed { i, p -> if (i == 0) path.moveTo(p.x, p.y) else path.lineTo(p.x, p.y) }
+                drawPath(
+                    path,
+                    s.color,
+                    style =
+                        Stroke(
+                            width = (if (s.dashed) 2.dp else 2.5.dp).toPx(),
+                            cap = StrokeCap.Round,
+                            pathEffect = if (s.dashed) PathEffect.dashPathEffect(floatArrayOf(14f, 10f)) else null,
+                        ),
+                )
+            }
+            if (s.dots) {
+                points.forEach { p ->
+                    drawCircle(s.color, radius = 4.dp.toPx(), center = p)
+                    drawCircle(dotFill, radius = 2.dp.toPx(), center = p)
+                }
+            }
+        }
+        series.firstOrNull()?.values?.withIndex()?.lastOrNull { it.value != null }?.let { (i, v) ->
+            val value = v ?: return@let
+            val color = series.first().color
+            val layout = measurer.measure(valueText(value), labelStyle.copy(color = color))
+            val lx = (x(i) - layout.size.width - 6.dp.toPx()).coerceIn(0f, size.width - layout.size.width)
+            val ly = (y(value) - layout.size.height - 2.dp.toPx()).coerceAtLeast(0f)
+            drawText(layout, topLeft = Offset(lx, ly))
+        }
+        labels.forEachIndexed { i, label ->
+            if (label.isNotEmpty() && i < count) {
+                val layout = measurer.measure(label, labelStyle)
+                val tx = (x(i) - layout.size.width / 2f).coerceIn(0f, size.width - layout.size.width)
+                drawText(layout, topLeft = Offset(tx, size.height - layout.size.height))
+            }
+        }
+    }
+}
+
 /** Säulendiagramm mit eigener Farbe je Säule, z. B. Übungsminuten pro Tag. */
 @Composable
 fun ColorBarChart(

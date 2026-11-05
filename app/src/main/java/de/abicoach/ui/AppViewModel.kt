@@ -97,6 +97,18 @@ sealed interface Screen {
 
     /** The original exam tasks found in the uploaded Abitur material. */
     data object RealTasks : Screen
+
+    /** The Fehler-Werkstatt: one error pattern, step by step. */
+    data object Workshop : Screen
+
+    /** Every competence on its own: level, course and a matching exercise. */
+    data object Skills : Screen
+
+    /** Which topic field the course covered in which Kurshalbjahr. */
+    data object HalfYears : Screen
+
+    /** The tutorial at the first start. */
+    data object Tutorial : Screen
 }
 
 /** A tiny back stack; the Abi-Weg always stays at the bottom, like the Kletterweg in Mental Math Plus. */
@@ -159,6 +171,9 @@ data class AskMessage(
 /** Holds the flow of a session across screens: material, notes, the live parts and the analysis. */
 class AppViewModel(application: Application) : AndroidViewModel(application) {
     val app = application as AbiCoachApp
+
+    /** The Fehler-Werkstatt (its state lives as long as the app screen). */
+    val workshop = WorkshopController(app, viewModelScope) { notice = it }
     val nav = Navigator()
 
     var busy by mutableStateOf<String?>(null)
@@ -310,7 +325,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun pendingFor(key: String, s: SessionSetup, topicId: Int) =
-        PendingMaterialStore.Pending(key, s.kind, s.feedback, topicId, s.focusTask, s.focusCategories, s.levelId.orEmpty(), s.prepMinutes, System.currentTimeMillis())
+        PendingMaterialStore.Pending(
+            key, s.kind, s.feedback, topicId, s.focusTask, s.focusCategories, s.levelId.orEmpty(), s.prepMinutes, System.currentTimeMillis(),
+            focusSkill = s.focusSkill, talkStyle = (s.talkStyle ?: app.settings.talkStyle).name,
+        )
 
     /** The exam text is written by a background job: it keeps going when the student leaves the app. */
     private fun startMaterial(s: SessionSetup) {
@@ -348,7 +366,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         notice = note
         draft =
             SessionRecord.create(p.kind, p.feedback, p.topicId, generated, p.focusTask, p.focusCategories)
-                .copy(levelId = p.levelId, goals = LearningBrain.goals(app, p.kind, p.focusTask))
+                .copy(
+                    levelId = p.levelId,
+                    goals = LearningBrain.goals(app, p.kind, p.focusTask, de.abicoach.profile.Skill.byKey(p.focusSkill)),
+                    focusSkill = p.focusSkill,
+                    talkStyle = p.talkStyle,
+                )
         prepMinutes = p.prepMinutes
         prepEndsAt = 0L
         if (openNow) {
@@ -484,10 +507,18 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         // Like in the Abitur, the exam conversation links several topic fields: the ones the student chose, or else
         // a second one he needs most. A training covers further topic fields only if the student chose them.
         val chosen = s.extraTopics.filter { it in 0..13 && it != topicId }.distinct().take(MAX_EXTRA_TOPICS)
-        val extras = if (chosen.isEmpty() && s.kind == SessionKind.PART2) listOf(LearningBrain.pickTopic(app, exclude = setOf(topicId))) else chosen
+        // Without a choice the second topic field comes from another Kurshalbjahr (the Abitur links the terms).
+        val extras = if (chosen.isEmpty() && s.kind == SessionKind.PART2) de.abicoach.memory.HalfYears.part2Topics(app, topicId, 1) else chosen
+        val style = s.talkStyle ?: app.settings.talkStyle
         val record =
             SessionRecord.create(s.kind, s.feedback, topicId, null, 0, s.focusCategories)
-                .copy(levelId = s.levelId.orEmpty(), goals = LearningBrain.goals(app, s.kind, 0), extraTopics = extras)
+                .copy(
+                    levelId = s.levelId.orEmpty(),
+                    goals = LearningBrain.goals(app, s.kind, 0, de.abicoach.profile.Skill.byKey(s.focusSkill)),
+                    extraTopics = extras,
+                    focusSkill = s.focusSkill,
+                    talkStyle = style.name,
+                )
         draft = record
         viewModelScope.launch {
             val context =
@@ -509,6 +540,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     extra = s.instruction,
                     patterns = patternBlockFor(s.feedback),
                     otherTopics = others,
+                    talkStyle = style,
                 )
             val conversation =
                 LiveConversation(
@@ -525,8 +557,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         directed = true,
                         switchTopics = others,
                         elicit = if (s.feedback != FeedbackMode.PRUEFUNG) app.errorMemory.examinerLines(4) else emptyList(),
-                        monologueSec = if (s.isSprint) 0 else 100,
+                        monologueSec = if (s.isSprint) 0 else if (style == de.abicoach.data.TalkStyle.EINGEHEN) 140 else 100,
                         goalPattern = goalPattern(record),
+                        talkStyle = style,
+                        mainTopic = Knowledge.topic(topicId)?.english.orEmpty(),
                     ),
                 )
             live = conversation
@@ -601,12 +635,18 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         t.part2.firstOrNull()?.let { runCatching { app.course.forTopic(it.topicId, maxChars = 3_000) }.getOrDefault("") }.orEmpty()
                     }
                 val minutes = if (updated.kind == SessionKind.PLACEMENT) 4 else 10
+                val part2Style = de.abicoach.data.TalkStyle.of(updated.talkStyle) ?: app.settings.talkStyle
                 val next =
                     LiveConversation(
                         app,
                         LiveConversation.Config(
                             part = 2,
-                            examinerPrompt = Prompts.part2Examiner(t, excerpt, app.course.overview(1_200), topicContext, app.course.teacherNotes(6), minutes, patternBlockFor(updated.feedback)),
+                            examinerPrompt =
+                                Prompts.part2Examiner(
+                                    t, excerpt, app.course.overview(1_200), topicContext, app.course.teacherNotes(6), minutes, patternBlockFor(updated.feedback),
+                                    talkStyle = part2Style,
+                                    termNote = de.abicoach.memory.HalfYears.promptNote(app, t.topicId, t.part2.map { it.topicId }),
+                                ),
                             kickoff = Prompts.KICKOFF_PART2,
                             feedback = updated.feedback,
                             vocabulary = vocabulary(),
@@ -617,6 +657,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                             switchTopics = t.part2.drop(1).map { "${Knowledge.topic(it.topicId)?.english ?: "another topic field"} – ${it.question}" },
                             elicit = if (updated.feedback != FeedbackMode.PRUEFUNG) app.errorMemory.examinerLines(4) else emptyList(),
                             goalPattern = goalPattern(updated),
+                            talkStyle = part2Style,
+                            mainTopic = t.part2.firstOrNull()?.let { "${Knowledge.topic(it.topicId)?.english ?: "another topic field"} – ${it.question}" }.orEmpty(),
+                            monologueSec = if (part2Style == de.abicoach.data.TalkStyle.EINGEHEN) 140 else 100,
                         ),
                     )
                 live = next
@@ -1389,6 +1432,21 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** Opens the Fehler-Werkstatt for one pattern, or for the most urgent one. */
+    fun openWorkshop(patternKey: String? = null) {
+        tap()
+        stopSpeaking()
+        workshop.open(patternKey)
+        if (nav.current != Screen.Workshop) nav.push(Screen.Workshop)
+    }
+
+    fun closeWorkshop() {
+        tap()
+        workshop.close()
+        stopSpeaking()
+        if (nav.current == Screen.Workshop) nav.pop()
+    }
+
     fun closeDrills() {
         drillJob?.cancel()
         drillRecorder?.release()
@@ -1571,6 +1629,96 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             }
     }
 
+    /** The small "Mitschrift" button in live sessions (the choice is kept for the next session). */
+    var liveTranscript by mutableStateOf(app.settings.liveTranscriptOpen)
+        private set
+
+    fun toggleLiveTranscript() {
+        tap()
+        liveTranscript = !liveTranscript
+        app.settings.liveTranscriptOpen = liveTranscript
+    }
+
+    // ---------- backup of the learning progress ----------
+
+    /** What the backup is doing right now (shown on the settings page), null when idle. */
+    var backupBusy by mutableStateOf<String?>(null)
+        private set
+
+    /** A backup file the student picked, waiting for the confirmation to load it. */
+    var pendingRestore by mutableStateOf<Pair<android.net.Uri, de.abicoach.data.Backup.Info>?>(null)
+        private set
+
+    fun exportBackup(uri: android.net.Uri, withMaterial: Boolean) {
+        backupBusy = "Sichere deinen Lernstand …"
+        viewModelScope.launch {
+            try {
+                val info =
+                    withContext(Dispatchers.IO) {
+                        app.contentResolver.openOutputStream(uri)?.use { de.abicoach.data.Backup.export(app, it, withMaterial) }
+                            ?: throw IllegalStateException("Die Datei konnte nicht geschrieben werden.")
+                    }
+                notice = "Lernstand gesichert: ${info.sessions} Sitzungen, Lernprofil, Fehlergedächtnis und Einstellungen" + if (withMaterial) " – mit deinem Kursmaterial." else "."
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                errorMessage = "Sichern hat nicht geklappt: ${e.message}"
+            } finally {
+                backupBusy = null
+            }
+        }
+    }
+
+    fun inspectBackup(uri: android.net.Uri) {
+        viewModelScope.launch {
+            val info = withContext(Dispatchers.IO) { runCatching { app.contentResolver.openInputStream(uri)?.use { de.abicoach.data.Backup.inspect(it) } }.getOrNull() }
+            if (info == null) {
+                errorMessage = "Diese Datei ist keine AbiCoach-Sicherung."
+            } else {
+                pendingRestore = uri to info
+            }
+        }
+    }
+
+    fun cancelRestore() {
+        pendingRestore = null
+    }
+
+    /** Loads the picked backup and restarts the app, so that every part reads the restored progress. */
+    fun restoreBackup() {
+        val (uri, _) = pendingRestore ?: return
+        pendingRestore = null
+        backupBusy = "Lade deinen Lernstand …"
+        viewModelScope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    app.contentResolver.openInputStream(uri)?.use { de.abicoach.data.Backup.restore(app, it) } ?: throw IllegalStateException("Die Datei konnte nicht gelesen werden.")
+                }
+                val intent =
+                    app.packageManager.getLaunchIntentForPackage(app.packageName)
+                        ?.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                if (intent != null) app.startActivity(intent)
+                Runtime.getRuntime().exit(0)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                errorMessage = "Laden hat nicht geklappt: ${e.message}"
+                backupBusy = null
+            }
+        }
+    }
+
+    fun finishTutorial() {
+        tap()
+        app.settings.tutorialDone = true
+        if (nav.current == Screen.Tutorial) nav.pop()
+    }
+
+    fun openTutorial() {
+        tap()
+        nav.push(Screen.Tutorial)
+    }
+
     /** Makes the speech of a sentence the student will probably want to hear, so that the tap plays at once. */
     fun prefetchSpeech(text: String) {
         if (text.isNotBlank()) app.ai.prefetchSpeech(text)
@@ -1620,6 +1768,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         watchAnalysis()
         watchMaterial()
         restoreWork()
+        // The very first start: the tutorial explains the app.
+        if (!app.settings.tutorialDone && nav.current is Screen.Root) nav.push(Screen.Tutorial)
     }
 
     companion object {

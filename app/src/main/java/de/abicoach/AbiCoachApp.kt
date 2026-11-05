@@ -69,6 +69,10 @@ class AbiCoachApp : Application() {
     lateinit var insights: de.abicoach.learn.InsightStore
         private set
 
+    /** What the tutor of the Fehler-Werkstatt has learnt about each of the student's error patterns. */
+    lateinit var workshops: de.abicoach.learn.WorkshopStore
+        private set
+
     /** Evaluations that run in Google's cloud and are not picked up yet. */
     lateinit var cloudJobs: de.abicoach.session.CloudJobStore
         private set
@@ -108,6 +112,7 @@ class AbiCoachApp : Application() {
         dossiers = de.abicoach.memory.DossierStore(this)
         errorMemory = de.abicoach.learn.ErrorMemoryStore(this)
         insights = de.abicoach.learn.InsightStore(this)
+        workshops = de.abicoach.learn.WorkshopStore(this)
         cloudJobs = de.abicoach.session.CloudJobStore(this)
         course = CourseContext(memory, Retriever(memory, ai, settings), settings, profiles, dossiers)
         feedback = Feedback(this, { settings.sound }, { settings.vibration })

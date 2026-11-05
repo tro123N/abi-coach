@@ -198,6 +198,7 @@ fun CourseScreen(vm: AppViewModel) {
             }
         }
         if (docs.isNotEmpty()) item { StatusCard(stats, docs) }
+        item(key = "halfyears") { HalfYearsCard(vm) }
         if (stats.passages > 0) item { DossiersCard(vm) }
         if (stats.passages > 0) item { KnowledgeMapCard(stats) }
         DocKind.entries.forEach { kind ->
@@ -694,5 +695,33 @@ private fun AskBubble(vm: AppViewModel, m: AskMessage) {
             }
             if (m.by.isNotBlank()) CaptionText(m.by)
         }
+    }
+}
+
+/** Which topic field was in which half-year: decides the topics of part 2 in a simulation. */
+@Composable
+private fun HalfYearsCard(vm: AppViewModel) {
+    val version by vm.app.settings.version.collectAsState()
+    val docs by vm.app.memory.docs.collectAsState()
+    val map = remember(version, docs) { de.abicoach.memory.HalfYears.mapping(vm.app) }
+    AbiCard(modifier = Modifier.testTag("course_halfyears")) {
+        CardTitle("Halbjahre", icon = R.drawable.calendar_clock_24dp)
+        if (map.isEmpty()) {
+            CaptionText("Stell ein, welches Themenfeld ihr in welchem Halbjahr hattet. Dann nimmt Teil 2 der Simulation Themen aus anderen Halbjahren als Teil 1 – wie im Abitur.")
+        } else {
+            de.abicoach.memory.HalfYears.Q.forEach { half ->
+                val topics = map.filterValues { it == half }.keys.sorted()
+                if (topics.isNotEmpty()) CaptionText("$half: " + topics.joinToString(", ") { Knowledge.topicShort(it) })
+            }
+        }
+        Gap(8.dp)
+        ActionButton(
+            if (map.isEmpty()) "Halbjahre einstellen" else "Halbjahre ändern",
+            R.drawable.event_24dp,
+            accent,
+            { vm.tap(); vm.nav.push(Screen.HalfYears) },
+            container = MaterialTheme.colorScheme.background,
+            modifier = Modifier.testTag("course_halfyears_edit"),
+        )
     }
 }

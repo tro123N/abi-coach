@@ -97,10 +97,37 @@ Rules:
         "Time to move on. In your next turn, react to the student's answer in one short sentence, then switch explicitly to the next topic: $topic. " +
             "Connect it to what was said before" + if (last) " and, near the end, ask how the topics discussed are related." else "."
 
+    /** Responsive style: build on the student's own idea and lead it a step towards the topic. */
+    fun directorFollow(topic: String): String =
+        "Pick up the most interesting point the student has just made, ask one question about it, and use it as a bridge one step towards: $topic."
+
     fun directorElicit(line: String): String =
         "In your next question, create a natural situation in which the student needs this structure – without mentioning grammar or mistakes: $line."
 
-    fun part2Examiner(task: ExamTask, part1Excerpt: String, courseOverview: String, topicContext: String, teacherNotes: String, minutes: Int, patterns: String = ""): String {
+    /** How the examiner leads: like the Abitur, balanced, or responsive (follows the student's ideas, steers gently). */
+    fun talkStyleBlock(style: de.abicoach.data.TalkStyle): String =
+        when (style) {
+            de.abicoach.data.TalkStyle.PRUEFUNG ->
+                "\nConversation style: like the real Abitur. You lead: ask clear open questions, keep your turns short, follow your plan and switch topics on time."
+            de.abicoach.data.TalkStyle.AUSGEWOGEN ->
+                "\nConversation style: balanced. Follow your plan, but build every question on what the student has just said."
+            de.abicoach.data.TalkStyle.EINGEHEN ->
+                "\nConversation style: responsive. Be a genuinely interested conversation partner: pick up the student's own points, examples and opinions, " +
+                    "ask about them and let the conversation follow his ideas for a while. Still steer: every question should lead one step towards the topics of this " +
+                    "conversation; if he drifts away, connect his point back to the topic with a bridge (\"That's interesting – how does that relate to …?\")."
+        }
+
+    fun part2Examiner(
+        task: ExamTask,
+        part1Excerpt: String,
+        courseOverview: String,
+        topicContext: String,
+        teacherNotes: String,
+        minutes: Int,
+        patterns: String = "",
+        talkStyle: de.abicoach.data.TalkStyle = de.abicoach.data.TalkStyle.AUSGEWOGEN,
+        termNote: String = "",
+    ): String {
         val topics = task.part2.ifEmpty { emptyList() }
         val topicA = topics.getOrNull(0)?.let { "${Knowledge.topic(it.topicId)?.english ?: "another topic area"} – ${it.question}" } ?: "a topic area from another term of the course"
         val topicB = topics.getOrNull(1)?.let { "${Knowledge.topic(it.topicId)?.english ?: "another topic area"} – ${it.question}" } ?: topicA
@@ -124,7 +151,7 @@ What the student said in part 1 (excerpt): $part1Excerpt
 Your plan for part 2:
 1. Thank the student in one short sentence and lead over from the presentation to a broader question.
 2. Talk about: $topicA
-3. $switchPlan$factLine${courseBlock(courseOverview, topicContext, teacherNotes)}$patterns
+3. $switchPlan$termNote$factLine${talkStyleBlock(talkStyle)}${courseBlock(courseOverview, topicContext, teacherNotes)}$patterns
 $EXAMINER_RULES
 - Never correct the student's English and never comment on mistakes yourself – the app's coach does that (you then get a COACH_NOTE).
 """.trim()
@@ -142,6 +169,7 @@ $EXAMINER_RULES
         patterns: String = "",
         /** The other topic fields of the conversation, in order; the app tells the examiner when to switch. */
         otherTopics: List<String> = emptyList(),
+        talkStyle: de.abicoach.data.TalkStyle = de.abicoach.data.TalkStyle.AUSGEWOGEN,
     ): String {
         val coach =
             if (mode == FeedbackMode.COACH) {
@@ -171,7 +199,7 @@ $EXAMINER_RULES
 You are an experienced English teacher in North Rhine-Westphalia, Germany, running a speaking practice that prepares a student for the oral Abitur exam in English (basic course). You start speaking with one short greeting and your first question.
 
 Topic field: $topic$focusLine
-$style${if (extra.isNotBlank()) "\nSpecial focus of this exercise: $extra" else ""}${courseBlock(courseOverview, topicContext, teacherNotes)}$patterns
+$style${if (extra.isNotBlank()) "\nSpecial focus of this exercise: $extra" else ""}${talkStyleBlock(talkStyle)}${courseBlock(courseOverview, topicContext, teacherNotes)}$patterns
 $EXAMINER_RULES
 $coach
 """.trim()
@@ -393,6 +421,10 @@ ${skillLines()}
             if (t.solution.isNotBlank()) sb.append("Lösungsvorschlag aus dem Original-Material (Kernpunkte):\n").append(t.solution.take(3_000)).append('\n')
         }
         if (record.focusCategories.isNotEmpty()) sb.append("\nGeübte Schwachstellen: ").append(record.focusCategories.joinToString(", ") { Knowledge.categoryLabel(it) })
+        Skill.byKey(record.focusSkill)?.let { skill ->
+            sb.append("\nFokus-Kompetenz dieser Übung: ").append(skill.label).append(" (").append(skill.description).append(")")
+            sb.append(" – der Schüler trainiert sie gezielt: beurteile sie besonders genau, belege es mit seinen eigenen Worten und gib in levers mindestens einen konkreten Tipp genau dazu.")
+        }
         if (record.notes.isNotBlank()) sb.append("\n\nNotizen des Prüflings aus der Vorbereitung:\n").append(record.notes)
         if (courseContext.isNotBlank()) sb.append("\n\n").append(courseContext)
         if (teacherNotes.isNotBlank()) sb.append("\n\n").append(teacherNotes)

@@ -269,6 +269,14 @@ fun ErrorsScreen(vm: AppViewModel) {
             AbiCard { BodyText("Noch keine Fehler gesammelt. Nach deiner ersten ausgewerteten Übung steht hier, woran du arbeiten solltest.") }
             return@DetailScaffold
         }
+        ActionButton(
+            "Fehler-Werkstatt",
+            R.drawable.school_24dp,
+            accent,
+            { vm.openWorkshop() },
+            subtitle = "Den wichtigsten Fehler Schritt für Schritt beheben · ca. 8 Minuten",
+            modifier = Modifier.testTag("errors_workshop"),
+        )
         if (due > 0) {
             ActionButton(
                 "Sprech-Training starten",
@@ -327,10 +335,16 @@ private fun PatternRow(vm: AppViewModel, p: ErrorPattern, now: Long) {
         }
         Pill(p.state.label, stateColor(p.state))
         if (p.state != PatternState.BEHOBEN) {
-            IconButton(onClick = { vm.openDrills(listOf(p.key)) }) {
-                Icon(painterResource(R.drawable.mic_24dp), contentDescription = "Trainieren", tint = accent, modifier = Modifier.size(dimens.icons.menuItem * 0.8f))
+            IconButton(onClick = { vm.openWorkshop(p.key) }, modifier = Modifier.testTag("pattern_workshop")) {
+                Icon(painterResource(R.drawable.school_24dp), contentDescription = "In die Fehler-Werkstatt", tint = accent, modifier = Modifier.size(dimens.icons.menuItem * 0.8f))
             }
         }
+    }
+    // What the tutor of the Fehler-Werkstatt learnt about this mistake.
+    val memory = vm.app.workshops.get(p.key)
+    if (memory != null && memory.rounds > 0) {
+        val note = memory.stillHard.ifBlank { memory.understood }
+        CaptionText("Werkstatt: ${memory.rounds}× geübt, zuletzt ${memory.runs.last().score} %" + if (note.isNotBlank()) " · ${if (memory.stillHard.isNotBlank()) "noch schwer" else "kann"}: $note" else "", color = accent)
     }
 }
 

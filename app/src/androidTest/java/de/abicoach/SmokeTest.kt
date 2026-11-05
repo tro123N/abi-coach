@@ -126,6 +126,21 @@ class SmokeTest {
 
     @Test
     fun a_freshStart() {
+        // The very first start: the tutorial explains the app.
+        ui {
+            app.settings.tutorialDone = false
+            compose.activity.vm.nav.openTab(Tab.WEG)
+            compose.activity.vm.nav.push(Screen.Tutorial)
+        }
+        shot("tutorial_1")
+        runCatching { compose.onNodeWithTag("tutorial_next").performClick() }
+        shot("tutorial_2")
+        repeat(5) { runCatching { compose.onNodeWithTag("tutorial_next").performClick() } }
+        shot("tutorial_7")
+        runCatching { compose.onNodeWithTag("tutorial_next").performClick() }
+        shot("tutorial_ende")
+        runCatching { compose.onNodeWithTag("tutorial_done").performClick() }
+        Log.i(TAG, "Tutorial fertig: ${app.settings.tutorialDone}")
         ui {
             app.store.deleteAll()
             app.profiles.reset()
@@ -230,6 +245,33 @@ class SmokeTest {
         shot("echte_aufgaben")
         ui { vm.nav.pop(); vm.nav.push(Screen.Errors) }
         shot("fehlergedaechtnis")
+        // The Fehler-Werkstatt, step by step (a prepared lesson, no AI needed for the pictures).
+        val pattern = app.errorMemory.patterns.value.first()
+        val lesson = Demo.workshopLesson(pattern.key)
+        val tutor = Demo.tutor(pattern.key)
+        ui { vm.workshop.demo(pattern, lesson, de.abicoach.ui.WorkshopController.Stage.LEARN, tutor); vm.nav.push(Screen.Workshop) }
+        shot("werkstatt_verstehen")
+        ui { vm.workshop.next() }
+        shot("werkstatt_erkennen")
+        runCatching { compose.onNodeWithTag("ws_wrong").performClick() }
+        shot("werkstatt_erkennen_antwort")
+        ui { vm.workshop.demo(pattern, lesson, de.abicoach.ui.WorkshopController.Stage.SPEAK, tutor) }
+        shot("werkstatt_sagen")
+        ui { vm.workshop.demo(pattern, lesson, de.abicoach.ui.WorkshopController.Stage.TALK, tutor) }
+        shot("werkstatt_frei_sprechen")
+        ui { vm.workshop.demo(pattern, lesson, de.abicoach.ui.WorkshopController.Stage.DONE, tutor) }
+        shot("werkstatt_ergebnis")
+        swipeShot("workshop", "werkstatt_ergebnis_unten", 1)
+        ui { vm.nav.pop() }
+        // Every competence on its own.
+        ui { vm.nav.push(Screen.Skills) }
+        shot("kompetenzen")
+        swipeShot("skills", "kompetenzen_2", 2)
+        swipeShot("skills", "kompetenzen_3", 3)
+        ui { vm.nav.pop() }
+        ui { vm.nav.push(Screen.HalfYears) }
+        shot("halbjahre")
+        ui { vm.nav.pop() }
         swipeShot("errors", "fehlergedaechtnis_unten", 2)
         ui { vm.nav.pop(); vm.demoDrills(Demo.drills(), 0) }
         shot("sprech_training")
@@ -246,6 +288,11 @@ class SmokeTest {
 
         ui { vm.nav.openTab(Tab.STATS) }
         shot("statistik")
+        runCatching { compose.onNodeWithTag("dev_areas").performClick() }
+        shot("entwicklung_inhalt_sprache")
+        runCatching { compose.onNodeWithTag("dev_skill").performClick() }
+        shot("entwicklung_kompetenz")
+        runCatching { compose.onNodeWithTag("dev_total").performClick() }
         swipeShot("list_stats", "statistik_mitte", 1)
         scrollShot("list_stats", 4, "statistik_lerner_gedaechtnis")
         swipeShot("list_stats", "statistik_unten", 2)
@@ -299,6 +346,9 @@ class SmokeTest {
         runCatching { compose.onNodeWithTag("setup_more_topics").performScrollTo() }
         runCatching { compose.onNodeWithTag("moretopic_2").performClick() }
         shot("einrichten_gespraech_themen")
+        runCatching { compose.onNodeWithTag("setup_talk_style").performScrollTo() }
+        runCatching { compose.onNodeWithTag("talkstyle_2").performClick() }
+        shot("einrichten_gespraechsstil")
         ui { vm.nav.pop(); vm.nav.push(Screen.Setup(SessionSetup.defaults(SessionKind.PART1, 2, FeedbackMode.COACH))) }
         shot("einrichten_aufgabe2")
 
@@ -316,6 +366,9 @@ class SmokeTest {
 
         ui { vm.demoClear(); vm.demoLive(Demo.liveState(part = 2), part = 2, withExaminer = true) }
         shot("gespraech_live")
+        ui { if (!vm.liveTranscript) vm.toggleLiveTranscript() }
+        shot("gespraech_mitschrift_knopf")
+        ui { if (vm.liveTranscript) vm.toggleLiveTranscript() }
         ui { vm.demoClear(); vm.demoPrep(Demo.task(), SessionKind.SIMULATION) }
         ui { vm.demoLive(Demo.liveState(part = 1), part = 1, withExaminer = false) }
         shot("vortrag_live")
@@ -344,7 +397,12 @@ class SmokeTest {
         shot("einstellungen_claude")
         runCatching { compose.onNodeWithTag("settings_roles").performScrollTo() }
         shot("einstellungen_claude_rollen")
-        ui { app.settings.provider = de.abicoach.ai.Provider.GOOGLE; vm.nav.pop() }
+        ui { app.settings.provider = de.abicoach.ai.Provider.GOOGLE; vm.nav.pop(); vm.nav.push(Screen.Settings) }
+        runCatching { compose.onNodeWithTag("settings_data").performScrollTo() }
+        shot("einstellungen_daten")
+        runCatching { compose.onNodeWithTag("data_export").performClick() }
+        shot("einstellungen_sichern")
+        ui { vm.nav.pop() }
 
         // Dark mode
         ui { app.settings.themeMode = ThemeMode.DARK; vm.nav.openTab(Tab.WEG) }
@@ -538,6 +596,7 @@ object Demo {
             micLevel = 0.45f,
             examinerSpeaking = false,
             examinerLabel = "Gemini 3.8 Live",
+            appSaid = if (part == 2) listOf(de.abicoach.session.AppLine("Careful: not \"in the class\", but \"in class\". Say it again, please.", 20_000)) else emptyList(),
             diag =
                 LiveDiag(
                     micHeard = true,
@@ -566,6 +625,8 @@ object Demo {
         s.geminiKey = "demo-gemini-key"
         s.courseTopics = "The Hate U Give, Brexit, Purple Hibiscus, Black Mirror"
         s.themeMode = ThemeMode.LIGHT
+        s.tutorialDone = true
+        s.halfYearTopics = mapOf("Q1.1" to setOf(0, 1), "Q1.2" to setOf(4, 10), "Q2.1" to setOf(8, 7), "Q2.2" to setOf(12, 13))
 
         app.profiles.update {
             Profile(
@@ -891,6 +952,42 @@ object Demo {
             ),
         )
     }
+
+    fun workshopLesson(key: String): de.abicoach.learn.WorkshopLesson =
+        de.abicoach.learn.WorkshopLesson(
+            patternKey = key,
+            title = "3. Person Singular: -s",
+            explanation =
+                "Bei he, she, it und bei einer Person wie „the author“ bekommt das Verb im simple present ein -s. Du sagst oft „the author describe“ – " +
+                    "richtig ist „the author describes“. Achte besonders darauf, wenn zwischen Subjekt und Verb noch Wörter stehen.",
+            hook = "He, she, it – das -s muss mit!",
+            contrast = listOf("the author describe" to "the author describes", "she live in Lagos" to "she lives in Lagos", "the text show" to "the text shows"),
+            recognize =
+                listOf(
+                    de.abicoach.learn.RecognizeItem("The author criticises the government for its slow reaction.", true, "The author criticises the government for its slow reaction.", "Richtig: the author → criticises."),
+                    de.abicoach.learn.RecognizeItem("The article describe how young people in Lagos work.", false, "The article describes how young people in Lagos work.", "the article = it → describes"),
+                    de.abicoach.learn.RecognizeItem("Many young Nigerians want to leave the country.", true, "Many young Nigerians want to leave the country.", "Plural: kein -s."),
+                ),
+            drills =
+                listOf(
+                    Drill("ws-1", DrillType.SAY_RIGHT, key, "Sag es richtig – achte auf die 3. Person -s.", "The author describe a young woman in Lagos.", "The author describes a young woman in Lagos.", "describes"),
+                    Drill("ws-2", DrillType.COMPLETE, key, "Vollende den Satz mit einem Verb im simple present.", "In the cartoon, the man in the suit …", "In the cartoon, the man in the suit looks down on the workers.", "looks"),
+                ),
+            talk = listOf(de.abicoach.learn.TalkPrompt("What does the author of 'Lagos Rising' say about young creative people?", "Sprich über den Autor und die Leute – mit -s bei he/she/it.")),
+            focus = "third person singular -s in the simple present",
+            level = 2,
+        )
+
+    fun tutor(key: String): de.abicoach.learn.TutorMemory =
+        de.abicoach.learn.TutorMemory(
+            patternKey = key,
+            level = 2,
+            understood = "die Grundregel bei kurzen Sätzen",
+            stillHard = "wenn zwischen Subjekt und Verb ein Nebensatz steht",
+            helps = "Kontrastpaare und die Eselsbrücke „he, she, it“",
+            nextFocus = "lange Subjekte wie „the author of the article“",
+            runs = listOf(de.abicoach.learn.WorkshopRun(System.currentTimeMillis() - 3 * DAY, 1, 4 to 5, 2 to 3, 1 to 2)),
+        )
 
     fun drills(): List<Drill> =
         listOf(

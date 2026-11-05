@@ -19,6 +19,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import de.abicoach.R
+import de.abicoach.data.SessionRecord
+import de.abicoach.ui.components.LegendItem
+import de.abicoach.ui.components.MultiLineChart
+import de.abicoach.ui.components.ChartSeries
 import de.abicoach.data.FeedbackMode
 import de.abicoach.data.Knowledge
 import de.abicoach.data.SessionKind
@@ -93,6 +97,17 @@ fun StatsScreen(vm: AppViewModel) {
                     item { EmptyProgress(vm) }
                 } else {
                     item { AreasCard(vm, profile) }
+                    item(key = "skill_dev") { DevelopmentCard(vm, sessions, startView = 2) }
+                    item(key = "skill_train") {
+                        ActionButton(
+                            "Kompetenzen einzeln üben",
+                            R.drawable.target_24dp,
+                            yellow,
+                            { vm.tap(); vm.nav.push(Screen.Skills) },
+                            subtitle = "Jede der 11 Kompetenzen mit eigener Übung",
+                            modifier = Modifier.testTag("stats_skills_train"),
+                        )
+                    }
                     item {
                         AbiCard(modifier = Modifier.testTag("stats_skills")) {
                             CardTitle("Kompetenzen", icon = R.drawable.insights_24dp)
@@ -148,6 +163,7 @@ fun StatsScreen(vm: AppViewModel) {
             }
             3 -> item { TopicCompassCard(vm) }
             else -> {
+                item(key = "development") { DevelopmentCard(vm, sessions) }
                 item {
                     AbiCard(modifier = Modifier.testTag("stats_prognosis")) {
                         CardTitle("So entwickelst du dich", icon = R.drawable.trending_up_24dp)
@@ -359,5 +375,99 @@ fun SessionsScreen(vm: AppViewModel) {
                 }
             }
         }
+    }
+}
+
+/**
+ * How the student got better over time: the points of every graded session with a trend line, content and language
+ * apart, or one competence at a time.
+ */
+@Composable
+fun DevelopmentCard(vm: AppViewModel, sessions: List<SessionRecord>, startView: Int = 0) {
+    val graded = remember(sessions) { sessions.filter { it.debrief != null }.sortedBy { it.startedAt }.takeLast(30) }
+    var view by androidx.compose.runtime.saveable.rememberSaveable(startView) { androidx.compose.runtime.mutableIntStateOf(startView) }
+    val measured = remember(graded) { Skill.entries.filter { s -> graded.count { it.debrief?.skills?.get(s) != null } >= 2 } }
+    var skillKey by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
+    AbiCard(modifier = Modifier.testTag("stats_development")) {
+        CardTitle("Deine Entwicklung", icon = R.drawable.trending_up_24dp, iconTint = green)
+        if (graded.size < 2) {
+            CaptionText(
+                if (graded.isEmpty()) "Nach deiner zweiten ausgewerteten Übung siehst du hier im Graphen, wie du über die Zeit besser wirst."
+                else "Eine Auswertung ist da (${graded.first().debrief?.totalPoints} P.). Nach der nächsten zeigt der Graph deine Entwicklung.",
+            )
+            return@AbiCard
+        }
+        Segmented(
+            options = listOf("Gesamt", "Inhalt & Sprache", "Kompetenz"),
+            selected = view,
+            onSelect = { vm.tap(); view = it },
+            tags = listOf("dev_total", "dev_areas", "dev_skill"),
+        )
+        Gap(10.dp)
+        val labels = graded.mapIndexed { i, r -> if (i == 0 || i == graded.lastIndex || graded.size <= 6 || i % ((graded.size / 4).coerceAtLeast(2)) == 0) dayLabel(r.startedAt) else "" }
+        when (view) {
+            1 -> {
+                MultiLineChart(
+                    series =
+                        listOf(
+                            ChartSeries(graded.map { it.debrief?.inhaltPoints?.toFloat() }, accent, "Inhalt"),
+                            ChartSeries(graded.map { it.debrief?.darstellungPoints?.toFloat() }, yellow, "Sprache"),
+                        ),
+                    labels = labels,
+                    guides = listOf(ChartGuide(13f, "13", green)),
+                    maxY = 15f,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    LegendItem(accent, "Inhalt (40 %)")
+                    LegendItem(yellow, "Darstellung/Sprache (60 %)")
+                }
+            }
+            2 -> {
+                if (measured.isEmpty()) {
+                    CaptionText("Sobald eine Kompetenz in zwei Auswertungen gemessen wurde, erscheint sie hier.")
+                } else {
+                    val skill = measured.firstOrNull { it.key == skillKey } ?: measured.first()
+                    de.abicoach.ui.components.ChoiceChips(measured, skill, { it.label }, { vm.tap(); skillKey = it.key }, tagPrefix = "dev_skill")
+                    Gap(8.dp)
+                    MultiLineChart(
+                        series = listOf(ChartSeries(graded.map { it.debrief?.skills?.get(skill)?.toFloat() }, accent, skill.label)),
+                        labels = labels,
+                        guides = listOf(ChartGuide(13f, "13", green)),
+                        maxY = 15f,
+                    )
+                    val values = graded.mapNotNull { it.debrief?.skills?.get(skill) }
+                    CaptionText("${skill.label}: von ${values.first()} auf ${values.last()} Punkte" + deltaText(values.last() - values.first()))
+                }
+            }
+            else -> {
+                val totals = graded.map { it.debrief!!.totalPoints.toFloat() }
+                val trend = totals.indices.map { i -> totals.subList(maxOf(0, i - 2), i + 1).average().toFloat() }
+                MultiLineChart(
+                    series = listOf(ChartSeries(totals, accent, "Punkte"), ChartSeries(trend, green, "Trend", dashed = true, dots = false)),
+                    labels = labels,
+                    guides = listOf(ChartGuide(13f, "13", green), ChartGuide(10f, "10", yellow)),
+                    minY = maxOf(0f, (totals.minOrNull() ?: 0f) - 2f),
+                    maxY = 15f,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    LegendItem(accent, "Punkte je Auswertung")
+                    LegendItem(green, "Trend (Schnitt der letzten 3)")
+                }
+                val first = totals.take(3).average()
+                val last = totals.takeLast(3).average()
+                CaptionText(
+                    "Deine ersten Übungen: Ø ${points(first)} P. · zuletzt: Ø ${points(last)} P." + deltaText((last - first).let { Math.round(it * 10) / 10.0 }),
+                )
+            }
+        }
+    }
+}
+
+private fun deltaText(delta: Number): String {
+    val d = delta.toDouble()
+    return when {
+        d >= 0.5 -> " – du bist ${points(d)} P. besser geworden ↑"
+        d <= -0.5 -> " – zuletzt ${points(-d)} P. schwächer ↓"
+        else -> " – stabil"
     }
 }

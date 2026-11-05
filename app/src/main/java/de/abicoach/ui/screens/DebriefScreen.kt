@@ -130,6 +130,19 @@ fun DebriefScreen(vm: AppViewModel, id: String) {
                 d.levers.forEach { BulletText(it) }
             }
         }
+        // The most important open mistake of this session: straight into the Fehler-Werkstatt.
+        val workshopPattern =
+            remember(d) { d.errors.asSequence().mapNotNull { vm.app.errorMemory.matching(it) }.firstOrNull { it.state != de.abicoach.learn.PatternState.BEHOBEN } }
+        workshopPattern?.let { p ->
+            ActionButton(
+                "Fehler-Werkstatt: ${p.title}",
+                R.drawable.school_24dp,
+                yellow,
+                { vm.openWorkshop(p.key) },
+                subtitle = "Diesen Fehler jetzt Schritt für Schritt beheben",
+                modifier = Modifier.testTag("debrief_workshop"),
+            )
+        }
         if (d.strengths.isNotEmpty()) {
             AbiCard {
                 CardTitle("Das war stark", icon = R.drawable.thumb_up_24dp, iconTint = green)

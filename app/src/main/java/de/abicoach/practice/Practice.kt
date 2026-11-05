@@ -121,7 +121,7 @@ class PronStore(context: Context) {
 }
 
 /** Records a few seconds from the microphone and returns a WAV file in memory. */
-class ShortRecorder {
+class ShortRecorder(private val maxSeconds: Int = 15) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val buffer = ByteArrayOutputStream()
     private var mic: MicStreamer? = null
@@ -133,7 +133,7 @@ class ShortRecorder {
         buffer.reset()
         mic =
             MicStreamer { pcm ->
-                synchronized(buffer) { if (buffer.size() < 16_000 * 2 * 15) buffer.write(pcm) }
+                synchronized(buffer) { if (buffer.size() < 16_000 * 2 * maxSeconds) buffer.write(pcm) }
                 level = de.abicoach.audio.AudioUtil.level(pcm)
             }.also { it.start(scope) }
     }

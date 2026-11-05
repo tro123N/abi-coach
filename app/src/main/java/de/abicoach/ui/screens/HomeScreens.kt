@@ -542,6 +542,27 @@ private fun LazyListScope.freePractice(
         Column(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.testTag("train_coach")) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
                 Tile(
+                    title = "Fehler-Werkstatt",
+                    subtitle = if (noPatterns) "Füllt sich mit jeder Übung" else "Deine Fehler Schritt für Schritt beheben",
+                    icon = R.drawable.school_24dp,
+                    tint = if (duePatterns > 0) yellow else accent,
+                    onClick = { vm.openWorkshop() },
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                    badge = duePatterns,
+                    tag = "train_workshop",
+                )
+                Tile(
+                    title = "Kompetenzen",
+                    subtitle = "Jede der 11 Kompetenzen einzeln üben",
+                    icon = R.drawable.target_24dp,
+                    tint = green,
+                    onClick = { vm.tap(); vm.nav.push(Screen.Skills) },
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                    tag = "train_skills",
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
+                Tile(
                     title = "Sprech-Training",
                     subtitle = if (noPatterns) "Füllt sich mit jeder Übung" else "Kurze Übungen zu deinen Fehlern",
                     icon = R.drawable.spellcheck_24dp,

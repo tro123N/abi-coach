@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -133,6 +134,9 @@ fun SetupScreen(vm: AppViewModel, initial: SessionSetup) {
     ) {
         AreaIntro(if (s.isSprint) R.drawable.speed_24dp else de.abicoach.ui.screens.kindIcon(s.kind), if (s.isSprint) "Gesprächs-Sprint" else s.kind.label, kindDescription(s))
         MessageBanners(vm)
+        de.abicoach.profile.Skill.byKey(s.focusSkill)?.let { skill ->
+            Banner("Kompetenz-Training: ${skill.label} – Ziel und Auswertung schauen genau darauf.", accent, icon = R.drawable.target_24dp)
+        }
         AbiCard {
             CardTitle("Topic field", icon = R.drawable.hub_24dp)
             ChoiceChips(
@@ -166,6 +170,7 @@ fun SetupScreen(vm: AppViewModel, initial: SessionSetup) {
             val main = s.topicChoice.takeIf { it in 0..13 }
             val others = Knowledge.TOPICS.map { it.id }.filter { it != main }
             val picked = s.extraTopics.filter { it != main }.toSet()
+            val terms = remember { de.abicoach.memory.HalfYears.mapping(app) }
             AbiCard(modifier = Modifier.testTag("setup_more_topics")) {
                 CardTitle(if (forExam) "Teil 2 – Themenfelder" else "Weitere Themenfelder", icon = R.drawable.hub_24dp)
                 CaptionText(
@@ -180,7 +185,7 @@ fun SetupScreen(vm: AppViewModel, initial: SessionSetup) {
                 MultiChoiceChips(
                     options = others,
                     selected = picked,
-                    label = { Knowledge.topicShort(it) },
+                    label = { t -> Knowledge.topicShort(t) + (terms[t]?.let { " · $it" } ?: "") },
                     onToggle = { id ->
                         vm.tap()
                         s = s.copy(extraTopics = if (id in picked) (picked - id).toList() else (picked + id).toList())
@@ -188,6 +193,28 @@ fun SetupScreen(vm: AppViewModel, initial: SessionSetup) {
                     canAdd = picked.size < AppViewModel.MAX_EXTRA_TOPICS,
                     tagPrefix = "moretopic",
                 )
+                Gap(6.dp)
+                val mainTerm = main?.let { terms[it] }
+                when {
+                    terms.isEmpty() ->
+                        CaptionText(
+                            "Tipp: Stell unter „Halbjahre“ ein, welches Thema wann dran war – dann mischt die App die Halbjahre wie im Abitur.",
+                            modifier = Modifier.clickable { vm.tap(); vm.nav.push(de.abicoach.ui.Screen.HalfYears) },
+                            color = accent,
+                        )
+                    picked.isNotEmpty() && mainTerm != null && picked.all { terms[it] == mainTerm } ->
+                        CaptionText("Achtung: Alle gewählten Themen sind aus $mainTerm. Im Abitur geht Teil 2 über andere Halbjahre – nimm auch eins aus einem anderen Halbjahr.", color = yellow)
+                    picked.isEmpty() && forExam ->
+                        CaptionText("Ohne Auswahl nimmt die App Themen aus anderen Halbjahren als " + (mainTerm ?: "Teil 1") + ".")
+                    else -> Unit
+                }
+                if (terms.isNotEmpty()) {
+                    CaptionText(
+                        "Halbjahre ändern",
+                        modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { vm.tap(); vm.nav.push(de.abicoach.ui.Screen.HalfYears) }.padding(vertical = 4.dp),
+                        color = accent,
+                    )
+                }
                 if (picked.isNotEmpty()) {
                     Gap(6.dp)
                     val first =
@@ -243,6 +270,21 @@ fun SetupScreen(vm: AppViewModel, initial: SessionSetup) {
                     onSelect = { vm.tap(); s = s.copy(prepMinutes = it) },
                     tagPrefix = "prep",
                 )
+            }
+        }
+        if (s.kind.hasPart2 || s.kind == SessionKind.TRAINING) {
+            val style = s.talkStyle ?: app.settings.talkStyle
+            AbiCard(modifier = Modifier.testTag("setup_talk_style")) {
+                CardTitle("Gesprächsstil des Prüfers", icon = R.drawable.forum_24dp)
+                ChoiceChips(
+                    options = de.abicoach.data.TalkStyle.entries,
+                    selected = style,
+                    label = { it.label },
+                    onSelect = { vm.tap(); s = s.copy(talkStyle = it) },
+                    tagPrefix = "talkstyle",
+                )
+                Gap(6.dp)
+                CaptionText(style.description)
             }
         }
         AbiCard {
@@ -498,6 +540,7 @@ fun LiveScreen(vm: AppViewModel) {
         pinned = {
             val mode = draft?.feedback ?: FeedbackMode.FLUESTERN
             if (mode != FeedbackMode.PRUEFUNG) WhisperBar(state, mode)
+            if (vm.liveTranscript) LiveTranscriptPanel(state)
         },
         bottom = {
             Surface(color = androidx.compose.ui.graphics.Color.Transparent) {
@@ -523,6 +566,8 @@ fun LiveScreen(vm: AppViewModel) {
                     if (state.hasExaminer && state.examinerLabel.isNotBlank()) CaptionText("Prüfer: ${state.examinerLabel}")
                     if (!state.transcriberReady) CaptionText("Mitschrift startet …")
                 }
+                Spacer(Modifier.width(8.dp))
+                TranscriptToggle(vm.liveTranscript) { vm.toggleLiveTranscript() }
             }
             Gap(10.dp)
             TechChips(state, draft?.feedback ?: FeedbackMode.FLUESTERN)
@@ -569,7 +614,7 @@ fun LiveScreen(vm: AppViewModel) {
         if (draft?.feedback != FeedbackMode.PRUEFUNG) {
             AlertCard(state.lastAlert, state.liveErrors.size, draft?.feedback ?: FeedbackMode.FLUESTERN, state.checkInfo, state.checkFailed)
         }
-        if (state.part != 1 || vm.app.settings.showTranscript) {
+        if (!vm.liveTranscript && (state.part != 1 || vm.app.settings.showTranscript)) {
             TranscriptCard(state.utterances, state.interim, state.examinerLive)
         }
     }
@@ -684,6 +729,100 @@ private fun AlertCard(alert: de.abicoach.data.LiveError?, count: Int, mode: Feed
         }
     }
 }
+
+/** The small "Mitschrift" button in the live card: shows or hides who said what. */
+@Composable
+private fun TranscriptToggle(open: Boolean, onClick: () -> Unit) {
+    val color = if (open) accent else MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.75f)
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier =
+            Modifier
+                .clip(RoundedCornerShape(50))
+                .background(if (open) accent.copy(alpha = 0.16f) else MaterialTheme.colorScheme.background)
+                .clickable { onClick() }
+                .padding(horizontal = 10.dp, vertical = 6.dp)
+                .testTag("live_transcript_toggle"),
+    ) {
+        Icon(painterResource(R.drawable.chat_24dp), contentDescription = if (open) "Mitschrift ausblenden" else "Mitschrift zeigen", tint = color, modifier = Modifier.size(16.dp))
+        Spacer(Modifier.width(5.dp))
+        Text("Mitschrift", fontSize = 12.sp, color = color, fontWeight = if (open) FontWeight.Bold else null)
+    }
+}
+
+private enum class Who(val label: String) { EXAMINER("Prüfer"), COACH("Coach"), YOU("Du") }
+
+private data class TranscriptLine(val who: Who, val text: String, val at: Long, val live: Boolean = false)
+
+/**
+ * Pinned below the hints while the small button is on: what the examiner, the coach (the app) and the student said,
+ * newest at the bottom, scrolling along by itself.
+ */
+@Composable
+private fun LiveTranscriptPanel(state: LiveUiState) {
+    val lines =
+        remember(state.utterances, state.appSaid, state.interim, state.examinerLive) {
+            val said =
+                state.utterances.map { TranscriptLine(if (it.speaker == Speaker.STUDENT) Who.YOU else Who.EXAMINER, it.text, it.atMs) } +
+                    state.appSaid.map { TranscriptLine(Who.COACH, it.text, it.atMs) }
+            val live =
+                listOfNotNull(
+                    state.examinerLive.takeIf { it.isNotBlank() }?.let { TranscriptLine(Who.EXAMINER, it, Long.MAX_VALUE - 1, live = true) },
+                    state.interim.takeIf { it.isNotBlank() }?.let { TranscriptLine(Who.YOU, it, Long.MAX_VALUE, live = true) },
+                )
+            (said.sortedBy { it.at }.takeLast(40) + live)
+        }
+    val list = androidx.compose.foundation.lazy.rememberLazyListState()
+    LaunchedEffect(lines.size, lines.lastOrNull()?.text) { if (lines.isNotEmpty()) list.scrollToItem(lines.lastIndex) }
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.primary)
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .testTag("live_transcript_panel"),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Mitschrift", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimary)
+            Spacer(Modifier.weight(1f))
+            Who.entries.forEach { w ->
+                Text(w.label, fontSize = 11.sp, color = whoColor(w), modifier = Modifier.padding(start = 8.dp))
+            }
+        }
+        if (lines.isEmpty()) {
+            CaptionText("Sobald gesprochen wird, erscheint hier, wer was gesagt hat.")
+        } else {
+            androidx.compose.foundation.lazy.LazyColumn(state = list, modifier = Modifier.fillMaxWidth().heightIn(max = 210.dp)) {
+                items(lines.size) { i ->
+                    val line = lines[i]
+                    Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.Top) {
+                        Text(
+                            line.who.label,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = whoColor(line.who),
+                            modifier = Modifier.width(48.dp).padding(top = 2.dp),
+                        )
+                        Text(
+                            line.text,
+                            fontSize = 14.sp,
+                            lineHeight = 19.sp,
+                            fontStyle = if (line.live) FontStyle.Italic else null,
+                            color = MaterialTheme.colorScheme.onPrimary.copy(alpha = if (line.live) 0.65f else 0.95f),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun whoColor(w: Who): Color =
+    when (w) {
+        Who.EXAMINER -> green
+        Who.COACH -> yellow
+        Who.YOU -> accent
+    }
 
 @Composable
 private fun TranscriptCard(utterances: List<Utterance>, interim: String, examinerLive: String) {

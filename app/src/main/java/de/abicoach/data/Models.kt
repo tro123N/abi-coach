@@ -403,6 +403,10 @@ data class SessionRecord(
     val goals: List<SessionGoal> = emptyList(),
     /** Further topic fields the conversation covered (part 2 links several, as in the Abitur). */
     val extraTopics: List<Int> = emptyList(),
+    /** The competence this session trained on its own (Skill key); empty = the whole exam. */
+    val focusSkill: String = "",
+    /** How the examiner led the conversation (TalkStyle name). */
+    val talkStyle: String = "",
 ) {
     val studentText: String
         get() = utterances.filter { it.speaker == Speaker.STUDENT }.joinToString(" ") { it.text }
@@ -434,6 +438,8 @@ data class SessionRecord(
             .put("tech", tech)
             .put("goals", goals.toJsonArray { it.toJson() })
             .put("extraTopics", org.json.JSONArray(extraTopics))
+            .put("focusSkill", focusSkill)
+            .put("talkStyle", talkStyle)
 
     companion object {
         fun create(kind: SessionKind, feedback: FeedbackMode, topicId: Int, task: ExamTask?, focusTask: Int = 0, focusCategories: List<String> = emptyList()) =
@@ -477,6 +483,8 @@ data class SessionRecord(
                 tech = o.optString("tech"),
                 goals = o.optJSONArray("goals").objects().map { SessionGoal.fromJson(it) },
                 extraTopics = o.optJSONArray("extraTopics")?.let { a -> (0 until a.length()).map { a.optInt(it, -1) }.filter { it in 0..13 } }.orEmpty(),
+                focusSkill = o.optString("focusSkill"),
+                talkStyle = o.optString("talkStyle"),
             )
     }
 }

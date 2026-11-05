@@ -67,6 +67,10 @@ data class SessionSetup(
      * stay with one term). Empty = the app picks the ones the student needs most.
      */
     val extraTopics: List<Int> = emptyList(),
+    /** A competence this session trains on its own (Skill key); empty = the whole exam. */
+    val focusSkill: String = "",
+    /** How the examiner leads the conversation; null = the default from the settings. */
+    val talkStyle: de.abicoach.data.TalkStyle? = null,
 ) {
     val isSprint: Boolean get() = instruction == SPRINT_INSTRUCTION
 

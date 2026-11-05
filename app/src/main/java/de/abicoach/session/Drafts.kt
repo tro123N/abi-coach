@@ -123,6 +123,8 @@ class PendingMaterialStore(context: Context) {
         val levelId: String,
         val prepMinutes: Int,
         val startedAt: Long,
+        val focusSkill: String = "",
+        val talkStyle: String = "",
     )
 
     @Synchronized
@@ -131,7 +133,7 @@ class PendingMaterialStore(context: Context) {
             file,
             JSONObject().put("key", p.key).put("kind", p.kind.name).put("feedback", p.feedback.name).put("topicId", p.topicId)
                 .put("focusTask", p.focusTask).put("focusCategories", p.focusCategories.toJsonArray()).put("levelId", p.levelId)
-                .put("prepMinutes", p.prepMinutes).put("startedAt", p.startedAt),
+                .put("prepMinutes", p.prepMinutes).put("startedAt", p.startedAt).put("focusSkill", p.focusSkill).put("talkStyle", p.talkStyle),
         )
     }
 
@@ -150,6 +152,8 @@ class PendingMaterialStore(context: Context) {
             levelId = o.optString("levelId"),
             prepMinutes = o.optInt("prepMinutes", 10),
             startedAt = o.optLong("startedAt"),
+            focusSkill = o.optString("focusSkill"),
+            talkStyle = o.optString("talkStyle"),
         )
     }
 

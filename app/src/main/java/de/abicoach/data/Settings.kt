@@ -56,6 +56,18 @@ enum class Quality(val label: String, val description: String) {
     SPARSAM("Sparsam", "Ein schnelleres, günstigeres Modell für alles – deutlich billiger."),
 }
 
+/** How the examiner leads a conversation. */
+enum class TalkStyle(val label: String, val description: String) {
+    PRUEFUNG("Wie im Abitur", "Der Prüfer führt mit klaren Fragen, wechselt pünktlich das Thema und hakt nach – wie in der echten Prüfung."),
+    AUSGEWOGEN("Ausgewogen", "Der Prüfer folgt seinem Plan, baut aber jede Frage auf dem auf, was du gerade gesagt hast."),
+    EINGEHEN("Geht auf dich ein", "Der Prüfer greift deine Gedanken und Beispiele auf und fragt dazu nach – und lenkt das Gespräch dabei behutsam zum Prüfungsthema."),
+    ;
+
+    companion object {
+        fun of(name: String?): TalkStyle? = entries.firstOrNull { it.name == name }
+    }
+}
+
 /** All user settings. API keys are stored encrypted; everything else is plain preferences. */
 class Settings(context: Context) {
     private val prefs = context.getSharedPreferences("abicoach", Context.MODE_PRIVATE)
@@ -224,6 +236,75 @@ class Settings(context: Context) {
 
     /** Shown once: the welcome card on the Abi-Weg. */
     var welcomeDone by BoolPref("welcome_done", false)
+
+    /** The tutorial at the very first start (how the app works). */
+    var tutorialDone by BoolPref("tutorial_done", false)
+
+    /** In a live session the small "Mitschrift" button shows what the examiner, the coach and the student said. */
+    var liveTranscriptOpen by BoolPref("live_transcript_open", false)
+
+    /** How the examiner leads a conversation; can be changed for each session. */
+    var talkStyle: TalkStyle
+        get() = enumValue("talk_style", TalkStyle.AUSGEWOGEN)
+        set(value) = putString("talk_style", value.name)
+
+    /**
+     * Which topic fields the course covered in which Kurshalbjahr ("Q1.1" → topic ids), as the student set it.
+     * Half-years not set here are taken from the uploaded material.
+     */
+    var halfYearTopics: Map<String, Set<Int>>
+        get() =
+            runCatching {
+                val o = org.json.JSONObject(prefs.getString("halfyear_topics", null) ?: "{}")
+                o.keys().asSequence().associateWith { k ->
+                    val a = o.optJSONArray(k) ?: org.json.JSONArray()
+                    (0 until a.length()).map { a.optInt(it, -1) }.filter { it in 0..13 }.toSet()
+                }
+            }.getOrDefault(emptyMap())
+        set(value) =
+            putString(
+                "halfyear_topics",
+                org.json.JSONObject().apply { value.forEach { (k, v) -> put(k, org.json.JSONArray(v.sorted())) } }.toString(),
+            )
+
+    // ---------- backup ----------
+
+    /** All settings except the API keys, for the export of the learning progress. */
+    fun exportPrefs(): org.json.JSONObject {
+        val o = org.json.JSONObject()
+        prefs.all.forEach { (k, v) ->
+            if (k.endsWith("_enc") || v == null) return@forEach
+            val entry =
+                when (v) {
+                    is Boolean -> org.json.JSONObject().put("t", "b").put("v", v)
+                    is Int -> org.json.JSONObject().put("t", "i").put("v", v)
+                    is Long -> org.json.JSONObject().put("t", "l").put("v", v)
+                    is Float -> org.json.JSONObject().put("t", "f").put("v", v.toDouble())
+                    is String -> org.json.JSONObject().put("t", "s").put("v", v)
+                    else -> null
+                } ?: return@forEach
+            o.put(k, entry)
+        }
+        return o
+    }
+
+    /** Takes back exported settings; the API keys on this phone stay as they are. */
+    fun importPrefs(o: org.json.JSONObject) {
+        val edit = prefs.edit()
+        o.keys().forEach { k ->
+            if (k.endsWith("_enc")) return@forEach
+            val e = o.optJSONObject(k) ?: return@forEach
+            when (e.optString("t")) {
+                "b" -> edit.putBoolean(k, e.optBoolean("v"))
+                "i" -> edit.putInt(k, e.optInt("v"))
+                "l" -> edit.putLong(k, e.optLong("v"))
+                "f" -> edit.putFloat(k, e.optDouble("v").toFloat())
+                "s" -> edit.putString(k, e.optString("v"))
+            }
+        }
+        edit.commit()
+        changed()
+    }
 
     // ---------- helpers ----------
 
