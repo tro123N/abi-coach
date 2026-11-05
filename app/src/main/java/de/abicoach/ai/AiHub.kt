@@ -41,7 +41,7 @@ class AiHub(context: Context, private val http: OkHttpClient, private val settin
     val claude = ClaudeRest(http) { settings.anthropicKey }
 
     /** The phone's own ears and voice (used with Claude). */
-    val phone: PhoneSpeech by lazy { PhoneSpeech(appContext) }
+    val phone: PhoneSpeech by lazy { PhoneSpeech(appContext) { settings.accent.locale } }
 
     val provider: Provider get() = settings.provider
 
@@ -330,10 +330,10 @@ class AiHub(context: Context, private val http: OkHttpClient, private val settin
      * kept (memory and disk): the second time it plays at once. The last 1.5 seconds are held back until the end
      * is known, because the noise some voices add comes after the last word and is cut away there.
      */
-    suspend fun speakStream(text: String, holdMs: Int = HOLD_MS, onChunk: ((ByteArray) -> Unit)?): ByteArray? {
+    suspend fun speakStream(text: String, holdMs: Int = HOLD_MS, voice: String? = null, onChunk: ((ByteArray) -> Unit)?): ByteArray? {
         val line = text.trim().take(MAX_SPEECH)
         if (line.isBlank() || (provider != Provider.ANTHROPIC && !ready)) return null
-        val key = speechKey(line)
+        val key = speechKey(line, voice)
         withContext(Dispatchers.IO) { cachedSpeech(key) }?.let { pcm ->
             onChunk?.invoke(pcm)
             return pcm
@@ -346,7 +346,7 @@ class AiHub(context: Context, private val http: OkHttpClient, private val settin
             }
         }
         return try {
-            synthesizeClean(line, key, onChunk, holdMs)
+            synthesizeClean(line, key, onChunk, holdMs, voice)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -372,13 +372,13 @@ class AiHub(context: Context, private val http: OkHttpClient, private val settin
         job.start()
     }
 
-    private suspend fun synthesizeClean(line: String, key: String, onChunk: ((ByteArray) -> Unit)?, holdMs: Int = HOLD_MS): ByteArray? {
+    private suspend fun synthesizeClean(line: String, key: String, onChunk: ((ByteArray) -> Unit)?, holdMs: Int = HOLD_MS, voice: String? = null): ByteArray? {
         val hold = RATE * 2 * holdMs / 1000
         val lock = Any()
         val buffer = java.io.ByteArrayOutputStream()
         var emitted = 0
         val raw =
-            synthesize(line) { piece ->
+            synthesize(line, voice) { piece ->
                 if (onChunk == null) return@synthesize
                 synchronized(lock) {
                     buffer.write(piece)
@@ -403,14 +403,14 @@ class AiHub(context: Context, private val http: OkHttpClient, private val settin
     }
 
     /** Raw speech of the chosen company (24 kHz PCM), streamed to [onPiece]. */
-    private suspend fun synthesize(line: String, onPiece: (ByteArray) -> Unit): ByteArray? =
+    private suspend fun synthesize(line: String, voice: String? = null, onPiece: (ByteArray) -> Unit): ByteArray? =
         when (provider) {
             Provider.GOOGLE -> {
                 var result: ByteArray? = null
                 for (model in listOf(settings.ttsModel, LITE_TTS_MODEL).distinct().filter { usable(it) }) {
                     var sent = false
                     try {
-                        result = gemini.ttsStream(model, "$GEMINI_VOICE_STYLE$line", settings.ttsVoice) { pcm ->
+                        result = gemini.ttsStream(model, "Read this aloud clearly in a natural ${settings.accent.english} English accent: $line", voice ?: settings.ttsVoice) { pcm ->
                             sent = true
                             onPiece(pcm)
                         }
@@ -426,7 +426,7 @@ class AiHub(context: Context, private val http: OkHttpClient, private val settin
             Provider.OPENAI -> {
                 val model = settings.oaTtsModel
                 try {
-                    openai.tts(model, settings.oaTtsVoice, line, OpenAiRest.VOICE_STYLE, onPiece)
+                    openai.tts(model, voice ?: settings.oaTtsVoice, line, OpenAiRest.voiceStyle(settings.accent.english), onPiece)
                 } catch (e: AiException) {
                     shouldFallBack(model, e)
                     null
@@ -435,11 +435,12 @@ class AiHub(context: Context, private val http: OkHttpClient, private val settin
             Provider.ANTHROPIC -> phone.synthesize(line)?.also(onPiece)
         }
 
-    private fun speechKey(line: String): String {
+    private fun speechKey(line: String, override: String? = null): String {
+        // Voice and accent belong to the key: a sentence with another voice or accent is a different recording.
         val voice =
             when (provider) {
-                Provider.GOOGLE -> "g|${settings.ttsModel}|${settings.ttsVoice}"
-                Provider.OPENAI -> "o|${settings.oaTtsModel}|${settings.oaTtsVoice}"
+                Provider.GOOGLE -> "g|${settings.ttsModel}|${override ?: settings.ttsVoice}|${settings.accent.name}"
+                Provider.OPENAI -> "o|${settings.oaTtsModel}|${override ?: settings.oaTtsVoice}|${settings.accent.name}"
                 Provider.ANTHROPIC -> "p"
             }
         val digest = MessageDigest.getInstance("SHA-1").digest("$CACHE_VERSION|$voice|$line".toByteArray(Charsets.UTF_8))
@@ -521,7 +522,7 @@ class AiHub(context: Context, private val http: OkHttpClient, private val settin
                     apiKey = settings.geminiKey,
                     name = "Mitschrift",
                     supportsResumption = false,
-                    setupFactory = { _, minimal -> GeminiSetup.transcriber(settings.transcribeModel, vocabulary, minimal) },
+                    setupFactory = { _, minimal -> GeminiSetup.transcriber(settings.transcribeModel, vocabulary, minimal, settings.accent.bcp47) },
                     onEvent = onEvent,
                 )
             Provider.OPENAI -> OpenAiTranscriber(http, settings.openAiKey, settings.oaTranscribeModel, vocabulary, onEvent)
@@ -586,7 +587,6 @@ class AiHub(context: Context, private val http: OkHttpClient, private val settin
         private const val CACHE_VERSION = 2
 
         /** Tells Gemini's voice how to read; it speaks only the text after the colon. */
-        private const val GEMINI_VOICE_STYLE = "Read this aloud clearly in a natural British English accent: "
 
         private const val WRITTEN_NOTE =
             "\n\nIMPORTANT: You cannot hear the recording. You get what speech recognition understood instead (it may smooth over small slips). " +

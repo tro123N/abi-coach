@@ -18,10 +18,10 @@ object GeminiSetup {
     private val FILLERS = listOf("um", "uh", "er", "erm", "hmm", "uhm")
 
     /** The "second ear": text-only session that transcribes the microphone word for word, mistakes included. */
-    fun transcriber(model: String, vocabulary: List<String>, minimal: Boolean): JSONObject {
+    fun transcriber(model: String, vocabulary: List<String>, minimal: Boolean, language: String = "en-GB"): JSONObject {
         val transcription = JSONObject().put("mode", "VERBATIM")
         if (!minimal) {
-            transcription.put("languageCodes", JSONArray().put("en-GB"))
+            transcription.put("languageCodes", JSONArray().put(language))
             // Fillers in the vocabulary, so the verbatim transcript keeps them (they count for fluency).
             transcription.put("customVocabulary", JSONArray((FILLERS + vocabulary).distinct().take(100)))
         }

@@ -499,7 +499,7 @@ fun DossierScreen(vm: AppViewModel, topic: Int) {
         MessageBanners(vm)
         if (d == null) {
             AbiCard {
-                CardTitle(field?.english ?: "Topic field", icon = R.drawable.library_books_24dp)
+                CardTitle(field?.english ?: "Themenfeld", icon = R.drawable.library_books_24dp)
                 BodyText("Für dieses Themenfeld gibt es noch kein Dossier. Die KI liest dafür alles, was du dazu hochgeladen hast, und verdichtet es (etwa eine halbe Minute).")
                 Gap(8.dp)
                 if (vm.dossierBusy == topic) {
@@ -512,7 +512,7 @@ fun DossierScreen(vm: AppViewModel, topic: Int) {
             return@DetailScaffold
         }
         AbiCard(modifier = Modifier.testTag("dossier_overview")) {
-            CardTitle(field?.english ?: "Topic field", icon = R.drawable.library_books_24dp)
+            CardTitle(field?.english ?: "Themenfeld", icon = R.drawable.library_books_24dp)
             BodyText(d.overview)
             Gap(6.dp)
             CaptionText("Erstellt ${formatDate(d.madeAt)}" + if (d.by.isNotBlank()) " von ${d.by}" else "")

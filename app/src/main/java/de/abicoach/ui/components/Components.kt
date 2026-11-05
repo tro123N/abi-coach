@@ -119,11 +119,14 @@ fun AbiTopBar(
         } else {
             Spacer(Modifier.width(6.dp))
         }
+        // A long title (e.g. a level "Examine how the author perceives …") gets two smaller lines instead of being cut off.
+        val long = title.length > 24
         Text(
             text = title,
-            fontSize = dimens.fonts.title * 0.82f,
+            fontSize = if (long) dimens.fonts.title * 0.64f else dimens.fonts.title * 0.82f,
+            lineHeight = if (long) dimens.fonts.title * 0.74f else dimens.fonts.title * 0.95f,
             fontWeight = FontWeight.Bold,
-            maxLines = 1,
+            maxLines = if (long) 2 else 1,
             overflow = TextOverflow.Ellipsis,
             color = flow.text,
             modifier = Modifier.weight(1f),

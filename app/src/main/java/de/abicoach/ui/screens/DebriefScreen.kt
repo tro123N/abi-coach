@@ -169,12 +169,15 @@ fun DebriefScreen(vm: AppViewModel, id: String) {
             }
         }
         if (record.kind.hasPart1) TalkCoachCard(record, d)
-        // Fillers counted in the recording itself – the live transcript often leaves them out.
+        // Fillers counted in the recording itself – the live transcript often leaves them out. Never fewer than the
+        // transcript shows, so the numbers on this page do not contradict each other.
+        val writtenFillers = remember(record.id) { de.abicoach.practice.TalkMetrics.countFillers(record.utterances.filter { it.speaker == de.abicoach.data.Speaker.STUDENT }.joinToString(" ") { it.text }) }
         if (d.fillers >= 0) {
+            val fillers = maxOf(d.fillers, writtenFillers)
             val minutes = record.durationSec.coerceAtLeast(60) / 60.0
-            val perMinute = d.fillers / minutes
+            val perMinute = fillers / minutes
             Banner(
-                "Füllwörter in deiner Aufnahme: ${d.fillers}×" + (if (d.fillerWords.isNotEmpty()) " – vor allem „${d.fillerWords.joinToString("“, „")}“" else "") +
+                "Füllwörter in der ganzen Übung: ${fillers}×" + (if (d.fillerWords.isNotEmpty()) " – vor allem „${d.fillerWords.joinToString("“, „")}“" else "") +
                     if (perMinute > 3) ". Ersetze sie durch eine kurze Pause oder „Let me think …“." else ".",
                 if (perMinute > 3) yellow else green,
                 icon = R.drawable.graphic_eq_24dp,

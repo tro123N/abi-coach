@@ -626,7 +626,7 @@ fun LiveScreen(vm: AppViewModel) {
                     }
                     Spacer(Modifier.width(10.dp))
                     StartButton(
-                        text = vm.busy ?: if (toPart2) "Weiter zu Teil 2" else "Auswerten",
+                        text = vm.busy ?: if (toPart2) "Zu Teil 2" else "Auswerten",
                         onClick = { if (toPart2) vm.finishPart1() else vm.finishSession() },
                         enabled = vm.busy == null,
                         icon = if (toPart2) R.drawable.arrow_forward_24dp else R.drawable.stop_24dp,

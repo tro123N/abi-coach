@@ -161,6 +161,7 @@ Rules:
         talkStyle: de.abicoach.data.TalkStyle = de.abicoach.data.TalkStyle.AUSGEWOGEN,
         termNote: String = "",
         strictness: de.abicoach.data.Strictness = de.abicoach.data.Strictness.NORMAL,
+        accent: String = "British",
     ): String {
         val topics = task.part2.ifEmpty { emptyList() }
         val topicA = topics.getOrNull(0)?.let { "${Knowledge.topic(it.topicId)?.english ?: "another topic area"} – ${it.question}" } ?: "a topic area from another term of the course"
@@ -186,7 +187,7 @@ Your plan for part 2:
 1. Thank the student in one short sentence and lead over from the presentation to a broader question.
 2. Talk about: $topicA
 3. $switchPlan$termNote$factLine${talkStyleBlock(talkStyle)}${courseBlock(courseOverview, topicContext, teacherNotes)}$patterns
-$EXAMINER_RULES
+${EXAMINER_RULES.replace("Speak British English", "Speak $accent English")}
 - Never correct the student's English and never comment on mistakes yourself – the app's coach does that (you then get a COACH_NOTE).${strictnessBlock(strictness)}
 """.trim()
     }
@@ -205,6 +206,7 @@ $EXAMINER_RULES
         otherTopics: List<String> = emptyList(),
         talkStyle: de.abicoach.data.TalkStyle = de.abicoach.data.TalkStyle.AUSGEWOGEN,
         strictness: de.abicoach.data.Strictness = de.abicoach.data.Strictness.NORMAL,
+        accent: String = "British",
     ): String {
         val coach =
             if (mode == FeedbackMode.COACH) {
@@ -235,7 +237,7 @@ You are an experienced English teacher in North Rhine-Westphalia, Germany, runni
 
 Topic field: $topic$focusLine
 $style${if (extra.isNotBlank()) "\nSpecial focus of this exercise: $extra" else ""}${talkStyleBlock(talkStyle)}${courseBlock(courseOverview, topicContext, teacherNotes)}$patterns
-$EXAMINER_RULES
+${EXAMINER_RULES.replace("Speak British English", "Speak $accent English")}
 $coach${strictnessBlock(strictness)}
 """.trim()
     }

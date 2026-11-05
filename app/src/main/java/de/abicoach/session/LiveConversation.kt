@@ -164,7 +164,7 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val routing = AudioRouting(app)
     private val player = PcmPlayer(24_000)
-    private val tts = Tts(app, call = true)
+    private val tts = Tts(app, call = true) { app.settings.accent.locale }
     private var mic: MicStreamer? = null
     private var wav: WavWriter? = null
 

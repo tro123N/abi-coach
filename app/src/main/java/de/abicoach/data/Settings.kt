@@ -68,6 +68,13 @@ enum class TalkStyle(val label: String, val description: String) {
     }
 }
 
+/** The English the voices speak (examiner, coach, read-aloud, the phone's voice). */
+enum class Accent(val label: String, val english: String, val locale: java.util.Locale, val bcp47: String) {
+    BRITISCH("Britisch", "British", java.util.Locale.UK, "en-GB"),
+    AMERIKANISCH("Amerikanisch", "American", java.util.Locale.US, "en-US"),
+    ;
+}
+
 /** How hard the examiner is on the student – the points stay the same, only the tone and the pressure change. */
 enum class Strictness(val label: String, val description: String) {
     FREUNDLICH("Freundlich", "Der Prüfer ist warm und ermutigend – gut zum Einstieg und wenn du nervös bist."),
@@ -275,6 +282,11 @@ class Settings(context: Context) {
 
     /** In a live session the page follows the transcript to the newest line ("Mitscrollen"); the student can switch it off. */
     var liveFollow by BoolPref("live_follow", true)
+
+    /** British or American English for every voice in the app. */
+    var accent: Accent
+        get() = enumValue("accent", Accent.BRITISCH)
+        set(value) = putString("accent", value.name)
 
     /** How hard the examiner is (and how blunt the written feedback is); the grading itself stays the same. */
     var strictness: Strictness

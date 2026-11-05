@@ -658,7 +658,7 @@ Lieber umschreiben als ins Deutsche wechseln oder abbrechen.
             id = "t$topicId",
             number = number,
             title = t.short,
-            subtitle = "Topic field",
+            subtitle = "Themenfeld",
             icon = R.drawable.hub_24dp,
             topicId = topicId,
             free = true,

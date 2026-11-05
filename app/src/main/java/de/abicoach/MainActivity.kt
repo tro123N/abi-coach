@@ -31,6 +31,12 @@ class MainActivity : ComponentActivity() {
         vm.openFromNotification(id)
     }
 
+    /** The app goes to the background: whatever is being read aloud stops (a live session keeps running). */
+    override fun onStop() {
+        super.onStop()
+        if (!isChangingConfigurations) vm.stopSpeaking()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val app = application as AbiCoachApp

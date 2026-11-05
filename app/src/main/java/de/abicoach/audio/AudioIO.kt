@@ -304,7 +304,7 @@ class AudioRouting(context: Context) {
  * Android's own text-to-speech in British English, for short prompts, soft whispers and "read aloud" buttons.
  * With [call] true the voice plays like a phone call, through the same route as the examiner's voice.
  */
-class Tts(context: Context, private val call: Boolean = false) {
+class Tts(context: Context, private val call: Boolean = false, private val localeOf: () -> Locale = { Locale.UK }) {
     @Volatile private var ready = false
     private val engine: TextToSpeech =
         TextToSpeech(context.applicationContext) { status ->
@@ -312,7 +312,7 @@ class Tts(context: Context, private val call: Boolean = false) {
         }
 
     private fun prepare(rate: Float, pitch: Float) {
-        engine.setLanguage(Locale.UK)
+        engine.setLanguage(localeOf())
         engine.setSpeechRate(rate)
         engine.setPitch(pitch)
         if (call) {

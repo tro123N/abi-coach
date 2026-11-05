@@ -64,6 +64,9 @@ data class TalkMetrics(
     companion object {
         private val fillerRegex = Regex("\\b(um+|uh+m*|uhm|erm*|ähm*|äh|hmm+|mhm)\\b", RegexOption.IGNORE_CASE)
 
+        /** Fillers (um, uh, er, ähm …) written in a transcript. */
+        fun countFillers(text: String): Int = fillerRegex.findAll(text).count()
+
         /** Target seconds for the three tasks of a full presentation. */
         val TARGET = mapOf(1 to 120, 2 to 240, 3 to 180)
 

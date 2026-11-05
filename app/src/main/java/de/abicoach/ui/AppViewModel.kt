@@ -123,8 +123,12 @@ class Navigator {
     var direction: Int = 0
         private set
 
+    /** Called before the page changes, with the page that is being left (the view model stops sound and microphone there). */
+    var onChange: ((Screen) -> Unit)? = null
+
     fun push(screen: Screen) {
         if (stack.last() != screen) {
+            onChange?.invoke(stack.last())
             direction = 1
             stack.add(screen)
         }
@@ -132,17 +136,20 @@ class Navigator {
 
     fun pop(): Boolean {
         if (stack.size <= 1) return false
+        onChange?.invoke(stack.last())
         direction = -1
         stack.removeAt(stack.lastIndex)
         return true
     }
 
     fun replaceTop(screen: Screen) {
+        onChange?.invoke(stack.last())
         direction = 0
         stack[stack.lastIndex] = screen
     }
 
     fun openTab(tab: Tab) {
+        onChange?.invoke(stack.last())
         direction = if (stack.last() is Screen.Root) 0 else -1
         stack.clear()
         stack.add(Screen.Root(Tab.WEG))
@@ -174,7 +181,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     /** The Fehler-Werkstatt (its state lives as long as the app screen). */
     val workshop = WorkshopController(app, viewModelScope) { notice = it }
-    val nav = Navigator()
+    /** Leaving a page stops anything that is being read aloud on it. */
+    val nav = Navigator().also { n -> n.onChange = { left -> leavePage(left) } }
 
     var busy by mutableStateOf<String?>(null)
         private set
@@ -252,7 +260,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         private set
     private var speechJob: Job? = null
     private var speechPlayer: de.abicoach.audio.PcmPlayer? = null
-    private val androidTts by lazy { de.abicoach.audio.Tts(app) }
+    private var ttsInstance: de.abicoach.audio.Tts? = null
+
+    /** Android's own voice, started only when it is needed for the first time. */
+    private val androidTts: de.abicoach.audio.Tts
+        get() = ttsInstance ?: de.abicoach.audio.Tts(app) { app.settings.accent.locale }.also { ttsInstance = it }
 
     fun tap() = app.feedback.play(FeedbackType.TAP)
 
@@ -544,6 +556,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     otherTopics = others,
                     talkStyle = style,
                     strictness = app.settings.strictness,
+                    accent = app.settings.accent.english,
                 )
             val conversation =
                 LiveConversation(
@@ -651,6 +664,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                                     talkStyle = part2Style,
                                     termNote = de.abicoach.memory.HalfYears.promptNote(app, t.topicId, t.part2.map { it.topicId }),
                                     strictness = de.abicoach.data.Strictness.of(updated.strictness) ?: app.settings.strictness,
+                                    accent = app.settings.accent.english,
                                 ),
                             kickoff = Prompts.KICKOFF_PART2,
                             feedback = updated.feedback,
@@ -1598,7 +1612,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
      * the first piece) and kept, so the second tap plays at once. If the AI's voice does not come within three
      * seconds, Android's own voice reads instead – and the AI's voice is kept for the next time.
      */
-    fun speak(text: String) {
+    fun speak(text: String, voice: String? = null) {
         stopSpeaking()
         speaking = text
         speechJob =
@@ -1617,7 +1631,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     val synth =
                         launch(kotlinx.coroutines.Dispatchers.IO) {
                             val pcm =
-                                app.ai.speakStream(text) { piece ->
+                                app.ai.speakStream(text, voice = voice) { piece ->
                                     if (phoneVoice) return@speakStream
                                     player.enqueue(piece)
                                     first.complete(true)
@@ -1659,7 +1673,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /** The open area of the settings (SettingsSection name), null = the overview. */
-    var settingsSection by mutableStateOf<String?>(null)
+    private var settingsSectionState by mutableStateOf<String?>(null)
+
+    var settingsSection: String?
+        get() = settingsSectionState
+        set(value) {
+            // Changing the area of the settings is like leaving a page: a sample that is playing stops.
+            if (value != settingsSectionState) stopSpeaking()
+            settingsSectionState = value
+        }
 
     /** "Mitscrollen" in live sessions: the page follows the transcript (the choice is kept for the next session). */
     var liveFollow by mutableStateOf(app.settings.liveFollow)
@@ -1802,12 +1824,32 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         if (text.isNotBlank()) app.ai.prefetchSpeech(text)
     }
 
+    /**
+     * A page is left: nothing keeps talking or listening there – the read-aloud voice stops, and a microphone that
+     * is still open on that page (Aussprache-Labor, "Sag es richtig", Sprech-Training, Fehler-Werkstatt) is closed.
+     */
+    private fun leavePage(left: Screen) {
+        stopSpeaking()
+        if (pronRecording) {
+            recorder?.release()
+            recorder = null
+            pronRecording = false
+        }
+        if (sayTarget != null) sayClose()
+        if (left == Screen.Drills && drillRecording) {
+            drillRecorder?.release()
+            drillRecorder = null
+            drillRecording = false
+        }
+        if (left == Screen.Workshop && workshop.recording) workshop.close()
+    }
+
     fun stopSpeaking() {
         speechJob?.cancel()
         speechJob = null
         speechPlayer?.stop()
         speechPlayer = null
-        androidTts.stop()
+        ttsInstance?.stop()
         speaking = null
     }
 
@@ -1837,7 +1879,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         micTest?.stop()
         live?.abort()
         stopSpeaking()
-        androidTts.shutdown()
+        ttsInstance?.shutdown()
         super.onCleared()
     }
 

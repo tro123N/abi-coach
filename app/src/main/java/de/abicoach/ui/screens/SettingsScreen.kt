@@ -124,6 +124,8 @@ fun SettingsScreen(vm: AppViewModel) {
         title = SettingsSection.of(vm.settingsSection)?.title ?: "Einstellungen",
         onBack = { vm.tap(); if (vm.settingsSection != null) vm.settingsSection = null else vm.nav.pop() },
         tag = "settings",
+        // Every area starts at its top (not where the last one was left).
+        scroll = remember(vm.settingsSection) { androidx.compose.foundation.ScrollState(0) },
     ) {
         if (version < 0) return@DetailScaffold
         MessageBanners(vm)
@@ -276,32 +278,77 @@ fun SettingsScreen(vm: AppViewModel) {
                 Provider.GOOGLE -> {
                     BodyText("Prüfer (${app.ai.examinerLabel()})")
                     Gap(6.dp)
-                    ChoiceChips(Settings.GEMINI_VOICES, settings.geminiVoice, { it }, { vm.tap(); settings.geminiVoice = it }, tagPrefix = "gvoice")
+                    ChoiceChips(Settings.GEMINI_VOICES, settings.geminiVoice, { it }, { vm.tap(); vm.stopSpeaking(); settings.geminiVoice = it }, tagPrefix = "gvoice")
                     Gap(12.dp)
                     BodyText("Vorlesen und Coach")
                     Gap(6.dp)
-                    ChoiceChips(Settings.GEMINI_VOICES, settings.ttsVoice, { it }, { vm.tap(); settings.ttsVoice = it }, tagPrefix = "ttsvoice")
+                    ChoiceChips(Settings.GEMINI_VOICES, settings.ttsVoice, { it }, { vm.tap(); vm.stopSpeaking(); settings.ttsVoice = it }, tagPrefix = "ttsvoice")
                 }
                 Provider.OPENAI -> {
                     BodyText("Prüfer (${app.ai.examinerLabel()})")
                     Gap(6.dp)
-                    ChoiceChips(Settings.OPENAI_VOICES, settings.oaVoice, { it }, { vm.tap(); settings.oaVoice = it }, tagPrefix = "ovoice")
+                    ChoiceChips(Settings.OPENAI_VOICES, settings.oaVoice, { it }, { vm.tap(); vm.stopSpeaking(); settings.oaVoice = it }, tagPrefix = "ovoice")
                     Gap(12.dp)
                     BodyText("Vorlesen und Coach")
                     Gap(6.dp)
-                    ChoiceChips(Settings.OPENAI_VOICES, settings.oaTtsVoice, { it }, { vm.tap(); settings.oaTtsVoice = it }, tagPrefix = "ottsvoice")
+                    ChoiceChips(Settings.OPENAI_VOICES, settings.oaTtsVoice, { it }, { vm.tap(); vm.stopSpeaking(); settings.oaTtsVoice = it }, tagPrefix = "ottsvoice")
                 }
                 Provider.ANTHROPIC ->
-                    CaptionText("Claude spricht mit der Stimme deines Handys. Welche Stimme das ist, stellst du in den Android-Einstellungen unter „Sprachausgabe“ ein (am besten Englisch, Großbritannien).")
+                    CaptionText("Claude spricht mit der Stimme deines Handys. Welche Stimme das ist, stellst du in den Android-Einstellungen unter „Sprachausgabe“ ein (am besten Englisch, ${if (settings.accent == de.abicoach.data.Accent.BRITISCH) "Großbritannien" else "USA"}).")
             }
-            Gap(10.dp)
-            ActionButton(
-                if (vm.speaking != null) "Stopp" else "Probehören",
-                if (vm.speaking != null) R.drawable.stop_24dp else R.drawable.volume_up_24dp,
-                accent,
-                { if (vm.speaking != null) vm.stopSpeaking() else vm.speak("Good morning. Let's start with your presentation. Take your time.") },
-                container = MaterialTheme.colorScheme.background,
+            Gap(12.dp)
+            BodyText("Aussprache der Stimmen")
+            Gap(6.dp)
+            ChoiceChips(
+                de.abicoach.data.Accent.entries,
+                settings.accent,
+                { it.label },
+                { vm.tap(); vm.stopSpeaking(); settings.accent = it },
+                tagPrefix = "accent",
             )
+            Gap(4.dp)
+            CaptionText(
+                if (settings.accent == de.abicoach.data.Accent.BRITISCH) {
+                    "Prüfer, Coach und Vorlesen sprechen britisches Englisch."
+                } else {
+                    "Prüfer, Coach und Vorlesen sprechen amerikanisches Englisch."
+                } + " Bewertet wird beides gleich – britisch und amerikanisch sind im Abitur richtig.",
+            )
+            Gap(10.dp)
+            // One sample for each voice: the examiner's and the one that reads aloud and coaches.
+            val examinerSample = "Good morning. Let's start with your presentation – take your time."
+            val coachSample = "Careful: not \"in the class\", but \"in class\". Say it again, please."
+            val examinerVoice =
+                when (settings.provider) {
+                    Provider.GOOGLE -> settings.geminiVoice
+                    Provider.OPENAI -> settings.oaVoice
+                    Provider.ANTHROPIC -> null
+                }
+            val claude = settings.provider == Provider.ANTHROPIC
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ActionButton(
+                    if (vm.speaking == examinerSample) "Stopp" else if (claude) "Probehören" else "Prüfer anhören",
+                    if (vm.speaking == examinerSample) R.drawable.stop_24dp else R.drawable.volume_up_24dp,
+                    accent,
+                    { if (vm.speaking == examinerSample) vm.stopSpeaking() else vm.speak(examinerSample, voice = examinerVoice) },
+                    Modifier.weight(1f).testTag("voice_try_examiner"),
+                    container = MaterialTheme.colorScheme.background,
+                )
+                if (!claude) {
+                    ActionButton(
+                        if (vm.speaking == coachSample) "Stopp" else "Coach anhören",
+                        if (vm.speaking == coachSample) R.drawable.stop_24dp else R.drawable.volume_up_24dp,
+                        accent,
+                        { if (vm.speaking == coachSample) vm.stopSpeaking() else vm.speak(coachSample) },
+                        Modifier.weight(1f).testTag("voice_try_coach"),
+                        container = MaterialTheme.colorScheme.background,
+                    )
+                }
+            }
+            if (!claude) {
+                Gap(4.dp)
+                CaptionText("Im echten Gespräch klingt der Prüfer ein wenig anders (Live-Stimme), aber Stimme und Aussprache sind dieselben.")
+            }
         }
             }
             SettingsSection.ANZEIGE -> {
@@ -709,7 +756,7 @@ enum class SettingsSection(val title: String, val icon: Int) {
     KI("KI und Schlüssel", R.drawable.auto_awesome_24dp),
     PRUEFUNG("Prüfung und Üben", R.drawable.event_24dp),
     PRUEFER("Prüfer und Stimmen", R.drawable.forum_24dp),
-    ANZEIGE("Aufnahme, Anzeige, Erinnerung", R.drawable.mic_24dp),
+    ANZEIGE("Aufnahme und Erinnerung", R.drawable.mic_24dp),
     DESIGN("Aussehen und Töne", R.drawable.palette_24dp),
     DATEN("Daten und Sicherung", R.drawable.folder_24dp),
     UEBER("Update, Hilfe, Über", R.drawable.info_24dp),
@@ -736,7 +783,7 @@ private fun SettingsMenu(vm: AppViewModel) {
             when (section) {
                 SettingsSection.KI -> "${s.provider.label} · ${s.quality.label} · " + if (keyOk) "Schlüssel ✓" else "Schlüssel fehlt"
                 SettingsSection.PRUEFUNG -> (date?.format(DateTimeFormatter.ofPattern("dd.MM.yyyy"))?.let { "Prüfung am $it" } ?: "Prüfungstermin fehlt") + " · ${s.dailyMinutes} Min./Tag · ${s.defaultFeedback.label}"
-                SettingsSection.PRUEFER -> "${s.talkStyle.label} · ${s.strictness.label} · " + if (s.pushToTalk) "Knopf halten" else "einfach sprechen"
+                SettingsSection.PRUEFER -> "${s.talkStyle.label} · ${s.strictness.label} · " + (if (s.pushToTalk) "Knopf halten" else "einfach sprechen") + " · ${s.accent.label}"
                 SettingsSection.ANZEIGE -> (if (s.uploadAudio) "Aufnahme wird mitbewertet" else "nur Transkript") + " · Erinnerung " + if (s.reminderOn) "an" else "aus"
                 SettingsSection.DESIGN -> "${s.themeMode.label} · ${s.palette.label}"
                 SettingsSection.DATEN -> "Lernstand sichern und laden, löschen"

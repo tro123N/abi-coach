@@ -281,7 +281,8 @@ class OpenAiRest(private val http: OkHttpClient, private val apiKey: () -> Strin
 
     companion object {
         /** How the read-aloud voice should sound. */
-        const val VOICE_STYLE = "A friendly, clear British English teacher. Speak naturally at a calm, normal pace."
+        /** How the read-aloud voice speaks; [accent] is "British" or "American". */
+        fun voiceStyle(accent: String) = "A friendly, clear $accent English teacher. Speak naturally at a calm, normal pace."
 
         fun wavOf(pcm: ByteArray, rate: Int = 16_000): String = Base64.encodeToString(de.abicoach.audio.Wav.of(pcm, rate), Base64.NO_WRAP)
     }

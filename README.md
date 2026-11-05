@@ -87,6 +87,10 @@ Danach startet auf Wunsch eine **geführte Tour durch die echte App**: Der Bilds
 
 Die Einstellungen sind in sieben Bereiche geordnet, jeder mit einer Zeile, was gerade eingestellt ist: **KI und Schlüssel** (Firma, Qualität, Schlüssel, System prüfen, wer was macht, Modelle), **Prüfung und Üben** (Termin, Übungszeit, Rückmeldung, Kursthemen), **Prüfer und Stimmen** (Gesprächsstil, Härte, Knopf halten, Stimmen), **Aufnahme, Anzeige, Erinnerung**, **Aussehen und Töne**, **Daten und Sicherung** sowie **Hilfe und Über AbiCoach** (Tour, Einrichtung, Version). Beim Einrichten einer Übung sind die Prüfer-Optionen und die KI-Übersicht zusammengeklappt – mit einer Zusammenfassung, was gilt.
 
+## Stimmen
+
+Unter Einstellungen → **Prüfer und Stimmen** wählst du die Stimme des Prüfers und die Stimme für Vorlesen und Coach – jede hat ihren eigenen Knopf zum Anhören („Prüfer anhören“, „Coach anhören“). Die **Aussprache der Stimmen** ist *britisch* oder *amerikanisch*: Sie gilt für alle Stimmen (Prüfer, Coach, Vorlesen, Aussprache-Labor, Handy-Stimme) und für die Mitschrift. Bewertet wird beides gleich. Was vorgelesen wird, stoppt, sobald du die Seite verlässt oder die App in den Hintergrund geht; ein noch offenes Mikrofon (Aussprache-Labor, „Sag es richtig“, Sprech-Training, Fehler-Werkstatt) wird dabei geschlossen.
+
 ## Update direkt in der App
 
 Unter Einstellungen → **Update, Hilfe, Über** sucht „Nach Update suchen“ auf GitHub nach dem neuesten Build. Ist einer da, lädt „Jetzt aktualisieren“ die APK mit Fortschrittsbalken herunter, prüft, dass es wirklich eine neuere AbiCoach-Version ist, und übergibt sie direkt an den Android-Installer – ohne Browser und ohne Datei suchen. Die App fragt außerdem höchstens alle 12 Stunden von selbst nach und zeigt auf „Heute“ einen Hinweis, wenn es ein Update gibt.

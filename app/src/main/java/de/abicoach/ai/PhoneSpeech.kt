@@ -39,7 +39,10 @@ import kotlin.coroutines.resume
  * The phone's own ears and voice: Android's speech recognition and text to speech. Claude can neither hear nor
  * speak, so with Claude these do the listening and talking while Claude does all the thinking.
  */
-class PhoneSpeech(context: Context) {
+class PhoneSpeech(context: Context, private val localeOf: () -> Locale = { Locale.UK }) {
+    /** British or American English for the phone's voice and its speech recognition (follows the setting). */
+    private val locale: Locale get() = localeOf()
+
     private val context = context.applicationContext
     private val recognizeLock = Mutex()
     private val speakLock = Mutex()
@@ -104,7 +107,7 @@ class PhoneSpeech(context: Context) {
                 val intent =
                     Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                         putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                        putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-GB")
+                        putExtra(RecognizerIntent.EXTRA_LANGUAGE, if (locale == Locale.US) "en-US" else "en-GB")
                         putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
                         putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE, pipe[0])
                         putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_CHANNEL_COUNT, 1)
@@ -139,6 +142,7 @@ class PhoneSpeech(context: Context) {
     suspend fun synthesize(text: String): ByteArray? =
         speakLock.withLock {
             val tts = engine() ?: return@withLock null
+            runCatching { tts.language = locale }
             val file = File(context.cacheDir, "phone_tts_${System.nanoTime()}.wav")
             val id = "abicoach-${System.nanoTime()}"
             val done = CompletableDeferred<Boolean>()
@@ -177,7 +181,7 @@ class PhoneSpeech(context: Context) {
                 engine =
                     TextToSpeech(context) { status ->
                         val ok = status == TextToSpeech.SUCCESS
-                        if (ok) runCatching { engine?.language = Locale.UK }
+                        if (ok) runCatching { engine?.language = locale }
                         d.complete(ok)
                     }
             }

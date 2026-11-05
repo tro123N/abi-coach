@@ -44,7 +44,7 @@ class MicTest(private val app: AbiCoachApp) {
     val state: StateFlow<State> = _state.asStateFlow()
     private val routing = AudioRouting(app)
     private val player = PcmPlayer(24_000)
-    private val tts = Tts(app, call = true)
+    private val tts = Tts(app, call = true) { app.settings.accent.locale }
     private var mic: MicStreamer? = null
 
     @Volatile private var segment: SpeechSegment? = null

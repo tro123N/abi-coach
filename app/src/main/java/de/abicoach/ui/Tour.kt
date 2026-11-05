@@ -103,8 +103,8 @@ object TourSteps {
                 "Die Simulation läuft wie im Abitur: neuer Text, Vorbereitungszeit, dein Vortrag (Teil 1) und das Prüfungsgespräch (Teil 2). Danach bewertet die KI nach dem NRW-Raster.",
             ),
             TourStep(
-                Tab.TRAINING, "train_part2", R.drawable.forum_24dp, "Teil 1 und Teil 2 einzeln",
-                "Einzelne Aufgaben, nur das Prüfungsgespräch oder ein freies Gespräch. Beim Einrichten wählst du, ob der Prüfer streng führt oder mehr auf dich eingeht.",
+                Tab.TRAINING, "train_part2", R.drawable.forum_24dp, "Teil 2 einzeln üben",
+                "Nur das Prüfungsgespräch, ein freies Training oder ein Gespräch zu deinen Schwachstellen – darüber findest du die einzelnen Aufgaben von Teil 1. Beim Einrichten wählst du, wie der Prüfer führt und wie streng er ist.",
             ),
             TourStep(
                 Tab.TRAINING, "train_target", R.drawable.psychology_24dp, "Gezielt besser werden",
