@@ -293,6 +293,20 @@ fun SetupScreen(vm: AppViewModel, initial: SessionSetup) {
                 Gap(6.dp)
                 CaptionText(style.description)
                 Gap(12.dp)
+                // How hard the examiner is – up to a stress test.
+                var strict by remember { mutableStateOf(app.settings.strictness) }
+                BodyText("Härte des Prüfers")
+                Gap(6.dp)
+                ChoiceChips(
+                    options = de.abicoach.data.Strictness.entries,
+                    selected = strict,
+                    label = { it.label },
+                    onSelect = { vm.tap(); strict = it; app.settings.strictness = it },
+                    tagPrefix = "strictness",
+                )
+                Gap(6.dp)
+                CaptionText(strict.description, color = if (strict == de.abicoach.data.Strictness.STRESSTEST) red else null)
+                Gap(12.dp)
                 // How the student hands the turn over: by a pause, or by letting go of a button.
                 var ptt by remember { mutableStateOf(app.settings.pushToTalk) }
                 BodyText("Wie du sprichst")
@@ -624,6 +638,9 @@ fun LiveScreen(vm: AppViewModel) {
                 Column(Modifier.weight(1f)) {
                     Text(state.status, fontSize = dimens.fonts.label, lineHeight = dimens.fonts.label * 1.2f, color = MaterialTheme.colorScheme.onPrimary)
                     if (state.hasExaminer && state.examinerLabel.isNotBlank()) CaptionText("Prüfer: ${state.examinerLabel}")
+                    if (state.hasExaminer && draft?.strictness == de.abicoach.data.Strictness.STRESSTEST.name) {
+                        CaptionText("Stresstest – der Prüfer ist absichtlich hart", color = red)
+                    }
                     if (!state.transcriberReady) CaptionText("Mitschrift startet …")
                 }
                 Spacer(Modifier.width(8.dp))

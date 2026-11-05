@@ -415,6 +415,8 @@ data class SessionRecord(
     val focusSkill: String = "",
     /** How the examiner led the conversation (TalkStyle name). */
     val talkStyle: String = "",
+    /** How hard the examiner was (Strictness name); empty = normal. */
+    val strictness: String = "",
 ) {
     val studentText: String
         get() = utterances.filter { it.speaker == Speaker.STUDENT }.joinToString(" ") { it.text }
@@ -448,6 +450,7 @@ data class SessionRecord(
             .put("extraTopics", org.json.JSONArray(extraTopics))
             .put("focusSkill", focusSkill)
             .put("talkStyle", talkStyle)
+            .put("strictness", strictness)
 
     companion object {
         fun create(kind: SessionKind, feedback: FeedbackMode, topicId: Int, task: ExamTask?, focusTask: Int = 0, focusCategories: List<String> = emptyList()) =
@@ -493,6 +496,7 @@ data class SessionRecord(
                 extraTopics = o.optJSONArray("extraTopics")?.let { a -> (0 until a.length()).map { a.optInt(it, -1) }.filter { it in 0..13 } }.orEmpty(),
                 focusSkill = o.optString("focusSkill"),
                 talkStyle = o.optString("talkStyle"),
+                strictness = o.optString("strictness"),
             )
     }
 }

@@ -361,6 +361,10 @@ class SmokeTest {
         runCatching { compose.onNodeWithTag("setup_talk_style").performScrollTo() }
         runCatching { compose.onNodeWithTag("talkstyle_2").performClick() }
         shot("einrichten_gespraechsstil")
+        runCatching { compose.onNodeWithTag("strictness_3").performScrollTo() }
+        runCatching { compose.onNodeWithTag("strictness_3").performClick() }
+        shot("einrichten_stresstest")
+        ui { app.settings.strictness = de.abicoach.data.Strictness.NORMAL }
         ui { vm.nav.pop(); vm.nav.push(Screen.Setup(SessionSetup.defaults(SessionKind.PART1, 2, FeedbackMode.COACH))) }
         shot("einrichten_aufgabe2")
 

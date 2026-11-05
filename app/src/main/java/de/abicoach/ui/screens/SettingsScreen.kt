@@ -192,6 +192,12 @@ fun SettingsScreen(vm: AppViewModel) {
             Gap(4.dp)
             CaptionText(settings.talkStyle.description + " Für jede Übung kannst du das beim Einrichten ändern.")
             Gap(12.dp)
+            BodyText("Härte des Prüfers (Standard)")
+            Gap(6.dp)
+            ChoiceChips(de.abicoach.data.Strictness.entries, settings.strictness, { it.label }, { vm.tap(); settings.strictness = it }, tagPrefix = "defstrictness")
+            Gap(4.dp)
+            CaptionText(settings.strictness.description + " Die Punkte bleiben immer fair nach dem NRW-Raster – nur Ton und Druck ändern sich.")
+            Gap(12.dp)
             SwitchRow(
                 "Knopf gedrückt halten zum Sprechen",
                 "Im Gespräch hältst du einen Knopf gedrückt, solange du sprichst. Beim Loslassen antwortet der Prüfer sofort – statt auf eine Pause zu warten.",

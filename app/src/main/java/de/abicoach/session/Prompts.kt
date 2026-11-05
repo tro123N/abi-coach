@@ -117,6 +117,39 @@ Rules:
                     "conversation; if he drifts away, connect his point back to the topic with a bridge (\"That's interesting – how does that relate to …?\")."
         }
 
+    /** How hard the examiner is. Placed after the rules' "friendly and neutral", which it replaces for the stricter levels. */
+    fun strictnessBlock(level: de.abicoach.data.Strictness): String =
+        when (level) {
+            de.abicoach.data.Strictness.FREUNDLICH ->
+                "\nExaminer's manner: warm and encouraging. Smile in your voice, acknowledge good points briefly, and if he gets stuck, help him with an easier follow-up question."
+            de.abicoach.data.Strictness.NORMAL -> ""
+            de.abicoach.data.Strictness.STRENG ->
+                "\nExaminer's manner (this replaces \"friendly and neutral\"): cool, demanding and matter-of-fact. Hardly any praise. " +
+                    "When an answer is vague or general, say so at once (\"That's rather vague – be more precise.\") and ask for evidence, names, examples or figures. " +
+                    "Challenge weak arguments with a counter-position and do not accept an answer that dodges the question."
+            de.abicoach.data.Strictness.STRESSTEST ->
+                "\nExaminer's manner – STRESS TEST, chosen by the student himself to learn to keep calm under pressure (this replaces \"friendly and neutral\"): " +
+                    "you are the toughest examiner imaginable – cold, impatient, sceptical and unimpressed. Never praise. " +
+                    "React to vague or empty answers sharply (\"That's not an answer to my question.\", \"You're just repeating yourself.\", \"Is that really all you know about it?\"). " +
+                    "Interrupt long-winded or memorised answers mid-sentence. Expose every gap: ask precisely where he seems unsure, ask him to define the terms he uses, " +
+                    "confront him with contradictions to what he said before, demand concrete evidence, names and dates, play devil's advocate, and jump to an unexpected aspect or another topic field without warning. " +
+                    "Let uncomfortable silences stand: do not fill his pauses, do not help him out, just wait or say \"Well?\". Show doubt with your tone (\"Are you sure about that?\"). " +
+                    "Limits: attack only the content and quality of his answers – never insult him as a person, never mock his accent, appearance, intelligence or background, no swearing, " +
+                    "and stay inside the exam situation. Still never correct his English yourself."
+        }
+
+    /** The tone of the written feedback; the points stay exactly as strict as the NRW grid demands. */
+    fun feedbackTone(level: String): String =
+        when (de.abicoach.data.Strictness.of(level)) {
+            de.abicoach.data.Strictness.STRENG ->
+                "\nTon der Rückmeldung: direkt und nüchtern, ohne Lob-Polster und ohne Abschwächungen. Die Punkte bleiben genau so fair wie im NRW-Raster."
+            de.abicoach.data.Strictness.STRESSTEST ->
+                "\nTon der Rückmeldung: schonungslos ehrlich, kurz und hart in der Sache – nenne jede Schwäche beim Namen, ohne Lob-Polster und ohne Beschönigung, " +
+                    "aber ohne den Schüler persönlich abzuwerten. Die Punkte bleiben genau so fair wie im NRW-Raster (nicht strenger, nicht milder)."
+            de.abicoach.data.Strictness.FREUNDLICH -> "\nTon der Rückmeldung: ermutigend – beginne mit dem, was gelungen ist. Die Punkte bleiben genau so streng wie im NRW-Raster."
+            else -> ""
+        }
+
     fun part2Examiner(
         task: ExamTask,
         part1Excerpt: String,
@@ -127,6 +160,7 @@ Rules:
         patterns: String = "",
         talkStyle: de.abicoach.data.TalkStyle = de.abicoach.data.TalkStyle.AUSGEWOGEN,
         termNote: String = "",
+        strictness: de.abicoach.data.Strictness = de.abicoach.data.Strictness.NORMAL,
     ): String {
         val topics = task.part2.ifEmpty { emptyList() }
         val topicA = topics.getOrNull(0)?.let { "${Knowledge.topic(it.topicId)?.english ?: "another topic area"} – ${it.question}" } ?: "a topic area from another term of the course"
@@ -153,7 +187,7 @@ Your plan for part 2:
 2. Talk about: $topicA
 3. $switchPlan$termNote$factLine${talkStyleBlock(talkStyle)}${courseBlock(courseOverview, topicContext, teacherNotes)}$patterns
 $EXAMINER_RULES
-- Never correct the student's English and never comment on mistakes yourself – the app's coach does that (you then get a COACH_NOTE).
+- Never correct the student's English and never comment on mistakes yourself – the app's coach does that (you then get a COACH_NOTE).${strictnessBlock(strictness)}
 """.trim()
     }
 
@@ -170,6 +204,7 @@ $EXAMINER_RULES
         /** The other topic fields of the conversation, in order; the app tells the examiner when to switch. */
         otherTopics: List<String> = emptyList(),
         talkStyle: de.abicoach.data.TalkStyle = de.abicoach.data.TalkStyle.AUSGEWOGEN,
+        strictness: de.abicoach.data.Strictness = de.abicoach.data.Strictness.NORMAL,
     ): String {
         val coach =
             if (mode == FeedbackMode.COACH) {
@@ -201,7 +236,7 @@ You are an experienced English teacher in North Rhine-Westphalia, Germany, runni
 Topic field: $topic$focusLine
 $style${if (extra.isNotBlank()) "\nSpecial focus of this exercise: $extra" else ""}${talkStyleBlock(talkStyle)}${courseBlock(courseOverview, topicContext, teacherNotes)}$patterns
 $EXAMINER_RULES
-$coach
+$coach${strictnessBlock(strictness)}
 """.trim()
     }
 
@@ -424,6 +459,10 @@ ${skillLines()}
         Skill.byKey(record.focusSkill)?.let { skill ->
             sb.append("\nFokus-Kompetenz dieser Übung: ").append(skill.label).append(" (").append(skill.description).append(")")
             sb.append(" – der Schüler trainiert sie gezielt: beurteile sie besonders genau, belege es mit seinen eigenen Worten und gib in levers mindestens einen konkreten Tipp genau dazu.")
+        }
+        sb.append(feedbackTone(record.strictness))
+        if (record.strictness == de.abicoach.data.Strictness.STRESSTEST.name) {
+            sb.append("\nDer Prüfer war in dieser Übung absichtlich extrem streng (Stresstest, vom Schüler gewählt). Beurteile in insights auch, wie ruhig und souverän er unter Druck geblieben ist.")
         }
         if (record.notes.isNotBlank()) sb.append("\n\nNotizen des Prüflings aus der Vorbereitung:\n").append(record.notes)
         if (courseContext.isNotBlank()) sb.append("\n\n").append(courseContext)

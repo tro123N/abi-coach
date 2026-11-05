@@ -68,6 +68,23 @@ enum class TalkStyle(val label: String, val description: String) {
     }
 }
 
+/** How hard the examiner is on the student – the points stay the same, only the tone and the pressure change. */
+enum class Strictness(val label: String, val description: String) {
+    FREUNDLICH("Freundlich", "Der Prüfer ist warm und ermutigend – gut zum Einstieg und wenn du nervös bist."),
+    NORMAL("Normal", "Sachlich und neutral, wie die meisten Prüfer im Abitur."),
+    STRENG("Streng", "Kühl und anspruchsvoll: wenig Lob, hakt bei vagen Antworten sofort nach und verlangt Belege."),
+    STRESSTEST(
+        "Stresstest",
+        "Extrem kritisch: kalt, ungeduldig, unterbricht, deckt jede Lücke und jeden Widerspruch auf und lässt dich in unangenehmen Pausen stehen – " +
+            "der schwierigste Prüfer, den du dir vorstellen kannst. Er greift nur deine Antworten an, nie dich als Person. Abbrechen kannst du jederzeit.",
+    ),
+    ;
+
+    companion object {
+        fun of(name: String?): Strictness? = entries.firstOrNull { it.name == name }
+    }
+}
+
 /** All user settings. API keys are stored encrypted; everything else is plain preferences. */
 class Settings(context: Context) {
     private val prefs = context.getSharedPreferences("abicoach", Context.MODE_PRIVATE)
@@ -245,6 +262,11 @@ class Settings(context: Context) {
 
     /** In a live session the page follows the transcript to the newest line ("Mitscrollen"); the student can switch it off. */
     var liveFollow by BoolPref("live_follow", true)
+
+    /** How hard the examiner is (and how blunt the written feedback is); the grading itself stays the same. */
+    var strictness: Strictness
+        get() = enumValue("strictness", Strictness.NORMAL)
+        set(value) = putString("strictness", value.name)
 
     /** "Knopf gedrückt halten" in conversations: the student holds a button while he speaks, the examiner answers on release. */
     var pushToTalk by BoolPref("push_to_talk", false)

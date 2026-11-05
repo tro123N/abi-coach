@@ -371,6 +371,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     goals = LearningBrain.goals(app, p.kind, p.focusTask, de.abicoach.profile.Skill.byKey(p.focusSkill)),
                     focusSkill = p.focusSkill,
                     talkStyle = p.talkStyle,
+                    strictness = app.settings.strictness.name,
                 )
         prepMinutes = p.prepMinutes
         prepEndsAt = 0L
@@ -518,6 +519,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     extraTopics = extras,
                     focusSkill = s.focusSkill,
                     talkStyle = style.name,
+                    strictness = app.settings.strictness.name,
                 )
         draft = record
         viewModelScope.launch {
@@ -541,6 +543,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     patterns = patternBlockFor(s.feedback),
                     otherTopics = others,
                     talkStyle = style,
+                    strictness = app.settings.strictness,
                 )
             val conversation =
                 LiveConversation(
@@ -647,6 +650,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                                     t, excerpt, app.course.overview(1_200), topicContext, app.course.teacherNotes(6), minutes, patternBlockFor(updated.feedback),
                                     talkStyle = part2Style,
                                     termNote = de.abicoach.memory.HalfYears.promptNote(app, t.topicId, t.part2.map { it.topicId }),
+                                    strictness = de.abicoach.data.Strictness.of(updated.strictness) ?: app.settings.strictness,
                                 ),
                             kickoff = Prompts.KICKOFF_PART2,
                             feedback = updated.feedback,
