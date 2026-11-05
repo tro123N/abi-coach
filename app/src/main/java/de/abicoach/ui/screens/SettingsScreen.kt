@@ -91,6 +91,7 @@ fun SettingsScreen(vm: AppViewModel) {
         }
     if (exportAsk) {
         val megabytes = remember { (de.abicoach.data.Backup.materialBytes(app) / 1_048_576.0) }
+        val hasMaterial = remember { app.memory.docs.value.isNotEmpty() }
         PopUp(
             title = "Lernstand sichern",
             description = "Die Datei enthält alle Sitzungen mit ihren Auswertungen, dein Lernprofil, das Fehlergedächtnis mit den Notizen der Fehler-Werkstatt, den Abi-Weg, Wortschatz, Dossiers und deine Einstellungen. Die KI-Schlüssel bleiben auf dem Handy.",
@@ -103,7 +104,11 @@ fun SettingsScreen(vm: AppViewModel) {
         ) {
             SwitchRow(
                 "Kursmaterial mitnehmen",
-                if (megabytes < 0.1) "Noch kein Material hochgeladen." else "Etwa ${"%.0f".format(megabytes.coerceAtLeast(1.0))} MB mehr – sonst lädst du es auf dem neuen Handy neu hoch.",
+                when {
+                    !hasMaterial -> "Noch kein Material hochgeladen."
+                    megabytes < 1.0 -> "Unter 1 MB mehr – sonst lädst du es auf dem neuen Handy neu hoch."
+                    else -> "Etwa ${"%.0f".format(megabytes)} MB mehr – sonst lädst du es auf dem neuen Handy neu hoch."
+                },
                 withMaterial,
                 { withMaterial = it },
             )

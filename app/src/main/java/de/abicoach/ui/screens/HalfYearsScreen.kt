@@ -32,7 +32,8 @@ fun HalfYearsScreen(vm: AppViewModel) {
     val app = vm.app
     val version by app.settings.version.collectAsState()
     val docs by app.memory.docs.collectAsState()
-    val inferred = remember(docs) { HalfYears.inferred(app) }
+    // What the app uses: the half-years set by the student, the others as found in the material.
+    val map = remember(version, docs) { HalfYears.mapping(app) }
     DetailScaffold(title = "Halbjahre", onBack = { vm.tap(); vm.nav.pop() }, tag = "halfyears") {
         if (version < 0) return@DetailScaffold
         AreaIntro(
@@ -44,7 +45,7 @@ fun HalfYearsScreen(vm: AppViewModel) {
         val manual = app.settings.halfYearTopics
         HalfYears.Q.forEach { half ->
             val set = manual[half]
-            val shown = set ?: inferred.filterValues { it == half }.keys
+            val shown = set ?: map.filterValues { it == half }.keys
             AbiCard(modifier = Modifier.testTag("half_$half")) {
                 CardTitle(half, icon = R.drawable.event_24dp)
                 when {

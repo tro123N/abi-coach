@@ -170,7 +170,8 @@ fun SetupScreen(vm: AppViewModel, initial: SessionSetup) {
             val main = s.topicChoice.takeIf { it in 0..13 }
             val others = Knowledge.TOPICS.map { it.id }.filter { it != main }
             val picked = s.extraTopics.filter { it != main }.toSet()
-            val terms = remember { de.abicoach.memory.HalfYears.mapping(app) }
+            val settingsVersion by app.settings.version.collectAsState()
+            val terms = remember(settingsVersion) { de.abicoach.memory.HalfYears.mapping(app) }
             AbiCard(modifier = Modifier.testTag("setup_more_topics")) {
                 CardTitle(if (forExam) "Teil 2 – Themenfelder" else "Weitere Themenfelder", icon = R.drawable.hub_24dp)
                 CaptionText(

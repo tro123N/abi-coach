@@ -148,7 +148,8 @@ fun TutorialScreen(vm: AppViewModel) {
         if (pager.currentPage > 0) scope.launch { pager.animateScrollToPage(pager.currentPage - 1) } else vm.finishTutorial()
     }
     Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().testTag("tutorial")) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        // Fixed height, so the page number does not jump when "Überspringen" disappears on the last page.
+        Row(Modifier.fillMaxWidth().height(60.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("${pager.currentPage + 1} / ${list.size}", fontSize = dimens.fonts.caption, color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.6f), modifier = Modifier.padding(start = 8.dp))
             Spacer(Modifier.weight(1f))
             if (!last) {

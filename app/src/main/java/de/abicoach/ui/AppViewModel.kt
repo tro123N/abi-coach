@@ -556,7 +556,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         targetSeconds = s.talkMinutes * 60,
                         directed = true,
                         switchTopics = others,
-                        elicit = if (s.feedback != FeedbackMode.PRUEFUNG) app.errorMemory.examinerLines(4) else emptyList(),
+                        elicit = if (s.feedback != FeedbackMode.PRUEFUNG) examinerLines(4) else emptyList(),
                         monologueSec = if (s.isSprint) 0 else if (style == de.abicoach.data.TalkStyle.EINGEHEN) 140 else 100,
                         goalPattern = goalPattern(record),
                         talkStyle = style,
@@ -655,7 +655,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                             targetSeconds = minutes * 60,
                             directed = true,
                             switchTopics = t.part2.drop(1).map { "${Knowledge.topic(it.topicId)?.english ?: "another topic field"} – ${it.question}" },
-                            elicit = if (updated.feedback != FeedbackMode.PRUEFUNG) app.errorMemory.examinerLines(4) else emptyList(),
+                            elicit = if (updated.feedback != FeedbackMode.PRUEFUNG) examinerLines(4) else emptyList(),
                             goalPattern = goalPattern(updated),
                             talkStyle = part2Style,
                             mainTopic = t.part2.firstOrNull()?.let { "${Knowledge.topic(it.topicId)?.english ?: "another topic field"} – ${it.question}" }.orEmpty(),
@@ -1242,9 +1242,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
      * What the examiner of a practice conversation should know: the student's persistent error patterns and his level,
      * so that he elicits exactly these structures and asks at the right difficulty. Never in an exam simulation.
      */
+    /** The student's top error patterns for the examiner, with what the Fehler-Werkstatt tutor found still hard. */
+    private fun examinerLines(limit: Int): List<String> = app.errorMemory.examinerLines(limit) { key -> app.workshops.get(key)?.stillHard.orEmpty() }
+
     private fun patternBlockFor(feedback: FeedbackMode): String {
         if (feedback == FeedbackMode.PRUEFUNG) return ""
-        val patterns = Prompts.patternBlock(app.errorMemory.examinerLines(5), feedback == FeedbackMode.COACH) + Prompts.habitBlock(app.insights.weaknesses(3).map { it.text })
+        val patterns = Prompts.patternBlock(examinerLines(5), feedback == FeedbackMode.COACH) + Prompts.habitBlock(app.insights.weaknesses(3).map { it.text })
         val level =
             app.profiles.profile.value.prognosis()?.let { p ->
                 "\n\nThe student's current level is about ${p.points} of 15 points. " +

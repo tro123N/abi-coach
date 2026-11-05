@@ -280,7 +280,7 @@ private fun WorkshopResult(vm: AppViewModel) {
                 if (m.stillHard.isNotBlank()) GoalLine(false, "Noch schwer: ${m.stillHard}")
                 if (m.helps.isNotBlank()) BulletText("Hilft dir: ${m.helps}")
                 if (m.nextFocus.isNotBlank()) BulletText("Nächste Runde: ${m.nextFocus}")
-                CaptionText("Runde ${m.rounds} · nächstes Mal Niveau ${m.level}. Auch das Sprech-Training und der Coach achten jetzt genau darauf.")
+                CaptionText("Runde ${m.rounds} · nächstes Mal Niveau ${m.level}. Auch das Sprech-Training und der Prüfer in deinen Übungen achten jetzt genau darauf.")
             }
         }
     }

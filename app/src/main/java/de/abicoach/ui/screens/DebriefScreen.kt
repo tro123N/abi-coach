@@ -132,7 +132,11 @@ fun DebriefScreen(vm: AppViewModel, id: String) {
         }
         // The most important open mistake of this session: straight into the Fehler-Werkstatt.
         val workshopPattern =
-            remember(d) { d.errors.asSequence().mapNotNull { vm.app.errorMemory.matching(it) }.firstOrNull { it.state != de.abicoach.learn.PatternState.BEHOBEN } }
+            remember(d) {
+                val open = vm.app.errorMemory.patterns.value.filter { it.state != de.abicoach.learn.PatternState.BEHOBEN }
+                // The pattern of the mistake itself, or else the open pattern of the same kind (e.g. a grammar slip without a named rule).
+                d.errors.asSequence().mapNotNull { e -> vm.app.errorMemory.matching(e)?.takeIf { it in open } ?: open.firstOrNull { it.category == e.category } }.firstOrNull()
+            }
         workshopPattern?.let { p ->
             ActionButton(
                 "Fehler-Werkstatt: ${p.title}",

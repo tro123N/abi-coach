@@ -291,10 +291,12 @@ class ErrorMemoryStore(context: Context) {
     }
 
     /** English lines for the examiner prompt. */
-    fun examinerLines(limit: Int = 5, now: Long = System.currentTimeMillis()): List<String> =
+    /** The top patterns as lines for the examiner and the coach; [stillHard] adds the Fehler-Werkstatt tutor's note. */
+    fun examinerLines(limit: Int = 5, now: Long = System.currentTimeMillis(), stillHard: (String) -> String = { "" }): List<String> =
         top(limit, now).map { p ->
             val ex = p.examples.firstOrNull()?.let { " (e.g. \"${it.wrong}\" instead of \"${it.right}\")" }.orEmpty()
-            p.rule.ifBlank { Knowledge.categoryEnglish(p.category) } + ex
+            val hard = stillHard(p.key).takeIf { it.isNotBlank() }?.let { " – still hard for him (tutor's note, German): $it" }.orEmpty()
+            p.rule.ifBlank { Knowledge.categoryEnglish(p.category) } + ex + hard
         }
 
     @Synchronized

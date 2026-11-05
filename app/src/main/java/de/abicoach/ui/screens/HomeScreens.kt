@@ -553,7 +553,7 @@ private fun LazyListScope.freePractice(
                 )
                 Tile(
                     title = "Kompetenzen",
-                    subtitle = "Jede der 11 Kompetenzen einzeln üben",
+                    subtitle = "Alle 11 einzeln üben",
                     icon = R.drawable.target_24dp,
                     tint = green,
                     onClick = { vm.tap(); vm.nav.push(Screen.Skills) },

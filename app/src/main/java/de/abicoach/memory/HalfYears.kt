@@ -13,13 +13,17 @@ object HalfYears {
     /** The half-years of the Qualifikationsphase, which the Abitur covers. */
     val Q = listOf("Q1.1", "Q1.2", "Q2.1", "Q2.2")
 
-    /** Topic field → half-year: as the student set it, else as the material shows it. */
+    /**
+     * Topic field → half-year: as the student set it, else as the material shows it. A half-year the student set
+     * himself holds exactly his choice; the material only fills the half-years he did not set.
+     */
     fun mapping(app: AbiCoachApp): Map<Int, String> {
+        val manual = app.settings.halfYearTopics
         val out = HashMap<Int, String>()
-        app.settings.halfYearTopics.entries.sortedBy { Q.indexOf(it.key).let { i -> if (i < 0) 9 else i } }.forEach { (half, topics) ->
+        manual.entries.sortedBy { Q.indexOf(it.key).let { i -> if (i < 0) 9 else i } }.forEach { (half, topics) ->
             topics.forEach { t -> out.putIfAbsent(t, half) }
         }
-        inferred(app).forEach { (t, half) -> out.putIfAbsent(t, half) }
+        inferred(app).forEach { (t, half) -> if (half !in manual) out.putIfAbsent(t, half) }
         return out
     }
 
@@ -34,8 +38,8 @@ object HalfYears {
         return counts.mapNotNull { (t, byHalf) -> byHalf.maxByOrNull { it.value }?.let { t to it.key } }.toMap()
     }
 
-    /** The topic fields of a half-year: as set, or as found in the material. */
-    fun topicsOf(app: AbiCoachApp, half: String): Set<Int> = app.settings.halfYearTopics[half] ?: inferred(app).filterValues { it == half }.keys
+    /** The topic fields of a half-year: as set, or as found in the material (without those set for another half-year). */
+    fun topicsOf(app: AbiCoachApp, half: String): Set<Int> = app.settings.halfYearTopics[half] ?: mapping(app).filterValues { it == half }.keys
 
     fun label(app: AbiCoachApp, topic: Int): String? = mapping(app)[topic]
 
