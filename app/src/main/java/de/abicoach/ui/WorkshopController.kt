@@ -165,6 +165,10 @@ class WorkshopController(private val app: AbiCoachApp, private val scope: Corout
 
     fun startRecording() {
         if (recording || busy || (stage != Stage.SPEAK && stage != Stage.TALK)) return
+        if (!app.ai.ready) {
+            onNotice("Zum Zuhören braucht die Werkstatt den Schlüssel deiner KI (Einstellungen → KI und Schlüssel).")
+            return
+        }
         recorder?.release()
         recorder = ShortRecorder(maxSeconds = if (stage == Stage.TALK) 60 else 20).also { it.start() }
         recording = true
