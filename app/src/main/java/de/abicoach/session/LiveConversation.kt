@@ -306,7 +306,7 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
         transcriber = app.ai.transcriber(config.vocabulary, ::onTranscriberEvent).also { it.connect() }
 
         config.examinerPrompt?.let { prompt ->
-            val agent = app.ai.examiner(prompt, ::onExaminerEvent, manualTurns = pushToTalk)
+            val agent = app.ai.examiner(prompt, manualTurns = pushToTalk, onEvent = ::onExaminerEvent)
             examiner = agent
             _state.update { it.copy(examinerLabel = agent.label) }
             agent.connect()

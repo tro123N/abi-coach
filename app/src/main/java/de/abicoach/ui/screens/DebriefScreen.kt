@@ -48,6 +48,7 @@ import de.abicoach.ui.Screen
 import de.abicoach.ui.SessionSetup
 import de.abicoach.ui.components.AbiCard
 import de.abicoach.ui.components.ActionButton
+import de.abicoach.ui.components.Banner
 import de.abicoach.ui.components.BarRow
 import de.abicoach.ui.components.BigNumber
 import de.abicoach.ui.components.BodyText

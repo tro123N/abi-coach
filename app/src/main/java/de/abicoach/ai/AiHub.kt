@@ -477,7 +477,7 @@ class AiHub(context: Context, private val http: OkHttpClient, private val settin
 
     /** The examiner for a live conversation. */
     /** The examiner; with [manualTurns] the student holds a button while he speaks and the examiner answers on release. */
-    fun examiner(instructions: String, onEvent: (LiveEvent) -> Unit, manualTurns: Boolean = false): VoiceAgent =
+    fun examiner(instructions: String, manualTurns: Boolean = false, onEvent: (LiveEvent) -> Unit): VoiceAgent =
         when (provider) {
             Provider.GOOGLE -> {
                 val socket =
