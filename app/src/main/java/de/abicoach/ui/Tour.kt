@@ -205,13 +205,25 @@ fun TourOverlay(vm: AppViewModel) {
         var scrolling by androidx.compose.runtime.remember(index) { mutableStateOf(false) }
         LaunchedEffect(index) {
             val target = step.target ?: return@LaunchedEffect
-            // Elements of the bar at the bottom and of the title line are always in sight.
-            if (target.startsWith("dock_") || target.startsWith("action_")) return@LaunchedEffect
+            // The bar at the bottom is always in sight; the buttons of the title line once the area is at the top.
+            if (target.startsWith("dock_")) return@LaunchedEffect
+            if (target.startsWith("action_")) {
+                step.tab?.let { tour.lists[it] }?.takeIf { it.canScrollBackward }?.let {
+                    scrolling = true
+                    try {
+                        frames(6)
+                        it.scrollToItem(0)
+                        frames(3)
+                    } finally {
+                        scrolling = false
+                    }
+                }
+                return@LaunchedEffect
+            }
             frames(18)
             fun visible(r: Rect?) = r != null && r.top >= topLimit && r.bottom <= height - dock
             if (visible(tour.rect(target))) return@LaunchedEffect
             val list = step.tab?.let { tour.lists[it] }
-            android.util.Log.i("AbiCoachTour", "Schritt $index: $target, Liste ${list != null}, Platz ${tour.rect(target)}")
             if (list == null) return@LaunchedEffect
             scrolling = true
             try {
@@ -229,8 +241,7 @@ fun TourOverlay(vm: AppViewModel) {
                             else -> r.top - topLimit - 40f
                         }
                     if (kotlin.math.abs(delta) < 1f || (delta > 0 && !list.canScrollForward) || (delta < 0 && !list.canScrollBackward)) return@LaunchedEffect
-                    val moved = list.scrollBy(delta)
-                    android.util.Log.i("AbiCoachTour", "  gescrollt ${moved.toInt()} von ${delta.toInt()} px, Platz ${tour.rect(target)}")
+                    list.scrollBy(delta)
                     frames(3)
                 }
             } finally {
