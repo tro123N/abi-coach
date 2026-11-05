@@ -1,0 +1,198 @@
+--------- beginning of main
+11-05 17:47:09.577 D/AndroidRuntime( 3667): >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+11-05 17:47:09.582 I/AndroidRuntime( 3667): Using default boot image
+11-05 17:47:09.583 I/AndroidRuntime( 3667): Leaving lock profiling enabled
+11-05 17:47:09.958 D/AndroidRuntime( 3667): Calling main entry com.android.commands.am.Am
+11-05 17:47:16.511 I/TestRunner( 3718): run started: 4 tests
+11-05 17:47:16.512 I/TestRunner( 3718): started: a_freshStart(de.abicoach.SmokeTest)
+11-05 17:47:24.089 I/AbiCoachSmoke( 3718): Bild: 001_einrichtung_1_willkommen.png
+11-05 17:47:26.000 I/AbiCoachSmoke( 3718): Bild: 002_einrichtung_2_ki.png
+11-05 17:47:28.210 I/AbiCoachSmoke( 3718): Bild: 003_einrichtung_3_schluessel.png
+11-05 17:47:29.969 I/AbiCoachSmoke( 3718): Bild: 004_einrichtung_3_schluessel_unten.png
+11-05 17:47:31.846 I/AbiCoachSmoke( 3718): Bild: 005_einrichtung_4_pruefung.png
+11-05 17:47:33.498 I/AbiCoachSmoke( 3718): Bild: 006_einrichtung_5_kurs.png
+11-05 17:47:35.052 I/AbiCoachSmoke( 3718): Bild: 007_einrichtung_6_mikrofon.png
+11-05 17:47:36.676 I/AbiCoachSmoke( 3718): Bild: 008_einrichtung_7_fertig.png
+11-05 17:47:36.923 I/AbiCoachSmoke( 3718): Einrichtung fertig: true
+11-05 17:47:40.091 I/AbiCoachSmoke( 3718): Bild: 009_start_abiweg.png
+11-05 17:47:42.528 I/AbiCoachSmoke( 3718): Bild: 010_start_training.png
+11-05 17:47:45.016 I/AbiCoachSmoke( 3718): Bild: 011_start_kurs.png
+11-05 17:47:47.573 I/AbiCoachSmoke( 3718): Bild: 012_start_statistik.png
+11-05 17:47:50.400 I/AbiCoachSmoke( 3718): Bild: 013_start_einstellungen.png
+11-05 17:47:52.235 I/AbiCoachSmoke( 3718): Bild: 014_start_einstufung.png
+11-05 17:47:53.387 I/TestRunner( 3718): finished: a_freshStart(de.abicoach.SmokeTest)
+11-05 17:47:53.405 I/TestRunner( 3718): started: b_withDemoData(de.abicoach.SmokeTest)
+11-05 17:47:57.889 I/AbiCoachSmoke( 3718): Bild: 015_abiweg.png
+11-05 17:47:59.355 I/AbiCoachSmoke( 3718): Bild: 016_abiweg_heute_dran.png
+11-05 17:48:01.497 I/AbiCoachSmoke( 3718): Bild: 017_abiweg_unten.png
+11-05 17:48:04.082 I/AbiCoachSmoke( 3718): Bild: 018_ueben_abiweg.png
+11-05 17:48:06.213 I/AbiCoachSmoke( 3718): Bild: 019_ueben_abiweg_welten.png
+11-05 17:48:07.969 I/AbiCoachSmoke( 3718): Bild: 020_ueben_abiweg_unten.png
+11-05 17:48:10.618 I/AbiCoachSmoke( 3718): Bild: 021_level_perceive.png
+11-05 17:48:12.263 I/AbiCoachSmoke( 3718): Bild: 022_level_perceive_unten.png
+11-05 17:48:13.851 I/AbiCoachSmoke( 3718): Bild: 023_level_lernen.png
+11-05 17:48:15.433 I/AbiCoachSmoke( 3718): Bild: 024_level_themenfeld.png
+11-05 17:48:16.868 I/AbiCoachSmoke( 3718): Bild: 025_level_themenfeld_unten.png
+11-05 17:48:20.770 I/AbiCoachSmoke( 3718): Bild: 026_training.png
+11-05 17:48:22.722 I/AbiCoachSmoke( 3718): Bild: 027_training_mitte.png
+11-05 17:48:24.565 I/AbiCoachSmoke( 3718): Bild: 028_training_unten.png
+11-05 17:48:26.856 I/AbiCoachSmoke( 3718): Bild: 029_kurs.png
+11-05 17:48:28.642 I/AbiCoachSmoke( 3718): Bild: 030_kurs_mitte.png
+11-05 17:48:30.311 I/AbiCoachSmoke( 3718): Bild: 031_kurs_unten.png
+11-05 17:48:31.956 I/AbiCoachSmoke( 3718): Bild: 032_dokument_buch.png
+11-05 17:48:33.529 I/AbiCoachSmoke( 3718): Bild: 033_dokument_buch_unten.png
+11-05 17:48:35.028 I/AbiCoachSmoke( 3718): Bild: 034_dokument_klausur.png
+11-05 17:48:36.585 I/AbiCoachSmoke( 3718): Bild: 035_ki_coach.png
+11-05 17:48:38.708 I/AbiCoachSmoke( 3718): Bild: 036_wortschatz.png
+11-05 17:48:40.110 I/AbiCoachSmoke( 3718): Bild: 037_wortschatz_antwort.png
+11-05 17:48:41.870 I/AbiCoachSmoke( 3718): Bild: 038_aussprache.png
+11-05 17:48:43.372 I/AbiCoachSmoke( 3718): Bild: 039_aussprache_unten.png
+11-05 17:48:44.904 I/AbiCoachSmoke( 3718): Bild: 040_einrichten_sprint.png
+11-05 17:48:46.781 I/AbiCoachSmoke( 3718): Bild: 041_dossier.png
+11-05 17:48:48.605 I/AbiCoachSmoke( 3718): Bild: 042_dossier_unten.png
+11-05 17:48:50.107 I/AbiCoachSmoke( 3718): Bild: 043_dokument_pruefung.png
+11-05 17:48:51.596 I/AbiCoachSmoke( 3718): Bild: 044_echte_aufgaben.png
+11-05 17:48:53.092 I/AbiCoachSmoke( 3718): Bild: 045_fehlergedaechtnis.png
+11-05 17:48:54.629 I/AbiCoachSmoke( 3718): Bild: 046_werkstatt_verstehen.png
+11-05 17:48:56.077 I/AbiCoachSmoke( 3718): Bild: 047_werkstatt_erkennen.png
+11-05 17:48:57.515 I/AbiCoachSmoke( 3718): Bild: 048_werkstatt_erkennen_antwort.png
+11-05 17:48:58.965 I/AbiCoachSmoke( 3718): Bild: 049_werkstatt_sagen.png
+11-05 17:49:00.364 I/AbiCoachSmoke( 3718): Bild: 050_werkstatt_frei_sprechen.png
+11-05 17:49:01.776 I/AbiCoachSmoke( 3718): Bild: 051_werkstatt_ergebnis.png
+11-05 17:49:03.164 I/AbiCoachSmoke( 3718): Bild: 052_werkstatt_ergebnis_unten.png
+11-05 17:49:05.041 I/AbiCoachSmoke( 3718): Bild: 053_kompetenzen.png
+11-05 17:49:06.904 I/AbiCoachSmoke( 3718): Bild: 054_kompetenzen_2.png
+11-05 17:49:08.622 I/AbiCoachSmoke( 3718): Bild: 055_kompetenzen_3.png
+11-05 17:49:10.525 I/AbiCoachSmoke( 3718): Bild: 056_halbjahre.png
+11-05 17:49:12.306 I/AbiCoachSmoke( 3718): Bild: 057_fehlergedaechtnis_unten.png
+11-05 17:49:13.761 I/AbiCoachSmoke( 3718): Bild: 058_sprech_training.png
+11-05 17:49:15.158 I/AbiCoachSmoke( 3718): Bild: 059_sprech_training_ergebnis.png
+11-05 17:49:17.075 I/AbiCoachSmoke( 3718): Bild: 060_statistik.png
+11-05 17:49:19.574 I/AbiCoachSmoke( 3718): Bild: 061_entwicklung_inhalt_sprache.png
+11-05 17:49:21.663 I/AbiCoachSmoke( 3718): Bild: 062_entwicklung_kompetenz.png
+11-05 17:49:24.069 I/AbiCoachSmoke( 3718): Bild: 063_statistik_mitte.png
+11-05 17:49:25.509 I/AbiCoachSmoke( 3718): Bild: 064_statistik_lerner_gedaechtnis.png
+11-05 17:49:27.254 I/AbiCoachSmoke( 3718): Bild: 065_statistik_unten.png
+11-05 17:49:29.002 I/AbiCoachSmoke( 3718): Bild: 066_fortschritt_kompetenzen.png
+11-05 17:49:30.723 I/AbiCoachSmoke( 3718): Bild: 067_fortschritt_kompetenzen_unten.png
+11-05 17:49:32.425 I/AbiCoachSmoke( 3718): Bild: 068_fortschritt_fehler.png
+11-05 17:49:33.934 I/AbiCoachSmoke( 3718): Bild: 069_fortschritt_themen.png
+11-05 17:49:36.127 I/AbiCoachSmoke( 3718): Bild: 070_auswertung.png
+11-05 17:49:37.492 I/AbiCoachSmoke( 3718): Bild: 071_auswertung_ziele.png
+11-05 17:49:38.902 I/AbiCoachSmoke( 3718): Bild: 072_auswertung_naechster_schritt.png
+11-05 17:49:40.311 I/AbiCoachSmoke( 3718): Bild: 073_auswertung_fuellwoerter.png
+11-05 17:49:41.711 I/AbiCoachSmoke( 3718): Bild: 074_auswertung_beobachtungen.png
+11-05 17:49:43.108 I/AbiCoachSmoke( 3718): Bild: 075_auswertung_vortrags_coach.png
+11-05 17:49:44.496 I/AbiCoachSmoke( 3718): Bild: 076_auswertung_details.png
+11-05 17:49:46.539 I/AbiCoachSmoke( 3718): Bild: 077_auswertung_15_punkte_offen.png
+11-05 17:49:47.917 I/AbiCoachSmoke( 3718): Bild: 078_auswertung_2.png
+11-05 17:49:49.295 I/AbiCoachSmoke( 3718): Bild: 079_auswertung_3.png
+11-05 17:49:50.797 I/AbiCoachSmoke( 3718): Bild: 080_auswertung_4.png
+11-05 17:49:52.341 I/AbiCoachSmoke( 3718): Bild: 081_auswertung_5.png
+11-05 17:49:53.826 I/AbiCoachSmoke( 3718): Bild: 082_korrekturrunde.png
+11-05 17:49:55.461 I/AbiCoachSmoke( 3718): Bild: 083_sag_es_richtig.png
+11-05 17:49:57.475 I/AbiCoachSmoke( 3718): Bild: 084_einrichten_simulation.png
+11-05 17:50:00.406 I/AbiCoachSmoke( 3718): Bild: 085_einrichten_teil2_themen.png
+11-05 17:50:02.016 I/AbiCoachSmoke( 3718): Bild: 086_einrichten_simulation_unten.png
+11-05 17:50:04.282 I/AbiCoachSmoke( 3718): Bild: 087_einrichten_gespraech_themen.png
+11-05 17:50:05.677 I/AbiCoachSmoke( 3718): Bild: 088_einrichten_pruefer_zu.png
+11-05 17:50:08.267 I/AbiCoachSmoke( 3718): Bild: 089_einrichten_gespraechsstil.png
+11-05 17:50:10.176 I/AbiCoachSmoke( 3718): Bild: 090_einrichten_stresstest.png
+11-05 17:50:11.722 I/AbiCoachSmoke( 3718): Bild: 091_einrichten_aufgabe2.png
+11-05 17:50:13.263 I/AbiCoachSmoke( 3718): Bild: 092_vorbereitung.png
+11-05 17:50:14.976 I/AbiCoachSmoke( 3718): Bild: 093_vorbereitung_unten.png
+11-05 17:50:16.910 I/AbiCoachSmoke( 3718): Bild: 094_zurueck_vorher.png
+11-05 17:50:18.438 I/AbiCoachSmoke( 3718): Bild: 095_zurueck_einrichten.png
+11-05 17:50:20.011 I/AbiCoachSmoke( 3718): Bild: 096_zurueck_nachher_gleiche_stelle.png
+11-05 17:50:21.646 I/AbiCoachSmoke( 3718): Bild: 097_gespraech_live.png
+11-05 17:50:22.989 I/AbiCoachSmoke( 3718): Bild: 098_gespraech_mitscrollen_an.png
+11-05 17:50:24.543 I/AbiCoachSmoke( 3718): Bild: 099_gespraech_mitscrollen_aus.png
+11-05 17:50:26.044 I/AbiCoachSmoke( 3718): Bild: 100_gespraech_knopf_halten.png
+11-05 17:50:27.441 I/AbiCoachSmoke( 3718): Bild: 101_gespraech_knopf_gehalten.png
+11-05 17:50:29.189 I/AbiCoachSmoke( 3718): Bild: 102_vortrag_live.png
+11-05 17:50:30.662 I/AbiCoachSmoke( 3718): Bild: 103_auswertung_laeuft.png
+11-05 17:50:32.127 I/AbiCoachSmoke( 3718): Bild: 104_sitzungen.png
+11-05 17:50:33.586 I/AbiCoachSmoke( 3718): Bild: 105_sitzungen_auswaehlen.png
+11-05 17:50:35.346 I/AbiCoachSmoke( 3718): Bild: 106_einstellungen.png
+11-05 17:50:36.806 I/AbiCoachSmoke( 3718): Bild: 107_einstellungen_ki.png
+11-05 17:50:38.412 I/AbiCoachSmoke( 3718): Bild: 108_einstellungen_ki_unten.png
+11-05 17:50:39.821 I/AbiCoachSmoke( 3718): Bild: 109_einstellungen_pruefung.png
+11-05 17:50:41.223 I/AbiCoachSmoke( 3718): Bild: 110_einstellungen_pruefung_unten.png
+11-05 17:50:42.658 I/AbiCoachSmoke( 3718): Bild: 111_einstellungen_pruefer.png
+11-05 17:50:44.131 I/AbiCoachSmoke( 3718): Bild: 112_einstellungen_pruefer_unten.png
+11-05 17:50:45.529 I/AbiCoachSmoke( 3718): Bild: 113_einstellungen_anzeige.png
+11-05 17:50:46.928 I/AbiCoachSmoke( 3718): Bild: 114_einstellungen_anzeige_unten.png
+11-05 17:50:48.324 I/AbiCoachSmoke( 3718): Bild: 115_einstellungen_design.png
+11-05 17:50:49.714 I/AbiCoachSmoke( 3718): Bild: 116_einstellungen_design_unten.png
+11-05 17:50:51.106 I/AbiCoachSmoke( 3718): Bild: 117_einstellungen_daten.png
+11-05 17:50:52.489 I/AbiCoachSmoke( 3718): Bild: 118_einstellungen_daten_unten.png
+11-05 17:50:53.904 I/AbiCoachSmoke( 3718): Bild: 119_einstellungen_ueber.png
+11-05 17:50:55.392 I/AbiCoachSmoke( 3718): Bild: 120_einstellungen_ueber_unten.png
+11-05 17:50:56.753 I/AbiCoachSmoke( 3718): Bild: 121_einstellungen_update_verfuegbar.png
+11-05 17:50:58.127 I/AbiCoachSmoke( 3718): Bild: 122_einstellungen_update_laedt.png
+11-05 17:50:59.736 I/AbiCoachSmoke( 3718): Bild: 123_heute_update_verfuegbar.png
+11-05 17:51:01.521 I/AbiCoachSmoke( 3718): Bild: 124_einstellungen_openai.png
+11-05 17:51:02.923 I/AbiCoachSmoke( 3718): Bild: 125_einstellungen_claude.png
+11-05 17:51:04.308 I/AbiCoachSmoke( 3718): Bild: 126_einstellungen_claude_rollen.png
+11-05 17:51:05.709 I/AbiCoachSmoke( 3718): Bild: 127_einstellungen_daten.png
+11-05 17:51:07.267 I/AbiCoachSmoke( 3718): Bild: 128_einstellungen_sichern.png
+11-05 17:51:09.421 I/AbiCoachSmoke( 3718): Bild: 129_dunkel_abiweg.png
+11-05 17:51:11.021 I/AbiCoachSmoke( 3718): Bild: 130_dunkel_ueben.png
+11-05 17:51:12.613 I/AbiCoachSmoke( 3718): Bild: 131_dunkel_kurs.png
+11-05 17:51:14.160 I/AbiCoachSmoke( 3718): Bild: 132_dunkel_statistik.png
+11-05 17:51:15.889 I/AbiCoachSmoke( 3718): Bild: 133_dunkel_auswertung.png
+11-05 17:51:17.481 I/AbiCoachSmoke( 3718): Bild: 134_dunkel_vorbereitung.png
+11-05 17:51:19.027 I/AbiCoachSmoke( 3718): Bild: 135_dunkel_gespraech.png
+11-05 17:51:20.623 I/AbiCoachSmoke( 3718): Bild: 136_dunkel_wald.png
+11-05 17:51:21.692 I/TestRunner( 3718): finished: b_withDemoData(de.abicoach.SmokeTest)
+11-05 17:51:21.703 I/TestRunner( 3718): started: bb_guidedTour(de.abicoach.SmokeTest)
+11-05 17:51:25.216 I/AbiCoachSmoke( 3718): Bild: 137_tour_01.png
+11-05 17:51:27.040 I/AbiCoachSmoke( 3718): Bild: 138_tour_02.png
+11-05 17:51:27.040 I/AbiCoachSmoke( 3718): Tour 2: today_overview -> Rect.fromLTRB(47.0, 382.0, 1033.0, 907.0)
+11-05 17:51:27.046 I/AbiCoachSmoke( 3718): Tour 2 Knopf: Rect.fromLTRB(751.0, 1404.0, 986.0, 1519.0), Bildschirm 2400, sichtbar true
+11-05 17:51:28.979 I/AbiCoachSmoke( 3718): Bild: 139_tour_03.png
+11-05 17:51:28.979 I/AbiCoachSmoke( 3718): Tour 3: today_plan -> Rect.fromLTRB(47.0, 693.0, 1033.0, 2050.0)
+11-05 17:51:28.996 I/AbiCoachSmoke( 3718): Tour 3 Knopf: Rect.fromLTRB(751.0, 533.0, 986.0, 648.0), Bildschirm 2400, sichtbar true
+11-05 17:51:30.743 I/AbiCoachSmoke( 3718): Bild: 140_tour_04.png
+11-05 17:51:30.743 I/AbiCoachSmoke( 3718): Tour 4: dock_TRAINING -> Rect.fromLTRB(301.0, 2153.0, 539.0, 2289.0)
+11-05 17:51:30.762 I/AbiCoachSmoke( 3718): Tour 4 Knopf: Rect.fromLTRB(751.0, 1928.0, 986.0, 2043.0), Bildschirm 2400, sichtbar true
+11-05 17:51:32.761 I/AbiCoachSmoke( 3718): Bild: 141_tour_05.png
+11-05 17:51:32.761 I/AbiCoachSmoke( 3718): Tour 5: train_views -> Rect.fromLTRB(47.0, 382.0, 1033.0, 503.0)
+11-05 17:51:32.780 I/AbiCoachSmoke( 3718): Tour 5 Knopf: Rect.fromLTRB(751.0, 944.0, 986.0, 1059.0), Bildschirm 2400, sichtbar true
+11-05 17:51:34.519 I/AbiCoachSmoke( 3718): Bild: 142_tour_06.png
+11-05 17:51:34.519 I/AbiCoachSmoke( 3718): Tour 6: train_exam -> Rect.fromLTRB(47.0, 656.0, 1033.0, 1013.0)
+11-05 17:51:34.529 I/AbiCoachSmoke( 3718): Tour 6 Knopf: Rect.fromLTRB(751.0, 1510.0, 986.0, 1625.0), Bildschirm 2400, sichtbar true
+11-05 17:51:36.364 I/AbiCoachSmoke( 3718): Bild: 143_tour_07.png
+11-05 17:51:36.365 I/AbiCoachSmoke( 3718): Tour 7: train_part2 -> Rect.fromLTRB(47.0, 1488.0, 1033.0, 2050.0)
+11-05 17:51:36.380 I/AbiCoachSmoke( 3718): Tour 7 Knopf: Rect.fromLTRB(751.0, 1263.0, 986.0, 1378.0), Bildschirm 2400, sichtbar true
+11-05 17:51:38.226 I/AbiCoachSmoke( 3718): Bild: 144_tour_08.png
+11-05 17:51:38.226 I/AbiCoachSmoke( 3718): Tour 8: train_target -> Rect.fromLTRB(47.0, 1052.0, 1033.0, 2050.0)
+11-05 17:51:38.246 I/AbiCoachSmoke( 3718): Tour 8 Knopf: Rect.fromLTRB(751.0, 827.0, 986.0, 942.0), Bildschirm 2400, sichtbar true
+11-05 17:51:40.224 I/AbiCoachSmoke( 3718): Bild: 145_tour_09.png
+11-05 17:51:40.225 I/AbiCoachSmoke( 3718): Tour 9: course_add -> Rect.fromLTRB(47.0, 382.0, 1033.0, 1191.0)
+11-05 17:51:40.229 I/AbiCoachSmoke( 3718): Tour 9 Knopf: Rect.fromLTRB(751.0, 1688.0, 986.0, 1803.0), Bildschirm 2400, sichtbar true
+11-05 17:51:42.131 I/AbiCoachSmoke( 3718): Bild: 146_tour_10.png
+11-05 17:51:42.131 I/AbiCoachSmoke( 3718): Tour 10: course_halfyears -> Rect.fromLTRB(47.0, 1455.0, 1033.0, 2050.0)
+11-05 17:51:42.147 I/AbiCoachSmoke( 3718): Tour 10 Knopf: Rect.fromLTRB(751.0, 1230.0, 986.0, 1345.0), Bildschirm 2400, sichtbar true
+11-05 17:51:44.067 I/AbiCoachSmoke( 3718): Bild: 147_tour_11.png
+11-05 17:51:44.067 I/AbiCoachSmoke( 3718): Tour 11: stats_development -> Rect.fromLTRB(47.0, 540.0, 1033.0, 1486.0)
+11-05 17:51:44.079 I/AbiCoachSmoke( 3718): Tour 11 Knopf: Rect.fromLTRB(751.0, 1983.0, 986.0, 2098.0), Bildschirm 2400, sichtbar true
+11-05 17:51:46.027 I/AbiCoachSmoke( 3718): Bild: 148_tour_12.png
+11-05 17:51:46.027 I/AbiCoachSmoke( 3718): Tour 12: action_settings -> Rect.fromLTRB(912.0, 224.0, 1028.0, 340.0)
+11-05 17:51:46.046 I/AbiCoachSmoke( 3718): Tour 12 Knopf: Rect.fromLTRB(751.0, 781.0, 986.0, 896.0), Bildschirm 2400, sichtbar true
+11-05 17:51:47.812 I/AbiCoachSmoke( 3718): Bild: 149_tour_13.png
+11-05 17:51:47.812 I/AbiCoachSmoke( 3718): Tour 13: null -> null
+11-05 17:51:47.829 I/AbiCoachSmoke( 3718): Tour 13 Knopf: Rect.fromLTRB(763.0, 1308.0, 986.0, 1423.0), Bildschirm 2400, sichtbar true
+11-05 17:51:48.186 I/AbiCoachSmoke( 3718): Tour fertig: true, aktiv: false
+11-05 17:51:49.372 I/TestRunner( 3718): finished: bb_guidedTour(de.abicoach.SmokeTest)
+11-05 17:51:49.468 I/TestRunner( 3718): started: c_backgroundAnalysis(de.abicoach.SmokeTest)
+11-05 17:51:53.039 I/AbiCoachSmoke( 3718): Bild: 150_hintergrund_auswertung_start.png
+11-05 17:51:54.862 I/AbiCoachSmoke( 3718): Bild: 151_hintergrund_auswertung_danach.png
+11-05 17:51:54.863 I/AbiCoachSmoke( 3718): Hintergrund-Status: AnalysisStatus(id=demo-background, text=, error=Auswertung fehlgeschlagen: Ungültige Anfrage: API key not valid. Please pass a valid API key., finishedId=null, points=0)
+11-05 17:51:56.426 I/AbiCoachSmoke( 3718): Bild: 152_hintergrund_weiter_in_der_app.png
+11-05 17:51:57.910 I/AbiCoachSmoke( 3718): Bild: 153_nicht_ausgewertet.png
+11-05 17:51:58.528 I/AbiCoachSmoke( 3718): Sitzung gelöscht: true
+11-05 17:51:59.887 I/AbiCoachSmoke( 3718): Bild: 154_nach_dem_loeschen.png
+11-05 17:52:00.240 I/TestRunner( 3718): finished: c_backgroundAnalysis(de.abicoach.SmokeTest)
+11-05 17:52:00.355 I/TestRunner( 3718): run finished: 4 tests, 0 failed, 0 ignored
+11-05 17:52:00.432 I/AndroidRuntime( 3667): VM exiting with result code 0.

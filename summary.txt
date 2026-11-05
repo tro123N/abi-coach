@@ -1,0 +1,16 @@
+commit: 025f94e12ec3a616a008baa5eea8e58798c237ea
+run: 42
+Ergebnis: OK
+Bilder: 154
+
+
+de.abicoach.SmokeTest:s_glBindAttribLocation: bind attrib 0 name position
+s_glBindAttribLocation: bind attrib 1 name color
+s_glBindAttribLocation: bind attrib 2 name localCoord
+....
+
+Time: 283.844
+
+OK (4 tests)
+
+
