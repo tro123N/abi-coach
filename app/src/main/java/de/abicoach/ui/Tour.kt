@@ -61,7 +61,6 @@ import de.abicoach.R
 import de.abicoach.ui.components.Tab
 import de.abicoach.ui.components.dockSpace
 import de.abicoach.ui.theme.accent
-import kotlinx.coroutines.delay
 
 /** One stop of the guided tour: which area to show, which element to light up, and what it does. */
 data class TourStep(
@@ -208,7 +207,7 @@ fun TourOverlay(vm: AppViewModel) {
             val target = step.target ?: return@LaunchedEffect
             // Elements of the bar at the bottom and of the title line are always in sight.
             if (target.startsWith("dock_") || target.startsWith("action_")) return@LaunchedEffect
-            delay(300)
+            frames(18)
             fun visible(r: Rect?) = r != null && r.top >= topLimit && r.bottom <= height - dock
             if (visible(tour.rect(target))) return@LaunchedEffect
             val list = step.tab?.let { tour.lists[it] }
@@ -218,7 +217,7 @@ fun TourOverlay(vm: AppViewModel) {
             try {
                 if (tour.rect(target) == null && list.canScrollBackward) {
                     list.scrollToItem(0)
-                    delay(80)
+                    frames(4)
                 }
                 repeat(14) {
                     val r = tour.rect(target)
@@ -232,7 +231,7 @@ fun TourOverlay(vm: AppViewModel) {
                     if (kotlin.math.abs(delta) < 1f || (delta > 0 && !list.canScrollForward) || (delta < 0 && !list.canScrollBackward)) return@LaunchedEffect
                     val moved = list.scrollBy(delta)
                     android.util.Log.i("AbiCoachTour", "  gescrollt ${moved.toInt()} von ${delta.toInt()} px, Platz ${tour.rect(target)}")
-                    delay(60)
+                    frames(3)
                 }
             } finally {
                 scrolling = false
@@ -327,3 +326,6 @@ private fun TourBubble(vm: AppViewModel, index: Int, step: TourStep) {
         }
     }
 }
+
+/** Waits [n] frames (follows the screen's own clock, also in the app test). */
+private suspend fun frames(n: Int) = repeat(n) { androidx.compose.runtime.withFrameNanos { } }
