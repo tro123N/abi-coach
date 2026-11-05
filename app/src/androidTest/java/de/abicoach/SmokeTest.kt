@@ -448,6 +448,8 @@ class SmokeTest {
         for (i in 2..de.abicoach.ui.TourSteps.all.size) {
             runCatching { compose.onNodeWithTag("tour_next").performClick() }
             shot(String.format(Locale.ROOT, "tour_%02d", i))
+            val target = de.abicoach.ui.TourSteps.all[i - 1].target
+            Log.i(TAG, "Tour $i: $target -> ${target?.let { vm.tour.rect(it) }}")
         }
         runCatching { compose.onNodeWithTag("tour_done").performClick() }
         Log.i(TAG, "Tour fertig: ${app.settings.tourDone}, aktiv: ${vm.tour.active}")

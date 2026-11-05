@@ -5,7 +5,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -201,49 +201,46 @@ fun TourOverlay(vm: AppViewModel) {
     ) {
         val height = constraints.maxHeight.toFloat()
         val dock = with(density) { dockSpace().toPx() }
-        val topSafe = with(density) { 96.dp.toPx() }
-        // Until the element is on screen, the bubble waits in the middle.
-        var settled by androidx.compose.runtime.remember(index) { mutableStateOf(step.target == null) }
+        val topLimit = with(density) { 44.dp.toPx() }
+        // While the tour scrolls an element into sight, the light waits.
+        var scrolling by androidx.compose.runtime.remember(index) { mutableStateOf(false) }
         LaunchedEffect(index) {
             val target = step.target ?: return@LaunchedEffect
-            delay(380)
-            // Bring the element into sight: scroll the area's list until it is fully visible (from the top, if it is not there).
-            var fromTop = false
-            repeat(16) {
-                val r = tour.rect(target)
-                val inDock = target.startsWith("dock_") || target.startsWith("action_")
-                if (r != null && (inDock || (r.top >= topSafe && r.bottom <= height - dock))) {
-                    settled = true
-                    return@LaunchedEffect
-                }
-                val list = tour.list ?: run { settled = true; return@LaunchedEffect }
-                if (r == null && !fromTop) {
-                    fromTop = true
+            // Elements of the bar at the bottom and of the title line are always in sight.
+            if (target.startsWith("dock_") || target.startsWith("action_")) return@LaunchedEffect
+            delay(300)
+            fun visible(r: Rect?) = r != null && r.top >= topLimit && r.bottom <= height - dock
+            if (visible(tour.rect(target))) return@LaunchedEffect
+            val list = tour.list ?: return@LaunchedEffect
+            scrolling = true
+            try {
+                if (tour.rect(target) == null && list.canScrollBackward) {
                     list.scrollToItem(0)
-                    delay(120)
-                    return@repeat
+                    delay(80)
                 }
-                val delta =
-                    when {
-                        r == null -> height * 0.45f
-                        r.bottom > height - dock -> (r.bottom - (height - dock) + 40f).coerceAtMost((r.top - topSafe).coerceAtLeast(0f))
-                        else -> r.top - topSafe - 40f
-                    }
-                if (delta == 0f || (r == null && !list.canScrollForward)) {
-                    settled = true
-                    return@LaunchedEffect
+                repeat(14) {
+                    val r = tour.rect(target)
+                    if (visible(r)) return@LaunchedEffect
+                    val delta =
+                        when {
+                            r == null -> height * 0.45f
+                            r.bottom > height - dock -> minOf(r.bottom - (height - dock) + 40f, maxOf(r.top - topLimit - 20f, 0f))
+                            else -> r.top - topLimit - 40f
+                        }
+                    if (kotlin.math.abs(delta) < 1f || (delta > 0 && !list.canScrollForward) || (delta < 0 && !list.canScrollBackward)) return@LaunchedEffect
+                    list.scrollBy(delta)
+                    delay(60)
                 }
-                list.animateScrollBy(delta)
-                delay(90)
+            } finally {
+                scrolling = false
             }
-            settled = true
         }
         @Suppress("UNUSED_VARIABLE")
         val redraw = tour.tick
-        val rect = step.target?.takeIf { settled }?.let { tour.rect(it) }
+        val rect = step.target?.takeIf { !scrolling }?.let { tour.rect(it) }
         val pad = with(density) { 8.dp.toPx() }
         val hole = rect?.let { Rect(it.left - pad, it.top - pad, it.right + pad, it.bottom + pad) }
-        val alpha by animateFloatAsState(if (settled) 1f else 0.6f, tween(220), label = "tourDim")
+        val alpha by animateFloatAsState(if (scrolling) 0.6f else 1f, tween(220), label = "tourDim")
         val ring = accent
         Canvas(Modifier.fillMaxSize().graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }) {
             drawRect(Color.Black.copy(alpha = 0.62f * alpha))

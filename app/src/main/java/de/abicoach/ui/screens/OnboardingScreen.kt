@@ -266,7 +266,7 @@ fun OnboardingScreen(vm: AppViewModel) {
                 SetupStep.WELCOME -> StartButton("Einrichten", onClick = { go(1) }, icon = R.drawable.arrow_forward_24dp, modifier = Modifier.testTag("setup_next"))
                 SetupStep.KEY -> {
                     StartButton(
-                        if (keyReady) "Weiter" else "Erst den Schlüssel speichern",
+                        if (keyReady) "Weiter" else "Schlüssel speichern",
                         onClick = { go(index + 1) },
                         enabled = keyReady,
                         icon = R.drawable.arrow_forward_24dp,
