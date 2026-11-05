@@ -107,8 +107,8 @@ sealed interface Screen {
     /** Which topic field the course covered in which Kurshalbjahr. */
     data object HalfYears : Screen
 
-    /** The tutorial at the first start. */
-    data object Tutorial : Screen
+    /** The setup at the first start: what the app needs to work. */
+    data object Onboarding : Screen
 }
 
 /** A tiny back stack; the Abi-Weg always stays at the bottom, like the Kletterweg in Mental Math Plus. */
@@ -761,10 +761,17 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         return review to errors
     }
 
+    /**
+     * Stops a live session without an evaluation: nothing is kept – no recording, no transcript, and in part 2 of a
+     * simulation also not the part 1 already saved.
+     */
     fun cancelLive() {
         live?.abort()
         live = null
-        draft?.let { d -> (0..2).forEach { app.store.audioFile(d.id, it).delete() } }
+        draft?.let { d ->
+            if (app.store.get(d.id) != null) app.store.delete(d.id) else (0..2).forEach { app.store.audioFile(d.id, it).delete() }
+        }
+        app.feedback.play(FeedbackType.STOP)
         draft = null
         busy = null
         nav.resetTo()
@@ -1632,14 +1639,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             }
     }
 
-    /** The small "Mitschrift" button in live sessions (the choice is kept for the next session). */
-    var liveTranscript by mutableStateOf(app.settings.liveTranscriptOpen)
+    /** "Mitscrollen" in live sessions: the page follows the transcript (the choice is kept for the next session). */
+    var liveFollow by mutableStateOf(app.settings.liveFollow)
         private set
 
-    fun toggleLiveTranscript() {
+    fun toggleLiveFollow() {
         tap()
-        liveTranscript = !liveTranscript
-        app.settings.liveTranscriptOpen = liveTranscript
+        liveFollow = !liveFollow
+        app.settings.liveFollow = liveFollow
     }
 
     // ---------- backup of the learning progress ----------
@@ -1711,15 +1718,61 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun finishTutorial() {
+    // ---------- first start: setup and guided tour ----------
+
+    /** The guided tour through the app (spotlight on the real screens). */
+    val tour = TourController()
+
+    fun openOnboarding() {
         tap()
-        app.settings.tutorialDone = true
-        if (nav.current == Screen.Tutorial) nav.pop()
+        if (nav.current != Screen.Onboarding) nav.push(Screen.Onboarding)
     }
 
-    fun openTutorial() {
+    /** The setup is through; [withTour] starts the guided tour right away. */
+    fun finishOnboarding(withTour: Boolean) {
         tap()
-        nav.push(Screen.Tutorial)
+        app.settings.onboardingDone = true
+        nav.openTab(Tab.WEG)
+        if (withTour) startTour() else if (!app.settings.tourDone) notice = "Die Tour durch die App findest du jederzeit unter Einstellungen → Über AbiCoach."
+    }
+
+    fun startTour() {
+        tap()
+        stopSpeaking()
+        enterTourStep(0)
+    }
+
+    fun tourNext() {
+        val i = tour.step ?: return
+        tap()
+        if (i + 1 >= TourSteps.all.size) endTour() else enterTourStep(i + 1)
+    }
+
+    fun tourBack() {
+        val i = tour.step ?: return
+        tap()
+        if (i > 0) enterTourStep(i - 1)
+    }
+
+    fun endTour() {
+        if (tour.step == null) return
+        tap()
+        tour.step = null
+        app.settings.tourDone = true
+    }
+
+    /** Shows the area of a tour step (the overview of the tab, scrolled by the tour itself). */
+    private fun enterTourStep(i: Int) {
+        val step = TourSteps.all[i]
+        step.tab?.let { t ->
+            when (t) {
+                Tab.TRAINING -> practiceView = 0
+                Tab.STATS -> progressView = 0
+                else -> Unit
+            }
+            if (nav.current != Screen.Root(t)) nav.openTab(t)
+        }
+        tour.step = i
     }
 
     /** Makes the speech of a sentence the student will probably want to hear, so that the tap plays at once. */
@@ -1771,8 +1824,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         watchAnalysis()
         watchMaterial()
         restoreWork()
-        // The very first start: the tutorial explains the app.
-        if (!app.settings.tutorialDone && nav.current is Screen.Root) nav.push(Screen.Tutorial)
+        // The very first start: the setup shows what the app needs to work (someone who already uses it skips it).
+        if (!app.settings.onboardingDone) {
+            if (app.ai.ready && app.store.sessions.value.isNotEmpty()) app.settings.onboardingDone = true
+            else if (nav.current is Screen.Root) nav.push(Screen.Onboarding)
+        }
     }
 
     companion object {

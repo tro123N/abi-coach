@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import de.abicoach.R
+import de.abicoach.ui.tourTarget
 import de.abicoach.data.SessionRecord
 import de.abicoach.ui.components.LegendItem
 import de.abicoach.ui.components.MultiLineChart
@@ -388,7 +389,7 @@ fun DevelopmentCard(vm: AppViewModel, sessions: List<SessionRecord>, startView: 
     var view by androidx.compose.runtime.saveable.rememberSaveable(startView) { androidx.compose.runtime.mutableIntStateOf(startView) }
     val measured = remember(graded) { Skill.entries.filter { s -> graded.count { it.debrief?.skills?.get(s) != null } >= 2 } }
     var skillKey by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
-    AbiCard(modifier = Modifier.testTag("stats_development")) {
+    AbiCard(modifier = Modifier.testTag("stats_development").tourTarget("stats_development")) {
         CardTitle("Deine Entwicklung", icon = R.drawable.trending_up_24dp, iconTint = green)
         if (graded.size < 2) {
             CaptionText(

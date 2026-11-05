@@ -97,7 +97,7 @@ fun AppRoot(vm: AppViewModel) {
     val flow = AbiTheme.flow
     val blur = rememberDockBlur()
     val docs by vm.app.memory.docs.collectAsState()
-    CompositionLocalProvider(LocalContentColor provides flow.text) {
+    CompositionLocalProvider(LocalContentColor provides flow.text, LocalTour provides vm.tour) {
         Box(Modifier.fillMaxSize()) {
             Box(Modifier.fillMaxSize().dockSource(blur)) {
                 LivingBackground(mood = moodOf(vm.nav.current))
@@ -161,7 +161,7 @@ fun AppRoot(vm: AppViewModel) {
                             Screen.Workshop -> de.abicoach.ui.screens.WorkshopScreen(vm)
                             Screen.Skills -> de.abicoach.ui.screens.SkillsScreen(vm)
                             Screen.HalfYears -> de.abicoach.ui.screens.HalfYearsScreen(vm)
-                            Screen.Tutorial -> de.abicoach.ui.screens.TutorialScreen(vm)
+                            Screen.Onboarding -> de.abicoach.ui.screens.OnboardingScreen(vm)
                         }
                     }
                 }
@@ -182,6 +182,8 @@ fun AppRoot(vm: AppViewModel) {
                     badge = { t -> t == Tab.KURS && docs.any { d -> d.status == de.abicoach.memory.DocStatus.FAILED } },
                 )
             }
+            // The guided tour lies over everything while it runs.
+            TourOverlay(vm)
         }
     }
 }
@@ -197,6 +199,7 @@ fun TabScaffold(
     state: LazyListState = rememberLazyListState(),
     content: LazyListScope.() -> Unit,
 ) {
+    TourList(state)
     val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val bottom = dockSpace()
     // Cards fade out under the status bar instead of being cut off; the bar at the bottom floats above them.
@@ -223,9 +226,12 @@ fun DetailScaffold(
     /** Stays in place above the scrolling content (e.g. the whisper bar while speaking). */
     pinned: @Composable () -> Unit = {},
     tag: String = "detail",
+    /** The scroll position of the content, for screens that scroll by themselves (e.g. following the transcript). */
+    scroll: androidx.compose.foundation.ScrollState? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val flow = AbiTheme.flow
+    val scrollState = scroll ?: rememberScrollState()
     Scaffold(
         topBar = { AbiTopBar(title = title, onBack = onBack, backIcon = backIcon, actions = actions) },
         bottomBar = bottom,
@@ -240,7 +246,7 @@ fun DetailScaffold(
                         .weight(1f)
                         .fillMaxWidth()
                         .fadeTopEdge(hiddenUntil = 0.dp, visibleFrom = 12.dp)
-                        .verticalScroll(rememberScrollState())
+                        .verticalScroll(scrollState)
                         .testTag(tag)
                         .padding(horizontal = 18.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp),

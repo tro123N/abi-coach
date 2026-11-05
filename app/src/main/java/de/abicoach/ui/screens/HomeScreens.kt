@@ -1,6 +1,7 @@
 package de.abicoach.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
@@ -31,6 +32,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import de.abicoach.R
+import de.abicoach.ui.tourTarget
 import de.abicoach.data.SessionKind
 import de.abicoach.data.SessionRecord
 import de.abicoach.learn.ActivityKind
@@ -112,11 +114,24 @@ fun AbiWegScreen(vm: AppViewModel) {
         Tab.WEG,
         "Heute",
         caption = todayCaption(Planner.daysUntilExam(app)),
-        actions = { TopBarAction(R.drawable.settings_24dp, "Einstellungen", { vm.tap(); vm.nav.push(Screen.Settings) }, tag = "action_settings") },
+        actions = { Box(Modifier.tourTarget("action_settings")) { TopBarAction(R.drawable.settings_24dp, "Einstellungen", { vm.tap(); vm.nav.push(Screen.Settings) }, tag = "action_settings") } },
     ) {
         if (vm.errorMessage != null || vm.notice != null || vm.readyDebrief != null || vm.readyMaterialMinutes > 0) item { MessageBanners(vm) }
-        item(key = "overview") { OverviewCard(vm, profile) }
-        item(key = "plan") { PlanCard(vm, recommendations) }
+        // Without a key nothing works: say so first and lead to the setup.
+        if (version >= 0 && !app.ai.ready) {
+            item(key = "setup_missing") {
+                ActionButton(
+                    "Einrichtung abschließen",
+                    R.drawable.key_24dp,
+                    red,
+                    { vm.openOnboarding() },
+                    subtitle = "Der KI-Schlüssel fehlt noch – ohne ihn kann die App nicht prüfen und bewerten.",
+                    modifier = Modifier.testTag("today_setup"),
+                )
+            }
+        }
+        item(key = "overview") { Box(Modifier.tourTarget("today_overview")) { OverviewCard(vm, profile) } }
+        item(key = "plan") { Box(Modifier.tourTarget("today_plan")) { PlanCard(vm, recommendations) } }
         item(key = "next") {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
                 if (next != null) {
@@ -389,6 +404,7 @@ fun TrainingScreen(vm: AppViewModel) {
                 selected = vm.practiceView,
                 onSelect = { vm.tap(); vm.practiceView = it },
                 tags = listOf("practice_free", "practice_path"),
+                modifier = Modifier.tourTarget("train_views"),
             )
         }
         if (vm.errorMessage != null || vm.notice != null || vm.readyDebrief != null || vm.readyMaterialMinutes > 0) item { MessageBanners(vm) }
@@ -437,6 +453,7 @@ private fun LazyListScope.freePractice(
 
     item(key = "label_exam") { SectionLabel("Ganze Prüfung") }
     item(key = "exam") {
+        Box(Modifier.tourTarget("train_exam")) {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
             Tile(
                 title = "Simulation",
@@ -460,7 +477,8 @@ private fun LazyListScope.freePractice(
                 tag = "train_placement",
             )
         }
-    }
+            }
+}
     item(key = "label_part1") { SectionLabel("Teil 1 – Vortrag") }
     item(key = "part1") {
         val lever =
@@ -501,6 +519,7 @@ private fun LazyListScope.freePractice(
     item(key = "real") { RealTasksCard(vm) }
     item(key = "label_part2") { SectionLabel("Teil 2 – Prüfungsgespräch") }
     item(key = "part2") {
+        Box(Modifier.tourTarget("train_part2")) {
         val focus = remember(sessions) { Planner.topErrorCategories(app, 2) }
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
@@ -536,9 +555,11 @@ private fun LazyListScope.freePractice(
                 )
             }
         }
-    }
+            }
+}
     item(key = "label_target") { SectionLabel("Gezielt trainieren") }
     item(key = "target") {
+        Box(Modifier.tourTarget("train_target")) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.testTag("train_coach")) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
                 Tile(
@@ -589,7 +610,8 @@ private fun LazyListScope.freePractice(
                 MiniAction(R.drawable.psychology_24dp, "KI-Coach", { vm.tap(); vm.nav.push(Screen.Ask) }, Modifier.weight(1f), tag = "train_ask")
             }
         }
-    }
+            }
+}
     val recent = sessions.take(3)
     if (recent.isNotEmpty()) {
         item(key = "recent") {

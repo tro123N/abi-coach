@@ -52,6 +52,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import de.abicoach.R
+import de.abicoach.ui.tourTarget
 import de.abicoach.data.Knowledge
 import de.abicoach.data.SessionKind
 import de.abicoach.memory.CourseDoc
@@ -141,7 +142,7 @@ fun CourseScreen(vm: AppViewModel) {
         }
         if (vm.errorMessage != null || vm.notice != null || vm.readyDebrief != null) item { MessageBanners(vm) }
         item {
-            AbiCard(modifier = Modifier.testTag("course_add")) {
+            AbiCard(modifier = Modifier.testTag("course_add").tourTarget("course_add")) {
                 CardTitle("Hinzufügen", icon = R.drawable.cloud_upload_24dp)
                 ActionButton(
                     "PDF oder Dokument",
@@ -704,7 +705,7 @@ private fun HalfYearsCard(vm: AppViewModel) {
     val version by vm.app.settings.version.collectAsState()
     val docs by vm.app.memory.docs.collectAsState()
     val map = remember(version, docs) { de.abicoach.memory.HalfYears.mapping(vm.app) }
-    AbiCard(modifier = Modifier.testTag("course_halfyears")) {
+    AbiCard(modifier = Modifier.testTag("course_halfyears").tourTarget("course_halfyears")) {
         CardTitle("Halbjahre", icon = R.drawable.calendar_clock_24dp)
         if (map.isEmpty()) {
             CaptionText("Stell ein, welches Themenfeld ihr in welchem Halbjahr hattet. Dann nimmt Teil 2 der Simulation Themen aus anderen Halbjahren als Teil 1 – wie im Abitur.")

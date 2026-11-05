@@ -7,6 +7,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToIndex
+import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.test.performTouchInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -126,21 +127,30 @@ class SmokeTest {
 
     @Test
     fun a_freshStart() {
-        // The very first start: the tutorial explains the app.
+        // The very first start: the setup shows step by step what the app needs.
         ui {
-            app.settings.tutorialDone = false
+            app.settings.onboardingDone = false
+            app.settings.geminiKey = ""
             compose.activity.vm.nav.openTab(Tab.WEG)
-            compose.activity.vm.nav.push(Screen.Tutorial)
+            compose.activity.vm.nav.push(Screen.Onboarding)
         }
-        shot("tutorial_1")
-        runCatching { compose.onNodeWithTag("tutorial_next").performClick() }
-        shot("tutorial_2")
-        repeat(5) { runCatching { compose.onNodeWithTag("tutorial_next").performClick() } }
-        shot("tutorial_7")
-        runCatching { compose.onNodeWithTag("tutorial_next").performClick() }
-        shot("tutorial_ende")
-        runCatching { compose.onNodeWithTag("tutorial_done").performClick() }
-        Log.i(TAG, "Tutorial fertig: ${app.settings.tutorialDone}")
+        shot("einrichtung_1_willkommen")
+        runCatching { compose.onNodeWithTag("setup_next").performClick() }
+        shot("einrichtung_2_ki")
+        runCatching { compose.onNodeWithTag("setup_next").performClick() }
+        shot("einrichtung_3_schluessel")
+        runCatching { compose.onNodeWithTag("setup_key").performScrollTo() }
+        shot("einrichtung_3_schluessel_unten")
+        runCatching { compose.onNodeWithTag("setup_key_later").performClick() }
+        shot("einrichtung_4_pruefung")
+        runCatching { compose.onNodeWithTag("setup_next").performClick() }
+        shot("einrichtung_5_kurs")
+        runCatching { compose.onNodeWithTag("setup_next").performClick() }
+        shot("einrichtung_6_mikrofon")
+        runCatching { compose.onNodeWithTag("setup_next").performClick() }
+        shot("einrichtung_7_fertig")
+        runCatching { compose.onNodeWithTag("setup_finish").performClick() }
+        Log.i(TAG, "Einrichtung fertig: ${app.settings.onboardingDone}")
         ui {
             app.store.deleteAll()
             app.profiles.reset()
@@ -366,9 +376,13 @@ class SmokeTest {
 
         ui { vm.demoClear(); vm.demoLive(Demo.liveState(part = 2), part = 2, withExaminer = true) }
         shot("gespraech_live")
-        ui { if (!vm.liveTranscript) vm.toggleLiveTranscript() }
-        shot("gespraech_mitschrift_knopf")
-        ui { if (vm.liveTranscript) vm.toggleLiveTranscript() }
+        // "Mitscrollen" on: the page follows the transcript at the bottom.
+        ui { if (!vm.liveFollow) vm.toggleLiveFollow() }
+        shot("gespraech_mitscrollen_an")
+        ui { vm.toggleLiveFollow() }
+        runCatching { compose.onNodeWithTag("live").performTouchInput { swipeDown() } }
+        shot("gespraech_mitscrollen_aus")
+        ui { vm.toggleLiveFollow() }
         ui { vm.demoClear(); vm.demoPrep(Demo.task(), SessionKind.SIMULATION) }
         ui { vm.demoLive(Demo.liveState(part = 1), part = 1, withExaminer = false) }
         shot("vortrag_live")
@@ -425,6 +439,21 @@ class SmokeTest {
     }
 
     /** The evaluation runs as background work: it starts, shows its progress and ends in a clear error without keys. */
+    @Test
+    fun bb_guidedTour() {
+        ui { Demo.seed(app) }
+        val vm = compose.activity.vm
+        ui { vm.nav.openTab(Tab.WEG); vm.startTour() }
+        shot("tour_01")
+        for (i in 2..de.abicoach.ui.TourSteps.all.size) {
+            runCatching { compose.onNodeWithTag("tour_next").performClick() }
+            shot(String.format(Locale.ROOT, "tour_%02d", i))
+        }
+        runCatching { compose.onNodeWithTag("tour_done").performClick() }
+        Log.i(TAG, "Tour fertig: ${app.settings.tourDone}, aktiv: ${vm.tour.active}")
+        ui { vm.endTour(); vm.nav.openTab(Tab.WEG) }
+    }
+
     @Test
     fun c_backgroundAnalysis() {
         ui { Demo.seed(app) }
@@ -625,7 +654,8 @@ object Demo {
         s.geminiKey = "demo-gemini-key"
         s.courseTopics = "The Hate U Give, Brexit, Purple Hibiscus, Black Mirror"
         s.themeMode = ThemeMode.LIGHT
-        s.tutorialDone = true
+        s.onboardingDone = true
+        s.tourDone = true
         s.halfYearTopics = mapOf("Q1.1" to setOf(0, 1), "Q1.2" to setOf(4, 10), "Q2.1" to setOf(8, 7), "Q2.2" to setOf(12, 13))
 
         app.profiles.update {

@@ -509,9 +509,9 @@ fun LiveScreen(vm: AppViewModel) {
     BackHandler { confirmCancel = true }
     if (confirmCancel) {
         PopUp(
-            title = "Sitzung abbrechen?",
-            description = "Es wird nichts gespeichert und nicht ausgewertet.",
-            confirmText = "Abbrechen",
+            title = "Übung abbrechen?",
+            description = "Die Übung wird beendet und nicht ausgewertet. Aufnahme und Mitschrift werden gelöscht – sie zählt nicht für deinen Lernstand.",
+            confirmText = "Abbrechen ohne Auswertung",
             onConfirm = { confirmCancel = false; vm.cancelLive() },
             onDismiss = { confirmCancel = false },
             cancelText = "Weitermachen",
@@ -533,26 +533,47 @@ fun LiveScreen(vm: AppViewModel) {
             else -> "Gesprächstraining"
         }
     val toPart2 = state.part == 1 && draft?.kind?.hasPart2 == true
+    val showTranscript = state.part != 1 || vm.app.settings.showTranscript
+    // "Mitscrollen": the page follows the transcript at the bottom, so the newest line is always in sight.
+    val scroll = androidx.compose.foundation.rememberScrollState()
+    val follow = vm.liveFollow && showTranscript
+    LaunchedEffect(follow) {
+        if (follow) androidx.compose.runtime.snapshotFlow { scroll.maxValue }.collect { max -> if (max > scroll.value) scroll.animateScrollTo(max) }
+    }
     DetailScaffold(
         title = title,
         onBack = { confirmCancel = true },
         backIcon = R.drawable.close_24dp,
         tag = "live",
+        scroll = scroll,
         pinned = {
             val mode = draft?.feedback ?: FeedbackMode.FLUESTERN
             if (mode != FeedbackMode.PRUEFUNG) WhisperBar(state, mode)
-            if (vm.liveTranscript) LiveTranscriptPanel(state)
         },
         bottom = {
             Surface(color = androidx.compose.ui.graphics.Color.Transparent) {
-                Box(Modifier.navigationBarsPadding().padding(horizontal = 20.dp, vertical = 12.dp)) {
+                Row(Modifier.navigationBarsPadding().padding(horizontal = 20.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    // Stop without an evaluation: small, next to the big button, so it is not hit by mistake.
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier =
+                            Modifier
+                                .clip(RoundedCornerShape(18.dp))
+                                .clickable(enabled = vm.busy == null) { vm.tap(); confirmCancel = true }
+                                .padding(horizontal = 8.dp, vertical = 6.dp)
+                                .testTag("live_cancel"),
+                    ) {
+                        Icon(painterResource(R.drawable.close_24dp), contentDescription = null, tint = red, modifier = Modifier.size(22.dp))
+                        Text("Abbrechen", fontSize = 11.sp, color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f))
+                    }
+                    Spacer(Modifier.width(10.dp))
                     StartButton(
                         text = vm.busy ?: if (toPart2) "Weiter zu Teil 2" else "Auswerten",
                         onClick = { if (toPart2) vm.finishPart1() else vm.finishSession() },
                         enabled = vm.busy == null,
                         icon = if (toPart2) R.drawable.arrow_forward_24dp else R.drawable.stop_24dp,
                         iconTint = if (toPart2) green else red,
-                        modifier = Modifier.testTag("live_finish"),
+                        modifier = Modifier.weight(1f).testTag("live_finish"),
                     )
                 }
             }
@@ -568,7 +589,7 @@ fun LiveScreen(vm: AppViewModel) {
                     if (!state.transcriberReady) CaptionText("Mitschrift startet …")
                 }
                 Spacer(Modifier.width(8.dp))
-                TranscriptToggle(vm.liveTranscript) { vm.toggleLiveTranscript() }
+                if (showTranscript) FollowToggle(vm.liveFollow) { vm.toggleLiveFollow() }
             }
             Gap(10.dp)
             TechChips(state, draft?.feedback ?: FeedbackMode.FLUESTERN)
@@ -615,9 +636,7 @@ fun LiveScreen(vm: AppViewModel) {
         if (draft?.feedback != FeedbackMode.PRUEFUNG) {
             AlertCard(state.lastAlert, state.liveErrors.size, draft?.feedback ?: FeedbackMode.FLUESTERN, state.checkInfo, state.checkFailed)
         }
-        if (!vm.liveTranscript && (state.part != 1 || vm.app.settings.showTranscript)) {
-            TranscriptCard(state.utterances, state.interim, state.examinerLive)
-        }
+        if (showTranscript) TranscriptCard(state, vm.liveFollow) { vm.toggleLiveFollow() }
     }
 }
 
@@ -731,23 +750,28 @@ private fun AlertCard(alert: de.abicoach.data.LiveError?, count: Int, mode: Feed
     }
 }
 
-/** The small "Mitschrift" button in the live card: shows or hides who said what. */
+/** The small "Mitscrollen" button: the page follows the transcript to the newest line, or stays where it is. */
 @Composable
-private fun TranscriptToggle(open: Boolean, onClick: () -> Unit) {
-    val color = if (open) accent else MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.75f)
+private fun FollowToggle(on: Boolean, onClick: () -> Unit) {
+    val color = if (on) accent else MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.75f)
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier =
             Modifier
                 .clip(RoundedCornerShape(50))
-                .background(if (open) accent.copy(alpha = 0.16f) else MaterialTheme.colorScheme.background)
+                .background(if (on) accent.copy(alpha = 0.16f) else MaterialTheme.colorScheme.background)
                 .clickable { onClick() }
                 .padding(horizontal = 10.dp, vertical = 6.dp)
-                .testTag("live_transcript_toggle"),
+                .testTag("live_follow_toggle"),
     ) {
-        Icon(painterResource(R.drawable.chat_24dp), contentDescription = if (open) "Mitschrift ausblenden" else "Mitschrift zeigen", tint = color, modifier = Modifier.size(16.dp))
-        Spacer(Modifier.width(5.dp))
-        Text("Mitschrift", fontSize = 12.sp, color = color, fontWeight = if (open) FontWeight.Bold else null)
+        Icon(
+            painterResource(R.drawable.arrow_downward_24dp),
+            contentDescription = if (on) "Automatisch mitscrollen ausschalten" else "Automatisch mitscrollen einschalten",
+            tint = color,
+            modifier = Modifier.size(16.dp),
+        )
+        Spacer(Modifier.width(4.dp))
+        Text(if (on) "Mitscrollen an" else "Mitscrollen aus", fontSize = 12.sp, color = color, fontWeight = if (on) FontWeight.Bold else null)
     }
 }
 
@@ -755,66 +779,17 @@ private enum class Who(val label: String) { EXAMINER("Prüfer"), COACH("Coach"),
 
 private data class TranscriptLine(val who: Who, val text: String, val at: Long, val live: Boolean = false)
 
-/**
- * Pinned below the hints while the small button is on: what the examiner, the coach (the app) and the student said,
- * newest at the bottom, scrolling along by itself.
- */
-@Composable
-private fun LiveTranscriptPanel(state: LiveUiState) {
-    val lines =
-        remember(state.utterances, state.appSaid, state.interim, state.examinerLive) {
-            val said =
-                state.utterances.map { TranscriptLine(if (it.speaker == Speaker.STUDENT) Who.YOU else Who.EXAMINER, it.text, it.atMs) } +
-                    state.appSaid.map { TranscriptLine(Who.COACH, it.text, it.atMs) }
-            val live =
-                listOfNotNull(
-                    state.examinerLive.takeIf { it.isNotBlank() }?.let { TranscriptLine(Who.EXAMINER, it, Long.MAX_VALUE - 1, live = true) },
-                    state.interim.takeIf { it.isNotBlank() }?.let { TranscriptLine(Who.YOU, it, Long.MAX_VALUE, live = true) },
-                )
-            (said.sortedBy { it.at }.takeLast(40) + live)
-        }
-    val list = androidx.compose.foundation.lazy.rememberLazyListState()
-    LaunchedEffect(lines.size, lines.lastOrNull()?.text) { if (lines.isNotEmpty()) list.scrollToItem(lines.lastIndex) }
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.primary)
-            .padding(horizontal = 16.dp, vertical = 8.dp)
-            .testTag("live_transcript_panel"),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Mitschrift", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimary)
-            Spacer(Modifier.weight(1f))
-            Who.entries.forEach { w ->
-                Text(w.label, fontSize = 11.sp, color = whoColor(w), modifier = Modifier.padding(start = 8.dp))
-            }
-        }
-        if (lines.isEmpty()) {
-            CaptionText("Sobald gesprochen wird, erscheint hier, wer was gesagt hat.")
-        } else {
-            androidx.compose.foundation.lazy.LazyColumn(state = list, modifier = Modifier.fillMaxWidth().heightIn(max = 210.dp)) {
-                items(lines.size) { i ->
-                    val line = lines[i]
-                    Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.Top) {
-                        Text(
-                            line.who.label,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = whoColor(line.who),
-                            modifier = Modifier.width(48.dp).padding(top = 2.dp),
-                        )
-                        Text(
-                            line.text,
-                            fontSize = 14.sp,
-                            lineHeight = 19.sp,
-                            fontStyle = if (line.live) FontStyle.Italic else null,
-                            color = MaterialTheme.colorScheme.onPrimary.copy(alpha = if (line.live) 0.65f else 0.95f),
-                        )
-                    }
-                }
-            }
-        }
-    }
+/** Who said what: the examiner, the coach (the app's own voice) and the student, oldest first. */
+private fun transcriptLines(state: LiveUiState): List<TranscriptLine> {
+    val said =
+        state.utterances.map { TranscriptLine(if (it.speaker == Speaker.STUDENT) Who.YOU else Who.EXAMINER, it.text, it.atMs) } +
+            state.appSaid.map { TranscriptLine(Who.COACH, it.text, it.atMs) }
+    val live =
+        listOfNotNull(
+            state.examinerLive.takeIf { it.isNotBlank() }?.let { TranscriptLine(Who.EXAMINER, it, Long.MAX_VALUE - 1, live = true) },
+            state.interim.takeIf { it.isNotBlank() }?.let { TranscriptLine(Who.YOU, it, Long.MAX_VALUE, live = true) },
+        )
+    return said.sortedBy { it.at }.takeLast(60) + live
 }
 
 @Composable
@@ -825,20 +800,30 @@ private fun whoColor(w: Who): Color =
         Who.YOU -> accent
     }
 
+/** The transcript at the end of the page; with "Mitscrollen" on, the page keeps its newest line in sight. */
 @Composable
-private fun TranscriptCard(utterances: List<Utterance>, interim: String, examinerLive: String) {
+private fun TranscriptCard(state: LiveUiState, follow: Boolean, onToggle: () -> Unit) {
+    val lines = remember(state.utterances, state.appSaid, state.interim, state.examinerLive) { transcriptLines(state) }
     AbiCard(modifier = Modifier.testTag("live_transcript")) {
-        CardTitle("Mitschrift", icon = R.drawable.text_snippet_24dp)
-        if (utterances.isEmpty() && interim.isBlank() && examinerLive.isBlank()) CaptionText("Sobald gesprochen wird, erscheint hier der Text.")
-        utterances.takeLast(10).forEach { u -> Bubble(u.speaker == Speaker.STUDENT, u.text) }
-        if (examinerLive.isNotBlank()) Bubble(false, examinerLive, live = true)
-        if (interim.isNotBlank()) Bubble(true, interim, live = true)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            CardTitle("Mitschrift", icon = R.drawable.text_snippet_24dp, modifier = Modifier.weight(1f))
+            FollowToggle(follow, onToggle)
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Who.entries.forEach { w -> Text(w.label, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = whoColor(w)) }
+        }
+        Gap(4.dp)
+        if (lines.isEmpty()) CaptionText("Sobald gesprochen wird, erscheint hier, wer was gesagt hat.")
+        lines.forEach { line -> Bubble(line.who == Who.YOU, line.text, live = line.live, who = line.who) }
     }
 }
 
 @Composable
-private fun Bubble(student: Boolean, text: String, live: Boolean = false) {
+private fun Bubble(student: Boolean, text: String, live: Boolean = false, who: Who? = null) {
     val dimens = AbiTheme.dimens
+    if (who != null && !student) {
+        Text(who.label, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = whoColor(who), modifier = Modifier.padding(start = 4.dp, top = 4.dp))
+    }
     Row(modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp), horizontalArrangement = if (student) Arrangement.End else Arrangement.Start) {
         Text(
             text,

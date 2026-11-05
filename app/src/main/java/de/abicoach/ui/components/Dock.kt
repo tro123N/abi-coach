@@ -47,6 +47,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import de.abicoach.ui.tourTarget
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -183,6 +184,7 @@ private fun DockItem(tab: Tab, selected: Boolean, showBadge: Boolean, onClick: (
                 .clip(RoundedCornerShape(50))
                 .squish(interaction, 0.88f)
                 .selectable(selected = selected, interactionSource = interaction, indication = null, role = Role.Tab, onClick = onClick)
+                .tourTarget("dock_${tab.name}")
                 .testTag(tab.tag),
     ) {
         Box {

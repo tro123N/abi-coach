@@ -114,19 +114,7 @@ fun SettingsScreen(vm: AppViewModel) {
             )
         }
     }
-    vm.pendingRestore?.let { (_, info) ->
-        val day = java.time.Instant.ofEpochMilli(info.exportedAt).atZone(java.time.ZoneId.systemDefault()).toLocalDate().format(DateTimeFormatter.ofPattern("dd.MM.yyyy"))
-        PopUp(
-            title = "Lernstand vom $day laden?",
-            description =
-                "Die Sicherung hat ${info.sessions} Sitzungen" + (if (info.withMaterial) " und dein Kursmaterial" else "") +
-                    ". Dein jetziger Lernstand auf diesem Handy wird dadurch ersetzt; deine Schlüssel bleiben. Die App startet danach neu.",
-            confirmText = "Laden",
-            onConfirm = { vm.restoreBackup() },
-            onDismiss = { vm.cancelRestore() },
-            confirmColor = yellow,
-        )
-    }
+    RestorePrompt(vm)
 
     DetailScaffold(title = "Einstellungen", onBack = { vm.tap(); vm.nav.pop() }, tag = "settings") {
         if (version < 0) return@DetailScaffold
@@ -391,7 +379,9 @@ fun SettingsScreen(vm: AppViewModel) {
         }
         AbiCard {
             CardTitle("Über AbiCoach", icon = R.drawable.info_24dp)
-            ActionButton("Tutorial ansehen", R.drawable.school_24dp, accent, { vm.openTutorial() }, subtitle = "So funktioniert die App – in acht kurzen Seiten", container = MaterialTheme.colorScheme.background, modifier = Modifier.testTag("settings_tutorial"))
+            ActionButton("Tour durch die App", R.drawable.explore_24dp, accent, { vm.startTour() }, subtitle = "Die App zeigt dir Schritt für Schritt, was wo ist", container = MaterialTheme.colorScheme.background, modifier = Modifier.testTag("settings_tour"))
+            Gap(8.dp)
+            ActionButton("Einrichtung öffnen", R.drawable.tune_24dp, accent, { vm.openOnboarding() }, subtitle = "KI, Schlüssel, Prüfungstermin, Kurs und Mikrofon noch einmal durchgehen", container = MaterialTheme.colorScheme.background, modifier = Modifier.testTag("settings_setup"))
             Gap(10.dp)
             val versionName = runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "?"
             BodyText("Version $versionName")
@@ -443,7 +433,7 @@ fun SettingsScreen(vm: AppViewModel) {
 private fun Planner_days(vm: AppViewModel): Long? = de.abicoach.ui.Planner.daysUntilExam(vm.app)
 
 /** What the chosen company does in the app, in plain words. */
-private fun providerNote(p: Provider): String =
+internal fun providerNote(p: Provider): String =
     when (p) {
         Provider.GOOGLE ->
             "Gemini macht alles selbst: Prüfer (hört und spricht gleichzeitig), wortgetreue Mitschrift, Bewertung, Coach, Kursgedächtnis und Vorlesen. " +
@@ -458,7 +448,7 @@ private fun providerNote(p: Provider): String =
     }
 
 @Composable
-private fun KeyBlock(vm: AppViewModel, provider: String, title: String, role: String, current: String, url: String, required: Boolean, onSave: (String) -> Unit) {
+internal fun KeyBlock(vm: AppViewModel, provider: String, title: String, role: String, current: String, url: String, required: Boolean, onSave: (String) -> Unit) {
     val uri = LocalUriHandler.current
     val dimens = AbiTheme.dimens
     var editing by remember(provider) { mutableStateOf(current.isBlank()) }
@@ -650,5 +640,23 @@ private fun ReminderCard(vm: AppViewModel) {
                 tagPrefix = "reminderhour",
             )
         }
+    }
+}
+
+/** Asks before a picked backup replaces the learning progress on this phone (settings and first start). */
+@Composable
+internal fun RestorePrompt(vm: AppViewModel) {
+    vm.pendingRestore?.let { (_, info) ->
+        val day = java.time.Instant.ofEpochMilli(info.exportedAt).atZone(java.time.ZoneId.systemDefault()).toLocalDate().format(DateTimeFormatter.ofPattern("dd.MM.yyyy"))
+        PopUp(
+            title = "Lernstand vom $day laden?",
+            description =
+                "Die Sicherung hat ${info.sessions} Sitzungen" + (if (info.withMaterial) " und dein Kursmaterial" else "") +
+                    ". Dein jetziger Lernstand auf diesem Handy wird dadurch ersetzt; deine Schlüssel bleiben. Die App startet danach neu.",
+            confirmText = "Laden",
+            onConfirm = { vm.restoreBackup() },
+            onDismiss = { vm.cancelRestore() },
+            confirmColor = yellow,
+        )
     }
 }

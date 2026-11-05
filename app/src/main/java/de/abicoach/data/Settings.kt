@@ -237,11 +237,14 @@ class Settings(context: Context) {
     /** Shown once: the welcome card on the Abi-Weg. */
     var welcomeDone by BoolPref("welcome_done", false)
 
-    /** The tutorial at the very first start (how the app works). */
-    var tutorialDone by BoolPref("tutorial_done", false)
+    /** The setup at the very first start (AI, key, exam date, course, microphone) is through. */
+    var onboardingDone by BoolPref("onboarding_done", false)
 
-    /** In a live session the small "Mitschrift" button shows what the examiner, the coach and the student said. */
-    var liveTranscriptOpen by BoolPref("live_transcript_open", false)
+    /** The guided tour through the app was seen (or skipped). */
+    var tourDone by BoolPref("tour_done", false)
+
+    /** In a live session the page follows the transcript to the newest line ("Mitscrollen"); the student can switch it off. */
+    var liveFollow by BoolPref("live_follow", true)
 
     /** How the examiner leads a conversation; can be changed for each session. */
     var talkStyle: TalkStyle
