@@ -49,7 +49,7 @@ jobs:
           cp app/build/outputs/apk/debug/app-debug.apk AbiCoach.apk
           gh release delete latest --yes --cleanup-tag || true
           gh release create latest AbiCoach.apk \
-            --title "AbiCoach – neueste Version (Build ${{ github.run_number }})" \
+            --title "AbiCoach 1.0 Stable (Build ${{ github.run_number }})" \
             --notes "Automatisch gebaut aus Commit ${GITHUB_SHA::7}. Auf dem Handy: AbiCoach.apk antippen, herunterladen und installieren." \
             --prerelease
 

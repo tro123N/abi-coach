@@ -244,6 +244,9 @@ fun TourOverlay(vm: AppViewModel) {
                     list.scrollBy(delta)
                     frames(3)
                 }
+            } catch (e: Exception) {
+                // Scrolling is only a help: if it fails, the bubble simply explains without the light.
+                if (e is kotlinx.coroutines.CancellationException) throw e
             } finally {
                 scrolling = false
             }
@@ -263,21 +266,36 @@ fun TourOverlay(vm: AppViewModel) {
                 drawRoundRect(ring, Offset(hole.left, hole.top), Size(hole.width, hole.height), corner, style = Stroke(width = 3.dp.toPx()))
             }
         }
-        val below = hole != null && hole.center.y < height / 2
-        val bubble: @Composable () -> Unit = { TourBubble(vm, index, step) }
-        when {
-            hole == null ->
-                Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) { bubble() }
-            below ->
-                Box(
-                    Modifier.fillMaxWidth().padding(top = with(density) { (hole.bottom + 14.dp.toPx()).toDp() }, start = 18.dp, end = 18.dp),
-                    contentAlignment = Alignment.TopCenter,
-                ) { bubble() }
-            else ->
-                Box(
-                    Modifier.fillMaxWidth().height(with(density) { (hole.top - 14.dp.toPx()).coerceAtLeast(0f).toDp() }).padding(horizontal = 18.dp),
-                    contentAlignment = Alignment.BottomCenter,
-                ) { bubble() }
+        // The bubble always lies fully on the screen: below the element if there is room, else above it, else over it
+        // (for an element taller than the screen) – never outside, so "Weiter" can always be tapped.
+        val insets = androidx.compose.foundation.layout.WindowInsets.systemBars
+        val topInset = insets.getTop(density)
+        val bottomInset = insets.getBottom(density)
+        androidx.compose.ui.layout.Layout(
+            content = { TourBubble(vm, index, step) },
+            modifier = Modifier.fillMaxSize(),
+        ) { measurables, constraints ->
+            val side = 18.dp.roundToPx()
+            val width = (constraints.maxWidth - 2 * side).coerceAtLeast(0)
+            val bubble = measurables.first().measure(androidx.compose.ui.unit.Constraints(minWidth = 0, maxWidth = width, minHeight = 0, maxHeight = constraints.maxHeight))
+            val gap = 14.dp.toPx()
+            val minY = topInset + 8.dp.toPx()
+            val maxY = (constraints.maxHeight - bottomInset - 8.dp.toPx() - bubble.height).coerceAtLeast(minY)
+            val y =
+                if (hole == null) {
+                    (constraints.maxHeight - bubble.height) / 2f
+                } else {
+                    val below = hole.bottom + gap
+                    val above = hole.top - gap - bubble.height
+                    when {
+                        below <= maxY -> below
+                        above >= minY -> above
+                        else -> if (constraints.maxHeight - hole.bottom >= hole.top) maxY else minY
+                    }
+                }
+            layout(constraints.maxWidth, constraints.maxHeight) {
+                bubble.place((constraints.maxWidth - bubble.width) / 2, y.coerceIn(minY, maxY).toInt())
+            }
         }
     }
 }

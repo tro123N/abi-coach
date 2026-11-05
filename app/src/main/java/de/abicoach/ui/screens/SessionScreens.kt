@@ -144,7 +144,7 @@ fun SetupScreen(vm: AppViewModel, initial: SessionSetup) {
             Banner("Kompetenz-Training: ${skill.label} – Ziel und Auswertung schauen genau darauf.", accent, icon = R.drawable.target_24dp)
         }
         AbiCard {
-            CardTitle("Topic field", icon = R.drawable.hub_24dp)
+            CardTitle("Themenfeld", icon = R.drawable.hub_24dp)
             ChoiceChips(
                 options = topicOptions,
                 selected = s.topicChoice,
@@ -279,10 +279,32 @@ fun SetupScreen(vm: AppViewModel, initial: SessionSetup) {
                 )
             }
         }
+        AbiCard {
+            CardTitle("Rückmeldung beim Sprechen", icon = R.drawable.hearing_24dp)
+            ChoiceChips(
+                options = FeedbackMode.entries,
+                selected = s.feedback,
+                label = { it.label },
+                onSelect = { vm.tap(); s = s.copy(feedback = it) },
+                tagPrefix = "feedback",
+            )
+            Gap(6.dp)
+            CaptionText(s.feedback.description)
+        }
         if (s.kind.hasPart2 || s.kind == SessionKind.TRAINING) {
             val style = s.talkStyle ?: app.settings.talkStyle
-            AbiCard(modifier = Modifier.testTag("setup_talk_style")) {
-                CardTitle("Gesprächsstil des Prüfers", icon = R.drawable.forum_24dp)
+            var strict by remember { mutableStateOf(app.settings.strictness) }
+            var ptt by remember { mutableStateOf(app.settings.pushToTalk) }
+            // The examiner's manner in one folded card: what is set stays visible in the summary line.
+            ExpandableCard(
+                "Prüfer: Stil, Härte, Sprechen",
+                subtitle = "${style.label} · ${strict.label} · " + if (ptt) "Knopf halten" else "einfach sprechen",
+                icon = R.drawable.forum_24dp,
+                iconTint = if (strict == de.abicoach.data.Strictness.STRESSTEST) red else accent,
+                modifier = Modifier.testTag("setup_talk_style"),
+            ) {
+                BodyText("Gesprächsstil")
+                Gap(6.dp)
                 ChoiceChips(
                     options = de.abicoach.data.TalkStyle.entries,
                     selected = style,
@@ -294,7 +316,6 @@ fun SetupScreen(vm: AppViewModel, initial: SessionSetup) {
                 CaptionText(style.description)
                 Gap(12.dp)
                 // How hard the examiner is – up to a stress test.
-                var strict by remember { mutableStateOf(app.settings.strictness) }
                 BodyText("Härte des Prüfers")
                 Gap(6.dp)
                 ChoiceChips(
@@ -308,7 +329,6 @@ fun SetupScreen(vm: AppViewModel, initial: SessionSetup) {
                 CaptionText(strict.description, color = if (strict == de.abicoach.data.Strictness.STRESSTEST) red else null)
                 Gap(12.dp)
                 // How the student hands the turn over: by a pause, or by letting go of a button.
-                var ptt by remember { mutableStateOf(app.settings.pushToTalk) }
                 BodyText("Wie du sprichst")
                 Gap(6.dp)
                 ChoiceChips(
@@ -328,20 +348,7 @@ fun SetupScreen(vm: AppViewModel, initial: SessionSetup) {
                 )
             }
         }
-        AbiCard {
-            CardTitle("Rückmeldung beim Sprechen", icon = R.drawable.hearing_24dp)
-            ChoiceChips(
-                options = FeedbackMode.entries,
-                selected = s.feedback,
-                label = { it.label },
-                onSelect = { vm.tap(); s = s.copy(feedback = it) },
-                tagPrefix = "feedback",
-            )
-            Gap(6.dp)
-            CaptionText(s.feedback.description)
-        }
-        AbiCard {
-            CardTitle("Deine KI für diese Übung: ${app.ai.providerLabel()}", icon = R.drawable.auto_awesome_24dp)
+        ExpandableCard("Deine KI: ${app.ai.providerLabel()}", subtitle = "Wer prüft, mitschreibt und bewertet", icon = R.drawable.auto_awesome_24dp) {
             val claude = app.ai.provider == de.abicoach.ai.Provider.ANTHROPIC
             if (s.kind.hasPart2 || !s.kind.hasPart1) {
                 CaptionText("Prüfer: ${app.ai.examinerLabel()}" + if (claude) " – antwortet, wenn du fertig bist" else " – hört und spricht gleichzeitig")

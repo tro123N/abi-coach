@@ -1645,6 +1645,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             }
     }
 
+    /** The open area of the settings (SettingsSection name), null = the overview. */
+    var settingsSection by mutableStateOf<String?>(null)
+
     /** "Mitscrollen" in live sessions: the page follows the transcript (the choice is kept for the next session). */
     var liveFollow by mutableStateOf(app.settings.liveFollow)
         private set
@@ -1739,7 +1742,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         tap()
         app.settings.onboardingDone = true
         nav.openTab(Tab.WEG)
-        if (withTour) startTour() else if (!app.settings.tourDone) notice = "Die Tour durch die App findest du jederzeit unter Einstellungen → Über AbiCoach."
+        if (withTour) startTour()
     }
 
     fun startTour() {

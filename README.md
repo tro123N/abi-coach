@@ -83,6 +83,10 @@ Danach startet auf Wunsch eine **geführte Tour durch die echte App**: Der Bilds
 - **So bewertet deine Lehrkraft:** Kommentare und häufigste Anstreichungen aus deinen Klausuren.
 - Verlauf der Prognose, alle Kompetenzen, Übungszeit pro Tag, häufigste Fehler (Übungen und Klausuren) mit „Gezielt üben“, Themenfelder (geübt und Material), alle Sitzungen.
 
+## Einstellungen
+
+Die Einstellungen sind in sieben Bereiche geordnet, jeder mit einer Zeile, was gerade eingestellt ist: **KI und Schlüssel** (Firma, Qualität, Schlüssel, System prüfen, wer was macht, Modelle), **Prüfung und Üben** (Termin, Übungszeit, Rückmeldung, Kursthemen), **Prüfer und Stimmen** (Gesprächsstil, Härte, Knopf halten, Stimmen), **Aufnahme, Anzeige, Erinnerung**, **Aussehen und Töne**, **Daten und Sicherung** sowie **Hilfe und Über AbiCoach** (Tour, Einrichtung, Version). Beim Einrichten einer Übung sind die Prüfer-Optionen und die KI-Übersicht zusammengeklappt – mit einer Zusammenfassung, was gilt.
+
 ## Welche KI was macht
 
 Unter Einstellungen → KI wählst du **eine Firma, die alles macht**: **Google**, **OpenAI** oder **Anthropic** – zum Vergleichen kannst du jederzeit wechseln. Jede Firma braucht ihren eigenen Schlüssel.

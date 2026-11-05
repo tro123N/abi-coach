@@ -46,6 +46,7 @@ import de.abicoach.ui.components.AbiCard
 import de.abicoach.ui.components.AbiTextField
 import de.abicoach.ui.components.ActionButton
 import de.abicoach.ui.components.BodyText
+import de.abicoach.ui.components.Banner
 import de.abicoach.ui.components.CaptionText
 import de.abicoach.ui.components.CardTitle
 import de.abicoach.ui.components.ChoiceChips
@@ -115,10 +116,20 @@ fun SettingsScreen(vm: AppViewModel) {
         }
     }
     RestorePrompt(vm)
+    // Inside a section, "back" goes to the overview of the settings first.
+    androidx.activity.compose.BackHandler(enabled = vm.settingsSection != null) { vm.settingsSection = null }
+    androidx.compose.runtime.DisposableEffect(Unit) { onDispose { vm.settingsSection = null } }
 
-    DetailScaffold(title = "Einstellungen", onBack = { vm.tap(); vm.nav.pop() }, tag = "settings") {
+    DetailScaffold(
+        title = SettingsSection.of(vm.settingsSection)?.title ?: "Einstellungen",
+        onBack = { vm.tap(); if (vm.settingsSection != null) vm.settingsSection = null else vm.nav.pop() },
+        tag = "settings",
+    ) {
         if (version < 0) return@DetailScaffold
         MessageBanners(vm)
+        when (SettingsSection.of(vm.settingsSection)) {
+            null -> SettingsMenu(vm)
+            SettingsSection.KI -> {
         AbiCard(modifier = Modifier.testTag("settings_ai")) {
             CardTitle("Deine KI", icon = R.drawable.auto_awesome_24dp)
             CaptionText("Wähle, wessen KI alles in der App macht. Zum Vergleichen kannst du jederzeit wechseln – jede Firma braucht ihren eigenen Schlüssel.")
@@ -165,6 +176,39 @@ fun SettingsScreen(vm: AppViewModel) {
             Gap(4.dp)
             CaptionText("Fällt ein Modell aus (kein Zugang, Limit erreicht), springt automatisch ein anderes Modell derselben Firma ein.")
         }
+        ExpandableCard("Erweitert: Modelle", subtitle = "Nur ändern, wenn ${settings.provider.company} ein Modell umbenennt", icon = R.drawable.tune_24dp) {
+            when (settings.provider) {
+                Provider.GOOGLE -> {
+                    ModelField("Prüfer (Live-Stimme)", settings.geminiLiveModel) { settings.geminiLiveModel = it }
+                    ModelField("Gemini – Mitschrift", settings.transcribeModel) { settings.transcribeModel = it }
+                    ModelField("Gemini – stärkstes Modell", settings.geminiBestModel) { settings.geminiBestModel = it }
+                    ModelField("Gemini – schnelles Modell", settings.geminiTextModel) { settings.geminiTextModel = it }
+                    ModelField("Gemini – Fehlerprüfung beim Sprechen", settings.geminiFastModel) { settings.geminiFastModel = it }
+                    ModelField("Gemini – Material lesen", settings.geminiReaderModel) { settings.geminiReaderModel = it }
+                    ModelField("Gemini – Suche (Vektoren)", settings.embeddingModel) { settings.embeddingModel = it }
+                    ModelField("Gemini – Vorlesen", settings.ttsModel) { settings.ttsModel = it }
+                }
+                Provider.OPENAI -> {
+                    ModelField("Prüfer (Live-Stimme)", settings.oaLiveModel) { settings.oaLiveModel = it }
+                    ModelField("Prüfer, Ersatz (Realtime)", settings.oaRealtimeModel) { settings.oaRealtimeModel = it }
+                    ModelField("Mitschrift (live)", settings.oaTranscribeModel) { settings.oaTranscribeModel = it }
+                    ModelField("Stärkstes Modell", settings.oaBrainModel) { settings.oaBrainModel = it }
+                    ModelField("Normales Modell (auch Material lesen)", settings.oaTextModel) { settings.oaTextModel = it }
+                    ModelField("Fehlerprüfung beim Sprechen", settings.oaFastModel) { settings.oaFastModel = it }
+                    ModelField("Aufnahmen anhören (Audio)", settings.oaAudioModel) { settings.oaAudioModel = it }
+                    ModelField("Aufnahmen abschreiben", settings.oaFileTranscribeModel) { settings.oaFileTranscribeModel = it }
+                    ModelField("Suche (Vektoren)", settings.oaEmbeddingModel) { settings.oaEmbeddingModel = it }
+                    ModelField("Vorlesen", settings.oaTtsModel) { settings.oaTtsModel = it }
+                }
+                Provider.ANTHROPIC -> {
+                    ModelField("Stärkstes Modell", settings.clBrainModel) { settings.clBrainModel = it }
+                    ModelField("Normales Modell (auch Material lesen)", settings.clTextModel) { settings.clTextModel = it }
+                    ModelField("Schnelles Modell (Prüfer, Fehlerprüfung)", settings.clFastModel) { settings.clFastModel = it }
+                }
+            }
+        }
+            }
+            SettingsSection.PRUEFUNG -> {
         AbiCard {
             CardTitle("Prüfung", icon = R.drawable.event_24dp)
             val date = runCatching { LocalDate.parse(settings.examDate) }.getOrNull()
@@ -186,6 +230,26 @@ fun SettingsScreen(vm: AppViewModel) {
             Gap(6.dp)
             ChoiceChips(FeedbackMode.entries, settings.defaultFeedback, { it.label }, { vm.tap(); settings.defaultFeedback = it }, tagPrefix = "deffeedback")
             Gap(12.dp)
+            Gap(12.dp)
+            var topics by remember { mutableStateOf(settings.courseTopics) }
+            AbiTextField(
+                topics,
+                { topics = it },
+                label = "Themen, Lektüren und Filme aus dem Unterricht",
+                placeholder = "z. B. The Hate U Give, Brexit, Purple Hibiscus, Black Mirror",
+                singleLine = false,
+                minLines = 2,
+                maxLines = 5,
+            )
+            if (topics != settings.courseTopics) {
+                Gap(6.dp)
+                ActionButton("Speichern", R.drawable.check_24dp, green, { vm.tap(); settings.courseTopics = topics }, container = MaterialTheme.colorScheme.background)
+            }
+        }
+            }
+            SettingsSection.PRUEFER -> {
+        AbiCard(modifier = Modifier.testTag("settings_examiner")) {
+            CardTitle("Prüfer im Gespräch", icon = R.drawable.forum_24dp)
             BodyText("Gesprächsstil des Prüfers (Standard)")
             Gap(6.dp)
             ChoiceChips(de.abicoach.data.TalkStyle.entries, settings.talkStyle, { it.label }, { vm.tap(); settings.talkStyle = it }, tagPrefix = "deftalkstyle")
@@ -205,23 +269,7 @@ fun SettingsScreen(vm: AppViewModel) {
                 { vm.tap(); settings.pushToTalk = it },
                 modifier = Modifier.testTag("settings_ptt"),
             )
-            Gap(12.dp)
-            var topics by remember { mutableStateOf(settings.courseTopics) }
-            AbiTextField(
-                topics,
-                { topics = it },
-                label = "Themen, Lektüren und Filme aus dem Unterricht",
-                placeholder = "z. B. The Hate U Give, Brexit, Purple Hibiscus, Black Mirror",
-                singleLine = false,
-                minLines = 2,
-                maxLines = 5,
-            )
-            if (topics != settings.courseTopics) {
-                Gap(6.dp)
-                ActionButton("Speichern", R.drawable.check_24dp, green, { vm.tap(); settings.courseTopics = topics }, container = MaterialTheme.colorScheme.background)
-            }
         }
-        ReminderCard(vm)
         AbiCard {
             CardTitle("Stimmen", icon = R.drawable.record_voice_over_24dp)
             when (settings.provider) {
@@ -255,6 +303,8 @@ fun SettingsScreen(vm: AppViewModel) {
                 container = MaterialTheme.colorScheme.background,
             )
         }
+            }
+            SettingsSection.ANZEIGE -> {
         AbiCard {
             CardTitle("Aufnahme und Anzeige", icon = R.drawable.mic_24dp)
             SwitchRow(
@@ -289,6 +339,9 @@ fun SettingsScreen(vm: AppViewModel) {
                 { settings.prefetchMaterial = it },
             )
         }
+        ReminderCard(vm)
+            }
+            SettingsSection.DESIGN -> {
         AbiCard(modifier = Modifier.testTag("settings_design")) {
             CardTitle("Design", icon = R.drawable.palette_24dp)
             ChoiceChips(ThemeMode.entries, settings.themeMode, { it.label }, { vm.tap(); settings.themeMode = it }, tagPrefix = "theme")
@@ -322,37 +375,8 @@ fun SettingsScreen(vm: AppViewModel) {
             SwitchRow("Töne", null, settings.sound, { settings.sound = it })
             SwitchRow("Vibration", "Auch für Hinweise beim Sprechen (Flüstern)", settings.vibration, { settings.vibration = it })
         }
-        ExpandableCard("Erweitert: Modelle", subtitle = "Nur ändern, wenn ${settings.provider.company} ein Modell umbenennt", icon = R.drawable.tune_24dp) {
-            when (settings.provider) {
-                Provider.GOOGLE -> {
-                    ModelField("Prüfer (Live-Stimme)", settings.geminiLiveModel) { settings.geminiLiveModel = it }
-                    ModelField("Gemini – Mitschrift", settings.transcribeModel) { settings.transcribeModel = it }
-                    ModelField("Gemini – stärkstes Modell", settings.geminiBestModel) { settings.geminiBestModel = it }
-                    ModelField("Gemini – schnelles Modell", settings.geminiTextModel) { settings.geminiTextModel = it }
-                    ModelField("Gemini – Fehlerprüfung beim Sprechen", settings.geminiFastModel) { settings.geminiFastModel = it }
-                    ModelField("Gemini – Material lesen", settings.geminiReaderModel) { settings.geminiReaderModel = it }
-                    ModelField("Gemini – Suche (Vektoren)", settings.embeddingModel) { settings.embeddingModel = it }
-                    ModelField("Gemini – Vorlesen", settings.ttsModel) { settings.ttsModel = it }
-                }
-                Provider.OPENAI -> {
-                    ModelField("Prüfer (Live-Stimme)", settings.oaLiveModel) { settings.oaLiveModel = it }
-                    ModelField("Prüfer, Ersatz (Realtime)", settings.oaRealtimeModel) { settings.oaRealtimeModel = it }
-                    ModelField("Mitschrift (live)", settings.oaTranscribeModel) { settings.oaTranscribeModel = it }
-                    ModelField("Stärkstes Modell", settings.oaBrainModel) { settings.oaBrainModel = it }
-                    ModelField("Normales Modell (auch Material lesen)", settings.oaTextModel) { settings.oaTextModel = it }
-                    ModelField("Fehlerprüfung beim Sprechen", settings.oaFastModel) { settings.oaFastModel = it }
-                    ModelField("Aufnahmen anhören (Audio)", settings.oaAudioModel) { settings.oaAudioModel = it }
-                    ModelField("Aufnahmen abschreiben", settings.oaFileTranscribeModel) { settings.oaFileTranscribeModel = it }
-                    ModelField("Suche (Vektoren)", settings.oaEmbeddingModel) { settings.oaEmbeddingModel = it }
-                    ModelField("Vorlesen", settings.oaTtsModel) { settings.oaTtsModel = it }
-                }
-                Provider.ANTHROPIC -> {
-                    ModelField("Stärkstes Modell", settings.clBrainModel) { settings.clBrainModel = it }
-                    ModelField("Normales Modell (auch Material lesen)", settings.clTextModel) { settings.clTextModel = it }
-                    ModelField("Schnelles Modell (Prüfer, Fehlerprüfung)", settings.clFastModel) { settings.clFastModel = it }
-                }
             }
-        }
+            SettingsSection.DATEN -> {
         AbiCard(modifier = Modifier.testTag("settings_data")) {
             CardTitle("Daten", icon = R.drawable.folder_24dp)
             val busy = vm.backupBusy
@@ -391,6 +415,8 @@ fun SettingsScreen(vm: AppViewModel) {
             Gap(6.dp)
             CaptionText("Dein Kursmaterial verwaltest du unter „Kurs“.")
         }
+            }
+            SettingsSection.UEBER -> {
         AbiCard {
             CardTitle("Über AbiCoach", icon = R.drawable.info_24dp)
             ActionButton("Tour durch die App", R.drawable.explore_24dp, accent, { vm.startTour() }, subtitle = "Die App zeigt dir Schritt für Schritt, was wo ist", container = MaterialTheme.colorScheme.background, modifier = Modifier.testTag("settings_tour"))
@@ -404,6 +430,8 @@ fun SettingsScreen(vm: AppViewModel) {
                     "das auf „Mental Math“ von HeldDerTierwelt aufbaut. Erstellt mit der KI Claude (Anthropic). " +
                     "Kein offizielles Angebot des Landes NRW.",
             )
+        }
+            }
         }
     }
 
@@ -671,6 +699,54 @@ internal fun RestorePrompt(vm: AppViewModel) {
             onConfirm = { vm.restoreBackup() },
             onDismiss = { vm.cancelRestore() },
             confirmColor = yellow,
+        )
+    }
+}
+
+/** The areas of the settings: a short overview first, the details one tap away. */
+enum class SettingsSection(val title: String, val icon: Int) {
+    KI("KI und Schlüssel", R.drawable.auto_awesome_24dp),
+    PRUEFUNG("Prüfung und Üben", R.drawable.event_24dp),
+    PRUEFER("Prüfer und Stimmen", R.drawable.forum_24dp),
+    ANZEIGE("Aufnahme, Anzeige, Erinnerung", R.drawable.mic_24dp),
+    DESIGN("Aussehen und Töne", R.drawable.palette_24dp),
+    DATEN("Daten und Sicherung", R.drawable.folder_24dp),
+    UEBER("Hilfe und Über AbiCoach", R.drawable.info_24dp),
+    ;
+
+    companion object {
+        fun of(name: String?): SettingsSection? = entries.firstOrNull { it.name == name }
+    }
+}
+
+/** The overview: each area with what is set right now, so most questions are answered without opening it. */
+@Composable
+private fun SettingsMenu(vm: AppViewModel) {
+    val app = vm.app
+    val s = app.settings
+    val keyOk = app.ai.ready
+    val date = runCatching { LocalDate.parse(s.examDate) }.getOrNull()
+    if (!keyOk) {
+        Banner("Der KI-Schlüssel fehlt – ohne ihn kann die App nicht prüfen und bewerten.", red, icon = R.drawable.key_24dp, modifier = Modifier.clickable { vm.tap(); vm.settingsSection = SettingsSection.KI.name })
+    }
+    SettingsSection.entries.forEach { section ->
+        val summary =
+            when (section) {
+                SettingsSection.KI -> "${s.provider.label} · ${s.quality.label} · " + if (keyOk) "Schlüssel ✓" else "Schlüssel fehlt"
+                SettingsSection.PRUEFUNG -> (date?.format(DateTimeFormatter.ofPattern("dd.MM.yyyy"))?.let { "Prüfung am $it" } ?: "Prüfungstermin fehlt") + " · ${s.dailyMinutes} Min./Tag · ${s.defaultFeedback.label}"
+                SettingsSection.PRUEFER -> "${s.talkStyle.label} · ${s.strictness.label} · " + if (s.pushToTalk) "Knopf halten" else "einfach sprechen"
+                SettingsSection.ANZEIGE -> (if (s.uploadAudio) "Aufnahme wird mitbewertet" else "nur Transkript") + " · Erinnerung " + if (s.reminderOn) "an" else "aus"
+                SettingsSection.DESIGN -> "${s.themeMode.label} · ${s.palette.label}"
+                SettingsSection.DATEN -> "Lernstand sichern und laden, löschen"
+                SettingsSection.UEBER -> "Tour durch die App, Einrichtung, Version"
+            }
+        ActionButton(
+            section.title,
+            section.icon,
+            if (section == SettingsSection.KI && !keyOk) red else accent,
+            { vm.tap(); vm.settingsSection = section.name },
+            subtitle = summary,
+            modifier = Modifier.testTag("settings_section_${section.name.lowercase()}"),
         )
     }
 }

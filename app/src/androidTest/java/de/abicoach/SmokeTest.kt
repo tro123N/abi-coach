@@ -359,6 +359,9 @@ class SmokeTest {
         runCatching { compose.onNodeWithTag("moretopic_2").performClick() }
         shot("einrichten_gespraech_themen")
         runCatching { compose.onNodeWithTag("setup_talk_style").performScrollTo() }
+        shot("einrichten_pruefer_zu")
+        runCatching { compose.onNodeWithTag("setup_talk_style").performClick() }
+        runCatching { compose.onNodeWithTag("talkstyle_2").performScrollTo() }
         runCatching { compose.onNodeWithTag("talkstyle_2").performClick() }
         shot("einrichten_gespraechsstil")
         runCatching { compose.onNodeWithTag("strictness_3").performScrollTo() }
@@ -411,23 +414,26 @@ class SmokeTest {
 
         ui { vm.nav.openTab(Tab.WEG); vm.nav.push(Screen.Settings) }
         shot("einstellungen")
-        swipeShot("settings", "einstellungen_2", 1)
-        swipeShot("settings", "einstellungen_3", 2)
+        // Every area of the settings.
+        de.abicoach.ui.screens.SettingsSection.entries.forEach { section ->
+            ui { vm.settingsSection = section.name }
+            shot("einstellungen_" + section.name.lowercase())
+            swipeShot("settings", "einstellungen_" + section.name.lowercase() + "_unten", 2)
+        }
         // The other AI companies (the settings change only what is shown here; no key is needed for the picture).
-        ui { app.settings.provider = de.abicoach.ai.Provider.OPENAI; vm.nav.pop(); vm.nav.push(Screen.Settings) }
+        ui { app.settings.provider = de.abicoach.ai.Provider.OPENAI; vm.settingsSection = "KI" }
         runCatching { compose.onNodeWithTag("settings_ai").performScrollTo() }
         shot("einstellungen_openai")
-        ui { app.settings.provider = de.abicoach.ai.Provider.ANTHROPIC; vm.nav.pop(); vm.nav.push(Screen.Settings) }
+        ui { app.settings.provider = de.abicoach.ai.Provider.ANTHROPIC }
         runCatching { compose.onNodeWithTag("settings_ai").performScrollTo() }
         shot("einstellungen_claude")
         runCatching { compose.onNodeWithTag("settings_roles").performScrollTo() }
         shot("einstellungen_claude_rollen")
-        ui { app.settings.provider = de.abicoach.ai.Provider.GOOGLE; vm.nav.pop(); vm.nav.push(Screen.Settings) }
-        runCatching { compose.onNodeWithTag("settings_data").performScrollTo() }
+        ui { app.settings.provider = de.abicoach.ai.Provider.GOOGLE; vm.settingsSection = "DATEN" }
         shot("einstellungen_daten")
         runCatching { compose.onNodeWithTag("data_export").performClick() }
         shot("einstellungen_sichern")
-        ui { vm.nav.pop() }
+        ui { vm.settingsSection = null; vm.nav.pop() }
 
         // Dark mode
         ui { app.settings.themeMode = ThemeMode.DARK; vm.nav.openTab(Tab.WEG) }
@@ -461,6 +467,10 @@ class SmokeTest {
             shot(String.format(Locale.ROOT, "tour_%02d", i))
             val target = de.abicoach.ui.TourSteps.all[i - 1].target
             Log.i(TAG, "Tour $i: $target -> ${target?.let { vm.tour.rect(it) }}")
+            // The button to go on must always lie fully on the screen.
+            val button = runCatching { compose.onNodeWithTag(if (i == de.abicoach.ui.TourSteps.all.size) "tour_done" else "tour_next").fetchSemanticsNode().boundsInRoot }.getOrNull()
+            val screen = compose.activity.window.decorView.height
+            Log.i(TAG, "Tour $i Knopf: $button, Bildschirm $screen, sichtbar ${button != null && button.top >= 0f && button.bottom <= screen}")
         }
         runCatching { compose.onNodeWithTag("tour_done").performClick() }
         Log.i(TAG, "Tour fertig: ${app.settings.tourDone}, aktiv: ${vm.tour.active}")
