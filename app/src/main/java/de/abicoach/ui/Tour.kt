@@ -9,6 +9,8 @@ import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -268,7 +270,7 @@ fun TourOverlay(vm: AppViewModel) {
         }
         // The bubble always lies fully on the screen: below the element if there is room, else above it, else over it
         // (for an element taller than the screen) – never outside, so "Weiter" can always be tapped.
-        val insets = androidx.compose.foundation.layout.WindowInsets.systemBars
+        val insets = WindowInsets.systemBars
         val topInset = insets.getTop(density)
         val bottomInset = insets.getBottom(density)
         androidx.compose.ui.layout.Layout(
