@@ -25,7 +25,7 @@ if adb install -r -g "$APP" && adb install -r -g "$TEST"; then
     timeout 30 adb exec-out run-as "$PKG" cat "files/screens/$f" > "$OUT/screens/$f" || true
   done
   timeout 60 adb logcat -d -v time '*:E' > "$OUT/logcat-errors.txt" 2>&1 || true
-  timeout 60 adb logcat -d -v time -s AbiCoachSmoke:V AndroidRuntime:V TestRunner:V > "$OUT/logcat-test.txt" 2>&1 || true
+  timeout 60 adb logcat -d -v time -s AbiCoachSmoke:V AbiCoachTour:V AndroidRuntime:V TestRunner:V > "$OUT/logcat-test.txt" 2>&1 || true
 else
   echo "Installation fehlgeschlagen" > "$OUT/instrument.txt"
 fi

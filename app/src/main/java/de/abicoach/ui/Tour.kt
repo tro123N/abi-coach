@@ -147,8 +147,8 @@ class TourController {
     var tick by mutableIntStateOf(0)
         private set
 
-    /** The list of the area on screen, so the tour can scroll an element into sight. */
-    var list: LazyListState? = null
+    /** The list of each main area, so the tour can scroll an element into sight. */
+    val lists = HashMap<Tab, LazyListState>()
 
     val active: Boolean get() = step != null
 
@@ -177,11 +177,11 @@ fun Modifier.tourTarget(key: String): Modifier {
 
 /** Registers the list of a main area for the tour (so it can scroll to an element). */
 @Composable
-fun TourList(state: LazyListState) {
+fun TourList(tab: Tab, state: LazyListState) {
     val tour = LocalTour.current ?: return
-    DisposableEffect(tour, state) {
-        tour.list = state
-        onDispose { if (tour.list === state) tour.list = null }
+    DisposableEffect(tour, tab, state) {
+        tour.lists[tab] = state
+        onDispose { if (tour.lists[tab] === state) tour.lists.remove(tab) }
     }
 }
 
@@ -211,7 +211,9 @@ fun TourOverlay(vm: AppViewModel) {
             delay(300)
             fun visible(r: Rect?) = r != null && r.top >= topLimit && r.bottom <= height - dock
             if (visible(tour.rect(target))) return@LaunchedEffect
-            val list = tour.list ?: return@LaunchedEffect
+            val list = step.tab?.let { tour.lists[it] }
+            android.util.Log.i("AbiCoachTour", "Schritt $index: $target, Liste ${list != null}, Platz ${tour.rect(target)}")
+            if (list == null) return@LaunchedEffect
             scrolling = true
             try {
                 if (tour.rect(target) == null && list.canScrollBackward) {
@@ -228,7 +230,8 @@ fun TourOverlay(vm: AppViewModel) {
                             else -> r.top - topLimit - 40f
                         }
                     if (kotlin.math.abs(delta) < 1f || (delta > 0 && !list.canScrollForward) || (delta < 0 && !list.canScrollBackward)) return@LaunchedEffect
-                    list.scrollBy(delta)
+                    val moved = list.scrollBy(delta)
+                    android.util.Log.i("AbiCoachTour", "  gescrollt ${moved.toInt()} von ${delta.toInt()} px, Platz ${tour.rect(target)}")
                     delay(60)
                 }
             } finally {

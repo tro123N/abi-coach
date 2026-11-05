@@ -199,7 +199,7 @@ fun TabScaffold(
     state: LazyListState = rememberLazyListState(),
     content: LazyListScope.() -> Unit,
 ) {
-    TourList(state)
+    TourList(tab, state)
     val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val bottom = dockSpace()
     // Cards fade out under the status bar instead of being cut off; the bar at the bottom floats above them.
