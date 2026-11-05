@@ -309,9 +309,9 @@ fun SettingsScreen(vm: AppViewModel) {
             Gap(4.dp)
             CaptionText(
                 if (settings.accent == de.abicoach.data.Accent.BRITISCH) {
-                    "Prüfer, Coach und Vorlesen sprechen britisches Englisch."
+                    "Prüfer (auch als Coach) und Vorlesen sprechen britisches Englisch."
                 } else {
-                    "Prüfer, Coach und Vorlesen sprechen amerikanisches Englisch."
+                    "Prüfer (auch als Coach) und Vorlesen sprechen amerikanisches Englisch."
                 } + " Bewertet wird beides gleich – britisch und amerikanisch sind im Abitur richtig.",
             )
             Gap(10.dp)
