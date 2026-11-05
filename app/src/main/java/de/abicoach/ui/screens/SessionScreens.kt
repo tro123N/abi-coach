@@ -6,6 +6,12 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -286,6 +292,26 @@ fun SetupScreen(vm: AppViewModel, initial: SessionSetup) {
                 )
                 Gap(6.dp)
                 CaptionText(style.description)
+                Gap(12.dp)
+                // How the student hands the turn over: by a pause, or by letting go of a button.
+                var ptt by remember { mutableStateOf(app.settings.pushToTalk) }
+                BodyText("Wie du sprichst")
+                Gap(6.dp)
+                ChoiceChips(
+                    options = listOf(false, true),
+                    selected = ptt,
+                    label = { if (it) "Knopf gedrückt halten" else "Einfach sprechen" },
+                    onSelect = { vm.tap(); ptt = it; app.settings.pushToTalk = it },
+                    tagPrefix = "talkmode",
+                )
+                Gap(6.dp)
+                CaptionText(
+                    if (ptt) {
+                        "Du hältst beim Sprechen einen großen Knopf gedrückt. Lässt du los, antwortet der Prüfer sofort – ohne auf eine Pause zu warten. Gut zum Nachdenken mitten im Satz und in lauter Umgebung."
+                    } else {
+                        "Du sprichst einfach. Der Prüfer antwortet, wenn du eine kurze Pause machst."
+                    },
+                )
             }
         }
         AbiCard {
@@ -552,7 +578,18 @@ fun LiveScreen(vm: AppViewModel) {
         },
         bottom = {
             Surface(color = androidx.compose.ui.graphics.Color.Transparent) {
-                Row(Modifier.navigationBarsPadding().padding(horizontal = 20.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.navigationBarsPadding().padding(horizontal = 20.dp, vertical = 12.dp)) {
+                if (state.pushToTalk) {
+                    TalkButton(
+                        holding = state.holding,
+                        level = state.micLevel,
+                        enabled = state.examinerReady && vm.busy == null,
+                        onPress = { conversation.pressTalk() },
+                        onRelease = { conversation.releaseTalk() },
+                    )
+                    Spacer(Modifier.height(10.dp))
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     // Stop without an evaluation: small, next to the big button, so it is not hit by mistake.
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
@@ -575,6 +612,7 @@ fun LiveScreen(vm: AppViewModel) {
                         iconTint = if (toPart2) green else red,
                         modifier = Modifier.weight(1f).testTag("live_finish"),
                     )
+                }
                 }
             }
         },
@@ -746,6 +784,73 @@ private fun AlertCard(alert: de.abicoach.data.LiveError?, count: Int, mode: Feed
         if (checkInfo != null) {
             Gap(6.dp)
             CaptionText(checkInfo, color = if (checkFailed) red else null)
+        }
+    }
+}
+
+/**
+ * "Gedrückt halten und sprechen": the turn starts the moment the finger touches the button (the examiner stops) and
+ * ends the moment it lets go – the examiner answers at once instead of waiting for a pause.
+ */
+@Composable
+private fun TalkButton(holding: Boolean, level: Float, enabled: Boolean, onPress: () -> Unit, onRelease: () -> Unit) {
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    val press by androidx.compose.runtime.rememberUpdatedState(onPress)
+    val release by androidx.compose.runtime.rememberUpdatedState(onRelease)
+    val scale by androidx.compose.animation.core.animateFloatAsState(if (holding) 0.97f else 1f, label = "talkScale")
+    val fill by androidx.compose.animation.core.animateFloatAsState(if (holding) (0.15f + level * 2.2f).coerceIn(0.15f, 1f) else 0f, label = "talkLevel")
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .height(74.dp)
+                .graphicsLayer { scaleX = scale; scaleY = scale }
+                .clip(RoundedCornerShape(37.dp))
+                .background(if (holding) green else if (enabled) accent.copy(alpha = 0.16f) else MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.08f))
+                .pointerInput(enabled) {
+                    if (!enabled) return@pointerInput
+                    awaitEachGesture {
+                        awaitFirstDown(requireUnconsumed = false)
+                        haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                        press()
+                        try {
+                            // Held as long as any finger stays down – sliding off the button does not end the turn.
+                            do {
+                                val event = awaitPointerEvent()
+                                event.changes.forEach { it.consume() }
+                            } while (event.changes.any { it.pressed })
+                        } finally {
+                            release()
+                        }
+                    }
+                }
+                .testTag("live_talk"),
+    ) {
+        // While held, a light bar shows the microphone level.
+        if (holding) {
+            Box(Modifier.matchParentSize().padding(end = 0.dp)) {
+                Box(Modifier.fillMaxHeight().fillMaxWidth(fill).background(Color.White.copy(alpha = 0.18f)))
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                painterResource(R.drawable.mic_24dp),
+                contentDescription = null,
+                tint = if (holding) Color.White else if (enabled) accent else MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.4f),
+                modifier = Modifier.size(28.dp),
+            )
+            Spacer(Modifier.width(10.dp))
+            Text(
+                when {
+                    holding -> "Sprich – loslassen, wenn du fertig bist"
+                    enabled -> "Gedrückt halten und sprechen"
+                    else -> "Verbinde mit dem Prüfer …"
+                },
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                color = if (holding) Color.White else if (enabled) accent else MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.5f),
+            )
         }
     }
 }

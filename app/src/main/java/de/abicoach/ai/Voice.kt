@@ -63,6 +63,15 @@ interface VoiceAgent {
 
     fun sendStreamEnd()
 
+    /**
+     * "Knopf gedrückt halten": the student pressed the talk button – he starts his turn now (the examiner stops
+     * talking). Only used when the agent was made with manual turns.
+     */
+    fun turnStart() {}
+
+    /** The student let go of the talk button: his turn is over, the examiner answers at once (no waiting for a pause). */
+    fun turnEnd() {}
+
     fun close()
 }
 
@@ -82,6 +91,10 @@ class GeminiVoiceAgent(
     override fun sendNote(text: String): Boolean = socket.sendUserTurn(text, complete = false)
 
     override fun sendStreamEnd() = socket.sendStreamEnd()
+
+    override fun turnStart() = socket.activity(start = true)
+
+    override fun turnEnd() = socket.activity(start = false)
 
     override fun close() = socket.close()
 }

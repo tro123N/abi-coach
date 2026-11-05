@@ -476,7 +476,8 @@ class AiHub(context: Context, private val http: OkHttpClient, private val settin
     @Volatile private var phoneEarAt = 0L
 
     /** The examiner for a live conversation. */
-    fun examiner(instructions: String, onEvent: (LiveEvent) -> Unit): VoiceAgent =
+    /** The examiner; with [manualTurns] the student holds a button while he speaks and the examiner answers on release. */
+    fun examiner(instructions: String, onEvent: (LiveEvent) -> Unit, manualTurns: Boolean = false): VoiceAgent =
         when (provider) {
             Provider.GOOGLE -> {
                 val socket =
@@ -485,7 +486,7 @@ class AiHub(context: Context, private val http: OkHttpClient, private val settin
                         apiKey = settings.geminiKey,
                         name = "Prüfer",
                         supportsResumption = true,
-                        setupFactory = { handle, minimal -> GeminiSetup.examiner(settings.geminiLiveModel, settings.geminiVoice, instructions, handle, minimal) },
+                        setupFactory = { handle, minimal -> GeminiSetup.examiner(settings.geminiLiveModel, settings.geminiVoice, instructions, handle, minimal, manualTurns) },
                         onEvent = onEvent,
                     )
                 GeminiVoiceAgent(socket, pretty(settings.geminiLiveModel))
@@ -493,8 +494,8 @@ class AiHub(context: Context, private val http: OkHttpClient, private val settin
             Provider.OPENAI ->
                 // GPT-Live first; if the key cannot reach it, the Realtime model takes over.
                 FallbackVoiceAgent(
-                    first = { events -> OpenAiLiveAgent(http, settings.openAiKey, settings.oaLiveModel, settings.oaVoice, instructions, events, pretty(settings.oaLiveModel)) },
-                    second = { events -> OpenAiRealtimeAgent(http, settings.openAiKey, settings.oaRealtimeModel, settings.oaVoice, instructions, events, pretty(settings.oaRealtimeModel)) },
+                    first = { events -> OpenAiLiveAgent(http, settings.openAiKey, settings.oaLiveModel, settings.oaVoice, instructions, events, pretty(settings.oaLiveModel), manualTurns) },
+                    second = { events -> OpenAiRealtimeAgent(http, settings.openAiKey, settings.oaRealtimeModel, settings.oaVoice, instructions, events, pretty(settings.oaRealtimeModel), manualTurns) },
                     onEvent = onEvent,
                 )
             Provider.ANTHROPIC -> {
@@ -506,6 +507,7 @@ class AiHub(context: Context, private val http: OkHttpClient, private val settin
                     answer = { system, turns -> quick { m -> claude.text(m, system, turns, retries = 1, maxTokens = 600, think = false) }.first },
                     onEvent = onEvent,
                     label = examinerLabel(),
+                    manualTurns = manualTurns,
                 )
             }
         }

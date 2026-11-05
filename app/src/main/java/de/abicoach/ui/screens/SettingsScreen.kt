@@ -192,6 +192,14 @@ fun SettingsScreen(vm: AppViewModel) {
             Gap(4.dp)
             CaptionText(settings.talkStyle.description + " Für jede Übung kannst du das beim Einrichten ändern.")
             Gap(12.dp)
+            SwitchRow(
+                "Knopf gedrückt halten zum Sprechen",
+                "Im Gespräch hältst du einen Knopf gedrückt, solange du sprichst. Beim Loslassen antwortet der Prüfer sofort – statt auf eine Pause zu warten.",
+                settings.pushToTalk,
+                { vm.tap(); settings.pushToTalk = it },
+                modifier = Modifier.testTag("settings_ptt"),
+            )
+            Gap(12.dp)
             var topics by remember { mutableStateOf(settings.courseTopics) }
             AbiTextField(
                 topics,

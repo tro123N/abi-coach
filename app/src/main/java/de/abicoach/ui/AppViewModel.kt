@@ -561,6 +561,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         goalPattern = goalPattern(record),
                         talkStyle = style,
                         mainTopic = Knowledge.topic(topicId)?.english.orEmpty(),
+                        pushToTalk = app.settings.pushToTalk,
                     ),
                 )
             live = conversation
@@ -660,6 +661,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                             talkStyle = part2Style,
                             mainTopic = t.part2.firstOrNull()?.let { "${Knowledge.topic(it.topicId)?.english ?: "another topic field"} – ${it.question}" }.orEmpty(),
                             monologueSec = if (part2Style == de.abicoach.data.TalkStyle.EINGEHEN) 140 else 100,
+                            pushToTalk = app.settings.pushToTalk,
                         ),
                     )
                 live = next

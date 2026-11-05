@@ -368,7 +368,7 @@ $sourceText
 Du bist eine erfahrene Englischlehrkraft und Prüferin im NRW-Abitur und wertest eine Übungssitzung für die mündliche Prüfung im 4. Fach aus.
 ${Knowledge.EXAM_FACTS}
 Arbeitsweise:
-- Das Transkript ist wortgetreu. Füllwörter, Wiederholungen und Selbstkorrekturen sind normal; zähle sie nicht als Grammatikfehler, berücksichtige sie aber bei der Flüssigkeit.
+- Das Transkript ist wortgetreu. Füllwörter, Wiederholungen und Selbstkorrekturen sind normal; zähle sie nicht als Grammatikfehler, berücksichtige sie aber bei der Flüssigkeit. Die Live-Mitschrift lässt Füllwörter (ähm, um, uh, er) oft weg: Verlass dich dafür auf die Aufnahme bzw. die gezählten Füllwörter der Audio-Auswertung.
 - Wenn eine Audiodatei des Prüflings beiliegt, höre sie an: Bewerte Aussprache, Intonation und Flüssigkeit daraus und prüfe damit das Transkript. Liegt stattdessen eine Audio-Auswertung als Text bei, übernimm deren Befunde.
 - Bewerte ehrlich und streng wie im echten Abitur, nicht freundlicher. Vergib Punkte (0–15) getrennt für die inhaltliche Leistung und die Darstellungsleistung; die App rechnet sie 40:60 zusammen.
 - Bewerte nur das, was in DIESER Sitzung zu hören und zu lesen ist. Frühere Ergebnisse kennst du nicht und brauchst du nicht: Vergib die Punkte unabhängig davon, ohne dich an einer früheren Zahl zu orientieren – wer besser spricht, bekommt mehr Punkte, wer schlechter spricht, weniger.
@@ -501,6 +501,8 @@ Du hörst die Aufnahme eines deutschen Schülers, der für die mündliche Englis
 - pronunciation_points und fluency_points: 0–15 wie im Abitur.
 - intonation: 1–2 Sätze auf Deutsch zu Satzmelodie und Betonung.
 - fluency: 1–2 Sätze auf Deutsch zu Tempo, Pausen und Füllwörtern (mit grober Anzahl der Füllwörter).
+- filler_count: wie oft er Füllwörter benutzt (ähm, äh, um, uh, er, erm, hmm – auch „like“ oder „you know“, wenn sie nur Lücken füllen). Zähle sie in der AUFNAHME selbst, nicht im Transkript – die Mitschrift lässt sie oft weg. 0, wenn keine.
+- filler_words: die Füllwörter, die er am meisten benutzt (höchstens 4, z. B. "ähm", "you know").
 - reading_aloud: true, wenn der Schüler offensichtlich abliest statt frei zu sprechen.
 - transcript: wortgetreu, was der Schüler sagt (mit seinen Fehlern), nur wenn kein Transkript mitgeliefert wurde; sonst leer.
         """.trimIndent()
@@ -514,6 +516,8 @@ Du hörst die Aufnahme eines deutschen Schülers, der für die mündliche Englis
             "fluency" to str(),
             "reading_aloud" to de.abicoach.ai.bool(),
             "transcript" to str(),
+            "filler_count" to int(),
+            "filler_words" to arr(str()),
         )
 
     fun listeningSummary(o: JSONObject): String {
@@ -521,6 +525,11 @@ Du hörst die Aufnahme eines deutschen Schülers, der für die mündliche Englis
         sb.append("Aussprache: ").append(o.optInt("pronunciation_points", -1)).append(" P., Flüssigkeit: ").append(o.optInt("fluency_points", -1)).append(" P.\n")
         sb.append("Intonation: ").append(o.optString("intonation")).append('\n')
         sb.append("Flüssigkeit: ").append(o.optString("fluency")).append('\n')
+        if (o.has("filler_count")) {
+            sb.append("Füllwörter in der Aufnahme: ").append(o.optInt("filler_count")).append('×')
+            o.optJSONArray("filler_words").strings().takeIf { it.isNotEmpty() }?.let { sb.append(" (vor allem ").append(it.joinToString(", ")).append(')') }
+            sb.append('\n')
+        }
         if (o.optBoolean("reading_aloud")) sb.append("Achtung: liest offenbar ab.\n")
         o.optJSONArray("pronunciation").objects().forEach { sb.append("- ").append(it.optString("word")).append(": ").append(it.optString("issue")).append(" – ").append(it.optString("tip")).append('\n') }
         return sb.toString()
@@ -571,6 +580,8 @@ Du hörst die Aufnahme eines deutschen Schülers, der für die mündliche Englis
             listenedBy = listenedBy,
             segments = o.optJSONArray("segments").objects().map { it.optInt("number") to it.optString("first_words") }.filter { it.first in 1..3 && it.second.isNotBlank() },
             readingAloud = o.optBoolean("reading_aloud") || (listening?.optBoolean("reading_aloud") ?: false),
+            fillers = listening?.takeIf { it.has("filler_count") }?.optInt("filler_count", -1) ?: -1,
+            fillerWords = listening?.optJSONArray("filler_words").strings().take(4),
             goalResults =
                 o.optJSONArray("goal_results").objects()
                     .map { GoalResult(it.optString("id").trim(), it.optString("result").trim().lowercase(), it.optString("note").trim()) }

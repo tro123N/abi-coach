@@ -15,12 +15,15 @@ import java.util.concurrent.TimeUnit
 
 /** Setup messages for the two kinds of Gemini Live sessions. */
 object GeminiSetup {
+    private val FILLERS = listOf("um", "uh", "er", "erm", "hmm", "uhm")
+
     /** The "second ear": text-only session that transcribes the microphone word for word, mistakes included. */
     fun transcriber(model: String, vocabulary: List<String>, minimal: Boolean): JSONObject {
         val transcription = JSONObject().put("mode", "VERBATIM")
         if (!minimal) {
             transcription.put("languageCodes", JSONArray().put("en-GB"))
-            transcription.put("customVocabulary", JSONArray(vocabulary.distinct().take(100)))
+            // Fillers in the vocabulary, so the verbatim transcript keeps them (they count for fluency).
+            transcription.put("customVocabulary", JSONArray((FILLERS + vocabulary).distinct().take(100)))
         }
         val setup =
             JSONObject()
@@ -31,7 +34,7 @@ object GeminiSetup {
     }
 
     /** The examiner: Gemini Live with a voice. */
-    fun examiner(model: String, voice: String, system: String, handle: String?, minimal: Boolean): JSONObject {
+    fun examiner(model: String, voice: String, system: String, handle: String?, minimal: Boolean, manualTurns: Boolean = false): JSONObject {
         val generation =
             JSONObject()
                 .put("responseModalities", JSONArray().put("AUDIO"))
@@ -46,15 +49,21 @@ object GeminiSetup {
                 .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", system))))
                 .put("outputAudioTranscription", JSONObject())
                 .put("inputAudioTranscription", JSONObject())
+        if (manualTurns) {
+            // "Knopf gedrückt halten": the app says when the student starts and stops; the examiner answers on release.
+            setup.put("realtimeInputConfig", JSONObject().put("automaticActivityDetection", JSONObject().put("disabled", true)))
+        }
         if (!minimal) {
             // Learners pause to think: wait longer before treating silence as the end of a turn.
-            setup.put(
-                "realtimeInputConfig",
-                JSONObject().put(
-                    "automaticActivityDetection",
-                    JSONObject().put("endOfSpeechSensitivity", "END_SENSITIVITY_LOW").put("silenceDurationMs", 1400),
-                ),
-            )
+            if (!manualTurns) {
+                setup.put(
+                    "realtimeInputConfig",
+                    JSONObject().put(
+                        "automaticActivityDetection",
+                        JSONObject().put("endOfSpeechSensitivity", "END_SENSITIVITY_LOW").put("silenceDurationMs", 1400),
+                    ),
+                )
+            }
             setup.put("contextWindowCompression", JSONObject().put("slidingWindow", JSONObject()))
             setup.put("sessionResumption", if (handle != null) JSONObject().put("handle", handle) else JSONObject())
         }
@@ -128,6 +137,14 @@ class LiveSocket(
                     .put("mimeType", "audio/pcm;rate=16000"),
             ),
         ).toString()
+
+    /** Push-to-talk: the student's turn starts ([start]) or ends – with manual turns the examiner answers right after the end. */
+    fun activity(start: Boolean) {
+        val current = socket
+        if (!ready || current == null) return
+        synchronized(backlog) { while (backlog.isNotEmpty()) current.send(audioMessage(backlog.removeFirst())) }
+        current.send(JSONObject().put("realtimeInput", JSONObject().put(if (start) "activityStart" else "activityEnd", JSONObject())).toString())
+    }
 
     /** Tells the server that the microphone stopped, so the last utterance gets finalised. */
     override fun sendStreamEnd() {

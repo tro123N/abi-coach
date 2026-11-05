@@ -54,6 +54,8 @@ class OpenAiLiveAgent(
     private val instructions: String,
     private val onEvent: (LiveEvent) -> Unit,
     override val label: String,
+    /** "Knopf gedrückt halten": only the held audio goes in, and on release the examiner is told to answer now. */
+    private val manualTurns: Boolean = false,
 ) : VoiceAgent {
     override val outputRate: Int = 24_000
 
@@ -117,6 +119,18 @@ class OpenAiLiveAgent(
     override fun sendNote(text: String): Boolean = sendInstruction(text)
 
     override fun sendStreamEnd() = Unit
+
+    override fun turnStart() {
+        if (!manualTurns) return
+        if (modelSpeaking) {
+            modelSpeaking = false
+            onEvent(LiveEvent.Interrupted)
+        }
+    }
+
+    override fun turnEnd() {
+        if (manualTurns) sendInstruction("The student has let go of the talk button: he has finished his turn. Answer him now.")
+    }
 
     override fun close() {
         closedByUser = true
@@ -371,7 +385,12 @@ class OpenAiTranscriber(
     private fun configure(webSocket: WebSocket) {
         val transcription = JSONObject().put("model", models[modelIndex]).put("language", "en")
         val words = vocabulary.filter { it.length in 2..40 }.take(40)
-        if (words.isNotEmpty()) transcription.put("prompt", "English oral exam practice. Possible names and terms: " + words.joinToString(", "))
+        // The prompt shows the style wanted: every filler and false start written down (otherwise they are left out).
+        transcription.put(
+            "prompt",
+            "Umm, so, uh, I think the, er, the author wants to, hmm, show that… Verbatim transcript of a learner, with all fillers (um, uh, er, hmm), " +
+                "repetitions and mistakes." + if (words.isNotEmpty()) " Names and terms: " + words.joinToString(", ") else "",
+        )
         val input =
             JSONObject()
                 .put("format", JSONObject().put("type", "audio/pcm").put("rate", 24_000))
@@ -483,6 +502,8 @@ class OpenAiRealtimeAgent(
     private val instructions: String,
     private val onEvent: (LiveEvent) -> Unit,
     override val label: String,
+    /** "Knopf gedrückt halten": no voice detection on the server; the app commits the turn on release. */
+    private val manualTurns: Boolean = false,
 ) : VoiceAgent {
     override val outputRate: Int = 24_000
 
@@ -536,6 +557,24 @@ class OpenAiRealtimeAgent(
 
     override fun sendStreamEnd() = Unit
 
+    override fun turnStart() {
+        if (!manualTurns || !ready) return
+        val s = socket ?: return
+        if (speaking) {
+            speaking = false
+            s.send(JSONObject().put("type", "response.cancel").toString())
+            onEvent(LiveEvent.Interrupted)
+        }
+        s.send(JSONObject().put("type", "input_audio_buffer.clear").toString())
+    }
+
+    override fun turnEnd() {
+        if (!manualTurns || !ready) return
+        val s = socket ?: return
+        s.send(JSONObject().put("type", "input_audio_buffer.commit").toString())
+        s.send(JSONObject().put("type", "response.create").toString())
+    }
+
     override fun close() {
         closedByUser = true
         ready = false
@@ -550,7 +589,11 @@ class OpenAiRealtimeAgent(
                 .put("transcription", JSONObject().put("model", "gpt-4o-mini-transcribe").put("language", "en"))
                 .put(
                     "turn_detection",
-                    JSONObject().put("type", "server_vad").put("silence_duration_ms", 700).put("create_response", true).put("interrupt_response", true),
+                    if (manualTurns) {
+                        JSONObject.NULL
+                    } else {
+                        JSONObject().put("type", "server_vad").put("silence_duration_ms", 700).put("create_response", true).put("interrupt_response", true)
+                    },
                 )
         val output = JSONObject().put("format", JSONObject().put("type", "audio/pcm").put("rate", 24_000)).put("voice", voice)
         val session =
@@ -703,6 +746,10 @@ class FallbackVoiceAgent(
     override fun sendNote(text: String): Boolean = current.sendNote(text)
 
     override fun sendStreamEnd() = current.sendStreamEnd()
+
+    override fun turnStart() = current.turnStart()
+
+    override fun turnEnd() = current.turnEnd()
 
     override fun close() = current.close()
 }

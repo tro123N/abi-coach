@@ -168,6 +168,18 @@ fun DebriefScreen(vm: AppViewModel, id: String) {
             }
         }
         if (record.kind.hasPart1) TalkCoachCard(record, d)
+        // Fillers counted in the recording itself – the live transcript often leaves them out.
+        if (d.fillers >= 0) {
+            val minutes = record.durationSec.coerceAtLeast(60) / 60.0
+            val perMinute = d.fillers / minutes
+            Banner(
+                "Füllwörter in deiner Aufnahme: ${d.fillers}×" + (if (d.fillerWords.isNotEmpty()) " – vor allem „${d.fillerWords.joinToString("“, „")}“" else "") +
+                    if (perMinute > 3) ". Ersetze sie durch eine kurze Pause oder „Let me think …“." else ".",
+                if (perMinute > 3) yellow else green,
+                icon = R.drawable.graphic_eq_24dp,
+                modifier = Modifier.testTag("debrief_fillers"),
+            )
+        }
         if (record.utterances.any { it.speaker == Speaker.STUDENT }) ModelCard(vm, record, d)
         DetailsGroup(vm, record, d)
         TechCard(record)

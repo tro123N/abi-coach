@@ -62,7 +62,7 @@ data class TalkMetrics(
     val readingAloud: Boolean,
 ) {
     companion object {
-        private val fillerRegex = Regex("\\b(um+|uh+m*|uhm|erm*|ähm*|äh|hmm+)\\b", RegexOption.IGNORE_CASE)
+        private val fillerRegex = Regex("\\b(um+|uh+m*|uhm|erm*|ähm*|äh|hmm+|mhm)\\b", RegexOption.IGNORE_CASE)
 
         /** Target seconds for the three tasks of a full presentation. */
         val TARGET = mapOf(1 to 120, 2 to 240, 3 to 180)
@@ -74,7 +74,10 @@ data class TalkMetrics(
             val words = text.split(Regex("\\s+")).count { it.isNotBlank() }
             val seconds = record.part1Sec
             val wpm = if (seconds > 0) (words * 60 / seconds) else 0
-            val fillers = fillerRegex.findAll(text).count()
+            // The live transcript often leaves fillers out; the count from the recording is more reliable – but it
+            // covers the whole recording, so it is only used when the session was just the presentation.
+            val written = fillerRegex.findAll(text).count()
+            val fillers = if (debrief.fillers >= 0 && !record.kind.hasPart2) maxOf(written, debrief.fillers) else written
             // Utterance times mark when a sentence was finished, so the gap also contains the time it took to say it (~2.5 words/s).
             var pauses = 0
             for (i in 1 until part1.size) {

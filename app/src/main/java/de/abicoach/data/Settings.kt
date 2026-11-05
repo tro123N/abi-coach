@@ -246,6 +246,9 @@ class Settings(context: Context) {
     /** In a live session the page follows the transcript to the newest line ("Mitscrollen"); the student can switch it off. */
     var liveFollow by BoolPref("live_follow", true)
 
+    /** "Knopf gedrückt halten" in conversations: the student holds a button while he speaks, the examiner answers on release. */
+    var pushToTalk by BoolPref("push_to_talk", false)
+
     /** How the examiner leads a conversation; can be changed for each session. */
     var talkStyle: TalkStyle
         get() = enumValue("talk_style", TalkStyle.AUSGEWOGEN)

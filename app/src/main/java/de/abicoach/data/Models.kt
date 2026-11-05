@@ -290,6 +290,10 @@ data class Debrief(
     val segments: List<Pair<Int, String>> = emptyList(),
     /** The recording suggests that the student read out the notes. */
     val readingAloud: Boolean = false,
+    /** Fillers counted in the recording itself (the live transcript often leaves them out); -1 = not counted. */
+    val fillers: Int = -1,
+    /** The fillers he uses most ("ähm", "you know"). */
+    val fillerWords: List<String> = emptyList(),
     /** Comparison with the last session (or with the first attempt, for a second attempt). */
     val progress: Progress? = null,
     /** The student's own presentation (or answers) rewritten at 15-point level, made on request. */
@@ -330,6 +334,8 @@ data class Debrief(
             .put("listenedBy", listenedBy)
             .put("segments", segments.toJsonArray { JSONObject().put("number", it.first).put("firstWords", it.second) })
             .put("readingAloud", readingAloud)
+            .put("fillers", fillers)
+            .put("fillerWords", fillerWords.toJsonArray())
             .put("progress", progress?.toJson() ?: JSONObject.NULL)
             .put("model", model.toJsonArray { it.toJson() })
             .put("goalResults", goalResults.toJsonArray { it.toJson() })
@@ -363,6 +369,8 @@ data class Debrief(
                 listenedBy = o.optString("listenedBy"),
                 segments = o.optJSONArray("segments").objects().map { it.optInt("number") to it.optString("firstWords") },
                 readingAloud = o.optBoolean("readingAloud"),
+                fillers = o.optInt("fillers", -1),
+                fillerWords = o.optJSONArray("fillerWords").strings(),
                 progress = o.optJSONObject("progress")?.let { Progress.fromJson(it) },
                 model = o.optJSONArray("model").objects().map { ModelPart.fromJson(it) },
                 goalResults = o.optJSONArray("goalResults").objects().map { GoalResult.fromJson(it) },

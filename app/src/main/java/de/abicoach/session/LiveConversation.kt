@@ -91,6 +91,10 @@ data class LiveUiState(
     val repeatAt: Long = 0,
     /** What the app itself said aloud (coach corrections, impulses in the presentation), for the transcript panel. */
     val appSaid: List<AppLine> = emptyList(),
+    /** "Knopf gedrückt halten": the student holds a button while he speaks. */
+    val pushToTalk: Boolean = false,
+    /** The talk button is held right now. */
+    val holding: Boolean = false,
 )
 
 /** One sentence the app said aloud, [atMs] after the start of the part. */
@@ -131,6 +135,8 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
         val talkStyle: de.abicoach.data.TalkStyle = de.abicoach.data.TalkStyle.AUSGEWOGEN,
         /** The first topic of the conversation (English), the aim of the director's notes until the first switch. */
         val mainTopic: String = "",
+        /** "Knopf gedrückt halten" instead of pause detection: the examiner answers the moment the student lets go. */
+        val pushToTalk: Boolean = false,
     )
 
     data class Result(
@@ -149,6 +155,7 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
                 part = config.part,
                 targetSec = config.targetSeconds,
                 hasExaminer = config.examinerPrompt != null,
+                pushToTalk = config.pushToTalk && config.examinerPrompt != null,
                 diag = LiveDiag(examiner = if (config.examinerPrompt != null) "verbindet" else ""),
             ),
         )
@@ -299,7 +306,7 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
         transcriber = app.ai.transcriber(config.vocabulary, ::onTranscriberEvent).also { it.connect() }
 
         config.examinerPrompt?.let { prompt ->
-            val agent = app.ai.examiner(prompt, ::onExaminerEvent)
+            val agent = app.ai.examiner(prompt, ::onExaminerEvent, manualTurns = pushToTalk)
             examiner = agent
             _state.update { it.copy(examinerLabel = agent.label) }
             agent.connect()
@@ -415,7 +422,7 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
         if (noteWatch) {
             if (lastExaminerAt > noteAt) {
                 noteWatch = false
-            } else if (voiceAt > noteAt && now - voiceAt > 6_000 && !player.isPlaying(now)) {
+            } else if (!holding && voiceAt > noteAt && now - voiceAt > 6_000 && !player.isPlaying(now)) {
                 noteWatch = false
                 notesBlocked = true
                 lastDirectorAt = now
@@ -424,7 +431,7 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
                 return
             }
         }
-        val busy = examinerTalking || player.isPlaying(now) || now < muteUntil || pendingCoach != null || coachSent != null || repeatTarget != null
+        val busy = holding || examinerTalking || player.isPlaying(now) || now < muteUntil || pendingCoach != null || coachSent != null || repeatTarget != null
         if (busy || now - lastCoachAt < 10_000 || now - lastDirectorAt < 10_000) return
         // The student has been talking for a very long time without letting the examiner in: a real examiner cuts in.
         val answer = answerStartAt
@@ -506,15 +513,102 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
             s.error != null -> "Fehler – siehe unten"
             config.examinerPrompt != null && !s.examinerReady -> "Verbinde mit dem Prüfer …"
             transcriber != null && !s.transcriberReady -> "Starte die Mitschrift …"
-            s.examinerSpeaking -> "Prüfer spricht …"
+            s.holding -> "Ich höre zu – loslassen, wenn du fertig bist."
+            s.examinerSpeaking -> if (s.pushToTalk) "Prüfer spricht … (Knopf halten = unterbrechen)" else "Prüfer spricht …"
             config.part == 1 -> "Du hast das Wort – halte deinen Vortrag."
+            s.pushToTalk -> "Halte den Knopf gedrückt und sprich."
             else -> "Ich höre zu …"
         }
+
+    /** Push-to-talk only works with an examiner (a conversation); a presentation always listens. */
+    private val pushToTalk = config.pushToTalk && config.examinerPrompt != null
+
+    @Volatile private var holding = false
+
+    /** After letting go, the microphone stays open this long, so the last syllable is not cut off. */
+    @Volatile private var tailUntil = 0L
+
+    /** The last 300 ms before the button was pressed: a word started a moment too early is not lost. */
+    private val preRoll = java.util.ArrayDeque<ByteArray>()
+
+    @Volatile private var sendPreRoll = false
+
+    /** The talk button went down: the examiner stops at once and the student has the floor. */
+    fun pressTalk() {
+        if (!pushToTalk || finished || holding) return
+        val now = System.currentTimeMillis()
+        holding = true
+        tailUntil = 0L
+        if (player.isPlaying(now) || examinerTalking) {
+            player.flush()
+            examinerTalking = false
+            flushExaminer(interrupted = true)
+        }
+        muteUntil = 0L
+        examiner?.turnStart()
+        sendPreRoll = true
+        if (answerStartAt == 0L) answerStartAt = now
+        _state.update { it.copy(holding = true, examinerSpeaking = false) }
+        updateStatus()
+    }
+
+    /** The talk button was let go: after the last 120 ms of sound the turn ends and the examiner answers. */
+    fun releaseTalk() {
+        if (!holding) return
+        holding = false
+        val now = System.currentTimeMillis()
+        tailUntil = now + RELEASE_TAIL_MS
+        _state.update { it.copy(holding = false) }
+        scope.launch {
+            delay(RELEASE_TAIL_MS + 10)
+            if (holding) return@launch
+            examiner?.turnEnd()
+            segmenter?.flush(System.currentTimeMillis())
+            transcriber?.sendStreamEnd()
+            updateStatus()
+        }
+    }
+
+    /** One piece of the student's held speech: to the examiner, the transcript, the ear and the recording. */
+    private fun studentAudio(pcm: ByteArray, now: Long, level: Float) {
+        examiner?.sendAudio(pcm)
+        transcriber?.sendAudio(pcm)
+        wav?.write(pcm)
+        segmenter?.feed(pcm, now)
+        if (level > 0.06f) {
+            lastSpeechAt = now
+            voicedMs += 100
+        }
+    }
+
+    private fun updateStatus() {
+        _state.update { it.copy(status = statusText(it)) }
+    }
 
     private fun onMic(pcm: ByteArray) {
         val now = System.currentTimeMillis()
         val level = AudioUtil.level(pcm)
         if (level > maxLevel) maxLevel = level
+        if (pushToTalk) {
+            val open = holding || now < tailUntil
+            if (!open) {
+                // Not held: nothing goes out – only the last 300 ms are kept for the next press.
+                synchronized(preRoll) {
+                    preRoll.addLast(pcm)
+                    while (preRoll.size > 3) preRoll.removeFirst()
+                }
+                _state.update { it.copy(micLevel = level, examinerSpeaking = player.isPlaying(now) || now < muteUntil) }
+                return
+            }
+            if (sendPreRoll) {
+                sendPreRoll = false
+                val early = synchronized(preRoll) { preRoll.toList().also { preRoll.clear() } }
+                early.forEach { chunk -> studentAudio(chunk, now, AudioUtil.level(chunk)) }
+            }
+            studentAudio(pcm, now, level)
+            _state.update { s -> s.copy(micLevel = level, examinerSpeaking = false, diag = if (level > 0.05f) s.diag.copy(micHeard = true) else s.diag) }
+            return
+        }
         val examinerAudible = player.isPlaying(now) || now < muteUntil
         val headset = routing.usingHeadset
         // On the loudspeaker the examiner would hear (and interrupt) himself: send silence while he talks.
@@ -797,7 +891,8 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
             log("Coach-Hinweis verworfen (der Moment ist vorbei)")
             return
         }
-        if (now - lastCoachAt < COACH_GAP_MS || examinerTalking || player.isPlaying(now) || now < muteUntil) return
+        // While the talk button is held the student has the floor: the coach waits until he lets go.
+        if (holding || now - lastCoachAt < COACH_GAP_MS || examinerTalking || player.isPlaying(now) || now < muteUntil) return
         val voiceAt = maxOf(segmenter?.lastVoiceAt ?: 0L, lastSpeechAt)
         val paused = now - voiceAt > COACH_PAUSE_MS
         if (!paused && now - pendingSince < COACH_MAX_WAIT_MS) return
@@ -972,3 +1067,6 @@ private const val COACH_MAX_WAIT_MS = 2_500L
 
 /** How long the AI's voice may take before the phone's voice speaks the correction. */
 private const val COACH_VOICE_MS = 1_200L
+
+/** How long the microphone stays open after the talk button is let go, so the last syllable is not cut off. */
+private const val RELEASE_TAIL_MS = 120L

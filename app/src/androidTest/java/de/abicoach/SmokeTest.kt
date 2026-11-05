@@ -324,6 +324,8 @@ class SmokeTest {
         shot("auswertung_ziele")
         runCatching { compose.onNodeWithTag("debrief_next").performScrollTo() }
         shot("auswertung_naechster_schritt")
+        runCatching { compose.onNodeWithTag("debrief_fillers").performScrollTo() }
+        shot("auswertung_fuellwoerter")
         runCatching { compose.onNodeWithTag("debrief_observations").performScrollTo() }
         shot("auswertung_beobachtungen")
         runCatching { compose.onNodeWithTag("debrief_talk").performScrollTo() }
@@ -383,6 +385,11 @@ class SmokeTest {
         runCatching { compose.onNodeWithTag("live").performTouchInput { swipeDown() } }
         shot("gespraech_mitscrollen_aus")
         ui { vm.toggleLiveFollow() }
+        // "Knopf gedrückt halten": the big talk button, waiting and held.
+        ui { vm.demoClear(); vm.demoLive(Demo.liveState(part = 2).copy(pushToTalk = true, examinerReady = true), part = 2, withExaminer = true) }
+        shot("gespraech_knopf_halten")
+        ui { vm.demoClear(); vm.demoLive(Demo.liveState(part = 2).copy(pushToTalk = true, holding = true, examinerReady = true, micLevel = 0.3f, status = "Ich höre zu – loslassen, wenn du fertig bist."), part = 2, withExaminer = true) }
+        shot("gespraech_knopf_gehalten")
         ui { vm.demoClear(); vm.demoPrep(Demo.task(), SessionKind.SIMULATION) }
         ui { vm.demoLive(Demo.liveState(part = 1), part = 1, withExaminer = false) }
         shot("vortrag_live")
@@ -704,6 +711,8 @@ object Demo {
                 darstellungPoints = 11,
                 darstellungReason = "Weitgehend freier, gut gegliederter Vortrag mit klaren Überleitungen. Einige Fehler bei Zeiten und Präpositionen, Wortschatz angemessen.",
                 totalPoints = 10,
+                fillers = 23,
+                fillerWords = listOf("ähm", "you know"),
                 strengths = listOf("Klare Gliederung mit Überleitungen", "Im Gespräch gehst du gut auf Fragen ein", "Gute Aussprache, natürliches Tempo"),
                 levers = listOf("Belege jede Analysebehauptung mit einem Zitat und Zeilenangabe", "Nutze in Aufgabe 3 ein Beispiel aus dem Unterricht (z. B. Adichie)", "Present perfect bei Entwicklungen bis heute"),
                 errors =

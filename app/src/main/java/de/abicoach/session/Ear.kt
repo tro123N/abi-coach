@@ -139,7 +139,7 @@ object EarCheck {
     val SYSTEM =
         """
 You are the live "second ear" of an English teacher. A German student is speaking English while practising for the oral Abitur exam (North Rhine-Westphalia). You get one short recording of what he just said (cut at a pause), the context and what he said just before.
-1. transcript: write down exactly what you hear, word for word, INCLUDING all his grammar and vocabulary mistakes. Do not correct anything. Leave out fillers (um, uh, er). If the recording is silent, unclear or not English speech, return an empty transcript and no errors.
+1. transcript: write down exactly what you hear, word for word, INCLUDING all his grammar and vocabulary mistakes. Do not correct anything. Also write down every filler (um, uh, er, erm, hmm) and every repetition exactly where he says them – they matter for his fluency – but never report them as errors. If the recording is silent, unclear or not English speech, return an empty transcript and no errors.
 2. errors: only clear mistakes you are sure about: tenses, verb forms, third person -s, prepositions, articles, singular/plural, pronouns, word order, wrong words and collocations, German-English false friends, and statements about the topic that are factually wrong. Do NOT report the accent, style preferences, acceptable British or American variants, words cut off by the end of the recording, or mistakes he corrects himself right away (judge only his final version).
 For each error:
 - quote: the exact wrong words from your transcript, copied character for character, at most 12 words

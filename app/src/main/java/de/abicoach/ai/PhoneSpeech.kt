@@ -201,7 +201,17 @@ class PhoneSpeech(context: Context) {
 class PhoneEar(private val phone: PhoneSpeech) : LiveTranscriber {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val listeners = CopyOnWriteArrayList<(String) -> Unit>()
-    private val segmenter = SpeechSegmenter { segment -> scope.launch { write(segment) } }
+    private val segmenter =
+        SpeechSegmenter { segment ->
+            writing.incrementAndGet()
+            scope.launch {
+                try {
+                    write(segment)
+                } finally {
+                    writing.decrementAndGet()
+                }
+            }
+        }
 
     /** Where the events of the transcript go (set by the hub). */
     @Volatile var onEvent: (LiveEvent) -> Unit = {}
@@ -211,6 +221,11 @@ class PhoneEar(private val phone: PhoneSpeech) : LiveTranscriber {
 
     /** When the student was last heard speaking. */
     val lastVoiceAt: Long get() = segmenter.lastVoiceAt
+
+    /** Pieces still being written down by the phone's recognizer. */
+    private val writing = java.util.concurrent.atomic.AtomicInteger(0)
+
+    val busy: Boolean get() = writing.get() > 0
 
     fun addListener(listener: (String) -> Unit) {
         listeners += listener
@@ -255,6 +270,8 @@ class PhoneVoiceAgent(
     private val answer: suspend (system: String, turns: List<Pair<String, String>>) -> String,
     private val onEvent: (LiveEvent) -> Unit,
     override val label: String,
+    /** "Knopf gedrückt halten": Claude answers when the student lets go, not after a pause. */
+    private val manualTurns: Boolean = false,
 ) : VoiceAgent {
     override val outputRate: Int = 24_000
 
@@ -272,7 +289,7 @@ class PhoneVoiceAgent(
         ear?.addListener { text ->
             synchronized(lock) { heard.append(' ').append(text) }
             lastHeardAt = System.currentTimeMillis()
-            replySoon()
+            if (!manualTurns) replySoon()
         }
         onEvent(LiveEvent.Ready)
     }
@@ -337,6 +354,29 @@ class PhoneVoiceAgent(
     }
 
     override fun sendStreamEnd() = Unit
+
+    override fun turnStart() {
+        waiting?.cancel()
+    }
+
+    /** Released: the last piece is written down at once, then Claude answers – no waiting for a pause. */
+    override fun turnEnd() {
+        if (!manualTurns) return
+        ear?.sendStreamEnd()
+        waiting?.cancel()
+        waiting =
+            scope.launch {
+                // The recognizer needs a moment for the last piece (at most about four seconds).
+                var waited = 0
+                delay(60)
+                while ((ear?.busy == true) && waited < 4_000) {
+                    delay(50)
+                    waited += 50
+                }
+                val said = synchronized(lock) { heard.toString().trim().also { heard.setLength(0) } }
+                if (said.isNotBlank()) reply(said, null)
+            }
+    }
 
     override fun close() = scope.cancel()
 }
