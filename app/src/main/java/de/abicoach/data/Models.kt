@@ -39,7 +39,7 @@ enum class FeedbackMode(val label: String, val description: String) {
     ),
     COACH(
         "Coach",
-        "Im Gespräch unterbricht dich der Prüfer bei wichtigen Fehlern, korrigiert dich und lässt dich den Satz wiederholen. Im Vortrag flüstert der Coach nur – danach übst du die wichtigsten Fehler in einer Korrekturrunde.",
+        "Der Prüfer ist dein Coach: Im Gespräch unterbricht er dich bei wichtigen Fehlern mit seiner eigenen Stimme, lässt dich den Satz richtig wiederholen und sagt dir dann, dass du weitermachen sollst. Im Vortrag korrigiert er dich kurz – danach übst du die wichtigsten Fehler in einer Korrekturrunde.",
     ),
 }
 

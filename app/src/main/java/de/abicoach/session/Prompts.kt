@@ -248,8 +248,9 @@ $coach${strictnessBlock(strictness)}
     fun coachMessage(error: LiveError): String =
         "COACH: The student just said \"${error.quote}\". Correct form: \"${error.correction}\"" +
             (if (error.rule.isNotBlank()) " (${error.rule})" else "") + ". " +
-            "Interrupt now: in one short sentence say what he said and the correct form, ask him to say the corrected sentence once, " +
-            "and when he has repeated it, say one word of praise and continue exactly where you were."
+            "You are also his coach: interrupt him now, kindly and briefly, in your own voice – in one short sentence say what he said and the correct form, " +
+            "and ask him to say the corrected sentence once. As soon as he has said it, say one short word of praise (\"Good.\", \"Exactly.\") and tell him to go on " +
+            "(\"Now carry on.\", \"Go on with what you were saying.\"), then continue the conversation exactly where you were. If he does not repeat it, just tell him to go on."
 
     /** What the phone says aloud when the coach interrupts (short, in English, like a teacher at the exam table). */
     fun coachSpeech(error: LiveError): String {

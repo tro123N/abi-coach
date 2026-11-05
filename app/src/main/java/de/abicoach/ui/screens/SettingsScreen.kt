@@ -280,7 +280,7 @@ fun SettingsScreen(vm: AppViewModel) {
                     Gap(6.dp)
                     ChoiceChips(Settings.GEMINI_VOICES, settings.geminiVoice, { it }, { vm.tap(); vm.stopSpeaking(); settings.geminiVoice = it }, tagPrefix = "gvoice")
                     Gap(12.dp)
-                    BodyText("Vorlesen und Coach")
+                    BodyText("Vorlesen (Texte, Sätze, Wörter)")
                     Gap(6.dp)
                     ChoiceChips(Settings.GEMINI_VOICES, settings.ttsVoice, { it }, { vm.tap(); vm.stopSpeaking(); settings.ttsVoice = it }, tagPrefix = "ttsvoice")
                 }
@@ -289,7 +289,7 @@ fun SettingsScreen(vm: AppViewModel) {
                     Gap(6.dp)
                     ChoiceChips(Settings.OPENAI_VOICES, settings.oaVoice, { it }, { vm.tap(); vm.stopSpeaking(); settings.oaVoice = it }, tagPrefix = "ovoice")
                     Gap(12.dp)
-                    BodyText("Vorlesen und Coach")
+                    BodyText("Vorlesen (Texte, Sätze, Wörter)")
                     Gap(6.dp)
                     ChoiceChips(Settings.OPENAI_VOICES, settings.oaTtsVoice, { it }, { vm.tap(); vm.stopSpeaking(); settings.oaTtsVoice = it }, tagPrefix = "ottsvoice")
                 }
@@ -317,7 +317,7 @@ fun SettingsScreen(vm: AppViewModel) {
             Gap(10.dp)
             // One sample for each voice: the examiner's and the one that reads aloud and coaches.
             val examinerSample = "Good morning. Let's start with your presentation – take your time."
-            val coachSample = "Careful: not \"in the class\", but \"in class\". Say it again, please."
+            val coachSample = "The author's tone is largely optimistic, although he does acknowledge the problems."
             val examinerVoice =
                 when (settings.provider) {
                     Provider.GOOGLE -> settings.geminiVoice
@@ -336,7 +336,7 @@ fun SettingsScreen(vm: AppViewModel) {
                 )
                 if (!claude) {
                     ActionButton(
-                        if (vm.speaking == coachSample) "Stopp" else "Coach anhören",
+                        if (vm.speaking == coachSample) "Stopp" else "Vorlesen anhören",
                         if (vm.speaking == coachSample) R.drawable.stop_24dp else R.drawable.volume_up_24dp,
                         accent,
                         { if (vm.speaking == coachSample) vm.stopSpeaking() else vm.speak(coachSample) },
@@ -347,7 +347,7 @@ fun SettingsScreen(vm: AppViewModel) {
             }
             if (!claude) {
                 Gap(4.dp)
-                CaptionText("Im echten Gespräch klingt der Prüfer ein wenig anders (Live-Stimme), aber Stimme und Aussprache sind dieselben.")
+                CaptionText("Der Prüfer ist auch dein Coach: Korrekturen hörst du mit seiner Stimme. Im echten Gespräch klingt er ein wenig anders (Live-Stimme), Stimme und Aussprache sind aber dieselben.")
             }
         }
             }
@@ -631,7 +631,7 @@ private fun SystemCheckCard(vm: AppViewModel) {
             accent,
             { micTest() },
             enabled = vm.app.ai.ready,
-            subtitle = "Du sagst einen Satz mit Fehler – prüft Mikrofon, Ohr, Hinweis und Coach-Stimme wie im echten Training",
+            subtitle = "Du sagst einen Satz mit Fehler – prüft Mikrofon, Ohr, Hinweis und die Stimme des Prüfers als Coach wie im echten Training",
             container = MaterialTheme.colorScheme.background,
             modifier = Modifier.testTag("check_mic"),
         )

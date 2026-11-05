@@ -319,6 +319,8 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
         }
 
         mic = MicStreamer(::onMic).also { it.start(scope) }
+        // The coach's "go on" after a correction in the presentation is made ahead, so it comes without delay.
+        if (config.examinerPrompt == null && config.feedback == FeedbackMode.COACH) app.ai.prefetchSpeech("Good – now carry on.", app.ai.examinerVoice)
 
         scope.launch {
             while (isActive) {
@@ -857,7 +859,8 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
             if (pendingCoach == null) pendingSince = now
             pendingCoach = pick
             // The coach's sentence is made right now, while the student goes on: at the next breath it plays at once.
-            app.ai.prefetchSpeech(Prompts.coachSpeech(pick))
+            // Without an examiner (presentation) the correction is spoken in the examiner's voice: made ahead now.
+            if (examiner == null) app.ai.prefetchSpeech(Prompts.coachSpeech(pick), app.ai.examinerVoice)
             diag { it.copy(coachDue = it.coachDue + 1) }
         }
     }
@@ -898,17 +901,28 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
         if (!paused && now - pendingSince < COACH_MAX_WAIT_MS) return
         pendingCoach = null
         lastCoachAt = now
-        speakCoach(error, now)
-        examiner?.sendNote(Prompts.coachNote(error))
-        log("Coach unterbricht: „${error.quote}“ → „${error.correction}“ (${now - pendingSince} ms nach dem Fund)")
+        val agent = examiner
+        if (agent != null && _state.value.examinerReady) {
+            // The examiner is the coach: he interrupts in his own live voice, asks for the sentence again and then says go on.
+            coachSent = error
+            coachSentAt = now
+            if (!agent.sendInstruction(Prompts.coachMessage(error))) coachSent = null
+            log("Prüfer korrigiert: „${error.quote}“ → „${error.correction}“ (${now - pendingSince} ms nach dem Fund)")
+        } else {
+            speakCoach(Prompts.coachSpeech(error), now)
+            log("Coach unterbricht: „${error.quote}“ → „${error.correction}“ (${now - pendingSince} ms nach dem Fund)")
+        }
         expectRepeat(error, now)
     }
 
-    /** The coach's own voice: the AI's voice (usually made ahead already), Android's voice if it is not there within a second. */
-    private fun speakCoach(error: LiveError, now: Long) {
-        val line = Prompts.coachSpeech(error)
+    /**
+     * The coach in a presentation (no examiner on the line): the examiner's own voice reads the correction (usually made
+     * ahead already). Only with Claude, whose examiner speaks with the phone's voice, does the phone's voice read it; if
+     * the AI's voice does not come in time, the correction just stays on the screen – no second, different voice.
+     */
+    private fun speakCoach(line: String, now: Long) {
         muteUntil = now + COACH_VOICE_MS + 300
-        diag { it.copy(coachSpoken = it.coachSpoken + 1, coachByPhone = it.coachByPhone + 1) }
+        diag { it.copy(coachSpoken = it.coachSpoken + 1) }
         said(line, now)
         log("Coach spricht: $line")
         scope.launch {
@@ -917,7 +931,7 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
             val first = kotlinx.coroutines.CompletableDeferred<Boolean>()
             launch {
                 val pcm =
-                    app.ai.speakStream(line, holdMs = 700) { piece ->
+                    app.ai.speakStream(line, holdMs = 700, voice = app.ai.examinerVoice) { piece ->
                         if (finished || !(voice.compareAndSet(0, 1) || voice.get() == 1)) return@speakStream
                         player.enqueue(piece)
                         muteUntil = System.currentTimeMillis() + 300
@@ -925,9 +939,10 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
                     }
                 if (pcm == null) first.complete(false)
             }
-            val ok = withTimeoutOrNull(COACH_VOICE_MS) { first.await() } ?: false
+            val ok = withTimeoutOrNull(if (app.ai.examinerVoice == null) COACH_VOICE_MS else COACH_VOICE_MS * 2) { first.await() } ?: false
             if (finished || ok) return@launch
-            if (voice.compareAndSet(0, 2)) {
+            if (app.ai.examinerVoice == null && voice.compareAndSet(0, 2)) {
+                diag { it.copy(coachByPhone = it.coachByPhone + 1) }
                 muteUntil = System.currentTimeMillis() + 1_200 + line.length * 70L
                 tts.say(line)
             }
@@ -956,6 +971,8 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
             _state.update { it.copy(repeatOk = true, repeatAt = now, diag = it.diag.copy(repeatsOk = it.diag.repeatsOk + 1)) }
             app.feedback.buzz(FeedbackType.CORRECT)
             log("Richtig wiederholt: „${target.correction}“")
+            // In a presentation the coach says "go on" himself; in a conversation the examiner does it (he heard the repeat).
+            if (examiner == null && config.feedback == FeedbackMode.COACH) speakCoach("Good – now carry on.", now)
             return
         }
         if (countTry) repeatTries++

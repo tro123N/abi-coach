@@ -100,16 +100,16 @@ class MicTest(private val app: AbiCoachApp) {
             _state.update { it.copy(transcript = result.transcript, errors = result.errors, ms = result.ms, phase = Phase.SPEAKING, message = "Der Coach spricht …") }
             val first = result.errors.firstOrNull()
             val line = if (first != null) Prompts.coachSpeech(first) else "Well done – that sounded correct."
-            val pcm = withTimeoutOrNull(4_000) { app.ai.speak(line) }
+            val pcm = withTimeoutOrNull(if (app.ai.examinerVoice != null) 8_000 else 4_000) { app.ai.speakStream(line, voice = app.ai.examinerVoice, onChunk = null) }
             val voice =
                 if (pcm != null && pcm.size > 4_000) {
                     player.enqueue(pcm)
                     delay(player.remainingMs() + 300)
-                    "KI-Stimme (${app.ai.voiceLabel()})"
+                    "Prüferstimme (${app.ai.examinerVoice ?: app.ai.voiceLabel()})"
                 } else {
                     tts.say(line)
                     delay(1_500L + line.length * 70L)
-                    "Handy-Stimme (KI-Stimme kam nicht rechtzeitig)"
+                    if (app.ai.examinerVoice == null) "Handy-Stimme" else "Handy-Stimme (Prüferstimme kam nicht rechtzeitig)"
                 }
             val message =
                 when {

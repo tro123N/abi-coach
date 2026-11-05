@@ -322,6 +322,15 @@ class AiHub(context: Context, private val http: OkHttpClient, private val settin
     private val speechJobs = ConcurrentHashMap<String, Deferred<ByteArray?>>()
     private val prefetchSlots = Semaphore(2)
 
+    /** The examiner's voice for read-aloud speech (so the coach in a presentation sounds like the examiner); null with Claude. */
+    val examinerVoice: String?
+        get() =
+            when (provider) {
+                Provider.GOOGLE -> settings.geminiVoice
+                Provider.OPENAI -> settings.oaVoice
+                Provider.ANTHROPIC -> null
+            }
+
     /** Speech as 24 kHz PCM, cleaned (no noise after the last word); null if it failed (the app then uses Android's voice). */
     suspend fun speak(text: String): ByteArray? = speakStream(text, onChunk = null)
 
@@ -355,16 +364,16 @@ class AiHub(context: Context, private val http: OkHttpClient, private val settin
     }
 
     /** Makes the speech for [text] in the background, so that a tap on "Anhören" plays at once. */
-    fun prefetchSpeech(text: String) {
+    fun prefetchSpeech(text: String, voice: String? = null) {
         if (provider == Provider.ANTHROPIC || !ready) return
         val line = text.trim().take(MAX_SPEECH)
         if (line.isBlank()) return
-        val key = speechKey(line)
+        val key = speechKey(line, voice)
         if (speechMemory.get(key) != null || speechJobs.containsKey(key)) return
         val job =
             scope.async(start = CoroutineStart.LAZY) {
                 prefetchSlots.withPermit {
-                    runCatching { cachedSpeech(key) ?: synthesizeClean(line, key, null) }.getOrNull()
+                    runCatching { cachedSpeech(key) ?: synthesizeClean(line, key, null, voice = voice) }.getOrNull()
                 }
             }
         if (speechJobs.putIfAbsent(key, job) != null) return
