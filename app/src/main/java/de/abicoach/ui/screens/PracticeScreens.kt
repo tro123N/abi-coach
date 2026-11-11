@@ -107,6 +107,10 @@ fun TalkCoachCard(record: SessionRecord, d: Debrief) {
                 val ok = abs(s - target) <= target * 0.4
                 GoalRow(ok, "Aufgabe $n: ${mmss(s)} (Ziel ca. ${mmss(target)})" + if (!ok) (if (s < target) " – ausführlicher" else " – knapper") else "")
             }
+            // What to change about the use of time, in plain words (the comment must not be squeezed out).
+            de.abicoach.session.Pacing.advice(m.perTask, m.seconds, (record.task?.tasks?.size ?: 3) >= 3).forEach {
+                BulletText(it, bulletColor = yellow, modifier = Modifier.testTag("pacing_advice"))
+            }
         } else if (record.focusTask in 1..3) {
             Gap(10.dp)
             val target = targets[record.focusTask] ?: 180

@@ -2036,6 +2036,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         watchAnalysis()
         watchMaterial()
         crashReport = de.abicoach.data.CrashLog.unseenCrash()
+        // An error that was caught somewhere in the background is never silent.
+        de.abicoach.data.CrashLog.onIssue = { what ->
+            if (errorMessage == null) errorMessage = "Im Hintergrund ist ein Fehler aufgetreten ($what). Die App läuft weiter; Einzelheiten unter Einstellungen → Update, Hilfe, Über → Fehlerberichte."
+        }
         runCatching { checkBackupDue() }
         runCatching { recoverLive() }.onFailure { de.abicoach.data.CrashLog.nonFatal("Wiederherstellen", it) }
         runCatching { restoreWork() }.onFailure { de.abicoach.data.CrashLog.nonFatal("Vorbereitung wiederherstellen", it) }

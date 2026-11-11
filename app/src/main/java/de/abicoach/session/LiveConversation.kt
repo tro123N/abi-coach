@@ -161,7 +161,22 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
         )
     val state: StateFlow<LiveUiState> = _state.asStateFlow()
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default + de.abicoach.data.CrashLog.handler)
+    /**
+     * An error inside the session must not close the app – but it must not stay silent either: a part of the session
+     * (microphone, transcript, checker) may have stopped, so the student is told and can end the session with
+     * everything said so far.
+     */
+    private val scope =
+        CoroutineScope(
+            SupervisorJob() + Dispatchers.Default +
+                kotlinx.coroutines.CoroutineExceptionHandler { _, e ->
+                    de.abicoach.data.CrashLog.nonFatal("Live-Sitzung", e)
+                    log("Interner Fehler: ${e.javaClass.simpleName}: ${e.message.orEmpty().take(120)}")
+                    _state.update {
+                        it.copy(error = "Ein interner Fehler ist aufgetreten (${e.javaClass.simpleName}). Wenn die Mitschrift stehen bleibt: beende die Sitzung – alles bisher Gesagte bleibt erhalten und wird ausgewertet.")
+                    }
+                },
+        )
     private val routing = AudioRouting(app)
     private val player = PcmPlayer(24_000)
     private val tts = Tts(app, call = true) { app.settings.accent.locale }

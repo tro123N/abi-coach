@@ -90,7 +90,7 @@ Danach startet auf Wunsch eine **geführte Tour durch die echte App**: Der Bilds
 - **Feste Punkte-Anker:** Beide Bewertungs-KIs bekommen dieselbe Beschreibung, wie 13–15, 10–12, 7–9, 5–6 und 1–4 Punkte in Inhalt und Darstellung aussehen. So bekommt dieselbe Leistung dieselben Punkte.
 - **Prüf-Check nach jeder Bewertung** (`GradeGuard`, reine Rechnung, keine KI): Die Punkte eines Bereichs müssen zu den einzeln bewerteten Kompetenzen passen (höchstens 2 Punkte Abstand). Fehlt in einem ganzen Vortrag eine Aufgabe, ist der Inhalt gedeckelt (ohne Stellungnahme höchstens 9 Punkte). Hat der Check etwas geändert, steht es als „Prüf-Check: …“ in der Auswertung.
 - **Kurze Sitzungen zählen weniger:** Unter 120 Wörtern zählt eine Sitzung nur zum Teil für die Prognose, unter 15 Wörtern gar nicht. Eine KI-Antwort ohne Punkte gilt als Fehler und wird nicht als „0 Punkte“ gespeichert.
-- **Zeitaufteilung im Vortrag:** Die Auswertung zeigt, wie viel deiner Redezeit auf Zusammenfassung, Analyse und Stellungnahme entfiel (Richtwert 25 / 40 / 35 %), und sagt in ein, zwei Sätzen, was du ändern solltest. Während des Vortrags steht unter der Uhr, welche Aufgabe jetzt dran wäre.
+- **Zeitaufteilung im Vortrag:** Der Vortrags-Coach in der Auswertung zeigt die Zeit pro Aufgabe (Richtwert etwa 2 : 4 : 3 Minuten) und sagt jetzt in ein, zwei Sätzen, was du ändern solltest – zum Beispiel, wenn die Zusammenfassung die Stellungnahme verdrängt. Während des Vortrags steht unter der Uhr, welche Aufgabe jetzt dran wäre.
 
 ## Sicherheitsnetz
 
@@ -152,7 +152,7 @@ Schlüssel gibt es unter aistudio.google.com/apikey (Google), platform.openai.co
 - `session/` – Prompts, Live-Gespräch (mit Mikrofon-Dienst), Live-Fehlerprüfung, Material im Hintergrund, gespeicherte Vorbereitung und Alarm, Auswertung und Fortschritt, Systemprüfung
 - `ui/` – Oberfläche im Stil von Mental Math Plus (Farbthemen, Karten, Sterne, Töne)
 - `data/SafeFile.kt`, `data/CrashLog.kt` – sicheres Schreiben mit Rückfall-Kopie und Fehlerberichte
-- `session/GradeGuard.kt`, `session/Pacing.kt` – Prüf-Check der Bewertung und Zeitaufteilung im Vortrag (reine Rechnung)
+- `session/GradeGuard.kt`, `session/Pacing.kt` – Prüf-Check der Bewertung und Rat zur Zeitaufteilung im Vortrag (reine Rechnung)
 - `app/src/test/` – Unit-Tests für die Logik (Speicherung, Lernprofil, Abgleich mit echten Noten, Prüf-Check, Zeitaufteilung, Fehlergedächtnis, Wortschatz, Abi-Weg, Aufnahmen)
 
 Jeder Push auf `main` lässt zuerst die Unit-Tests laufen und baut dann eine neue APK – schlägt ein Test fehl, wird nichts veröffentlicht. Mit `[smoke]` in der Commit-Nachricht läuft zusätzlich ein Test auf einem virtuellen Handy; die Bildschirmfotos liegen danach auf dem Branch `ci-smoke`.

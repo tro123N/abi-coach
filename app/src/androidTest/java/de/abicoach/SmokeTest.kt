@@ -334,11 +334,6 @@ class SmokeTest {
         shot("auswertung")
         runCatching { compose.onNodeWithTag("debrief_goals").performScrollTo() }
         shot("auswertung_ziele")
-        // How the time of the presentation was shared between the tasks.
-        Log.i(TAG, "Zeitaufteilung: ${app.store.get(Demo.SIMULATION)?.let { r -> r.debrief?.let { de.abicoach.session.Pacing.split(r, it) } }?.parts?.map { it.number to it.percent }}")
-        runCatching { compose.onNodeWithTag("debrief_pacing").performScrollTo().performClick() }
-        shot("auswertung_zeitaufteilung")
-        runCatching { compose.onNodeWithTag("debrief_pacing").performClick() }
         runCatching { compose.onNodeWithTag("debrief_next").performScrollTo() }
         shot("auswertung_naechster_schritt")
         runCatching { compose.onNodeWithTag("debrief_fillers").performScrollTo() }

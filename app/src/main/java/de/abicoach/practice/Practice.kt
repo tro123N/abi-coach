@@ -68,7 +68,7 @@ data class TalkMetrics(
         fun countFillers(text: String): Int = fillerRegex.findAll(text).count()
 
         /** Target seconds for the three tasks of a full presentation. */
-        val TARGET = mapOf(1 to 120, 2 to 240, 3 to 180)
+        val TARGET = de.abicoach.session.Pacing.TARGET_SECONDS
 
         fun compute(record: SessionRecord, debrief: Debrief): TalkMetrics? {
             val part1 = record.utterances.filter { it.part == 1 && it.speaker == Speaker.STUDENT }
