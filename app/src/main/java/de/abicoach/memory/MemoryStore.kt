@@ -29,17 +29,14 @@ class MemoryStore(context: Context) {
     @Volatile private var cachedIndex: MemoryIndex? = null
 
     private fun loadDocs(): List<CourseDoc> =
-        runCatching { JSONArray(indexFile.readText()).let { a -> (0 until a.length()).map { CourseDoc.fromJson(a.getJSONObject(it)) } } }
-            .getOrElse { emptyList() }
+        (de.abicoach.data.SafeFile.load(indexFile) { text -> JSONArray(text).let { a -> (0 until a.length()).mapNotNull { i -> a.optJSONObject(i)?.let { CourseDoc.fromJson(it) } } } } ?: emptyList())
             .sortedBy { it.addedAt }
 
     @Synchronized
     private fun saveDocs(list: List<CourseDoc>) {
         val array = JSONArray()
         list.forEach { array.put(it.toJson()) }
-        val tmp = File(root, "docs.json.tmp")
-        tmp.writeText(array.toString())
-        tmp.renameTo(indexFile)
+        de.abicoach.data.SafeFile.write(indexFile, array.toString())
         _docs.value = list.sortedBy { it.addedAt }
     }
 

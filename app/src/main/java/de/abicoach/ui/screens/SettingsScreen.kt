@@ -454,7 +454,21 @@ fun SettingsScreen(vm: AppViewModel) {
                 modifier = Modifier.testTag("data_import"),
             )
             Gap(8.dp)
-            CaptionText("Deine KI-Schlüssel kommen nie in die Sicherung – trag sie auf einem neuen Handy neu ein.")
+            CaptionText(
+                (if (settings.lastBackupAt == 0L) "Noch nie gesichert. " else "Zuletzt gesichert: ${java.time.Instant.ofEpochMilli(settings.lastBackupAt).atZone(java.time.ZoneId.systemDefault()).format(java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy"))}. ") +
+                    "Deine KI-Schlüssel kommen nie in die Sicherung – trag sie auf einem neuen Handy neu ein.",
+            )
+            Gap(12.dp)
+            BodyText("Aufnahmen behalten")
+            Gap(4.dp)
+            ChoiceChips(
+                listOf(7, 30, 90, 0),
+                settings.keepAudioDays,
+                { if (it == 0) "Immer" else "$it Tage" },
+                { vm.tap(); settings.keepAudioDays = it; vm.tidyAudioNow() },
+                tagPrefix = "keep_audio",
+            )
+            CaptionText("${vm.audioUsage()}. Nach dieser Zeit löscht die App die Tonaufnahme einer ausgewerteten Sitzung – Auswertung, Mitschrift und Lernstand bleiben. Aufnahmen brauchen den meisten Platz (etwa 2 MB pro Minute).")
             Gap(12.dp)
             ActionButton("Alle Sitzungen löschen", R.drawable.delete_24dp, red, { confirm = "sessions" }, container = MaterialTheme.colorScheme.background)
             Gap(8.dp)
@@ -472,6 +486,19 @@ fun SettingsScreen(vm: AppViewModel) {
             ActionButton("Einrichtung öffnen", R.drawable.tune_24dp, accent, { vm.openOnboarding() }, subtitle = "KI, Schlüssel, Prüfungstermin, Kurs und Mikrofon noch einmal durchgehen", container = MaterialTheme.colorScheme.background, modifier = Modifier.testTag("settings_setup"))
             Gap(10.dp)
             val versionName = runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "?"
+            val (crashes, issues) = remember { de.abicoach.data.CrashLog.counts() }
+            var showReport by remember { mutableStateOf(false) }
+            ActionButton(
+                "Fehlerberichte",
+                R.drawable.error_24dp,
+                if (crashes > 0) yellow else accent,
+                { vm.tap(); showReport = true },
+                subtitle = if (crashes == 0 && issues == 0) "Keine Abstürze, keine abgefangenen Fehler" else "$crashes Abstürze, $issues abgefangene Fehler – ansehen und kopieren",
+                container = MaterialTheme.colorScheme.background,
+                modifier = Modifier.testTag("settings_crashlog"),
+            )
+            if (showReport) CrashReportPopUp(remember { de.abicoach.data.CrashLog.report() }) { showReport = false }
+            Gap(10.dp)
             BodyText("Version $versionName")
             CaptionText(
                 "AbiCoach steht unter der GNU GPL v3. Design und Bauteile stammen aus Mental Math Plus (tro123N), " +

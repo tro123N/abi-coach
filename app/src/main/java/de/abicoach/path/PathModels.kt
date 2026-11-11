@@ -110,23 +110,24 @@ data class PathProgress(val levels: Map<String, LevelProgress> = emptyMap()) {
     }
 }
 
-class PathStore(context: Context) {
-    private val file = File(context.filesDir, "path.json")
+class PathStore(root: File) {
+    constructor(context: Context) : this(context.filesDir)
+
+    private val file = File(root, "path.json")
     private val _progress = MutableStateFlow(load())
     val progress: StateFlow<PathProgress> = _progress.asStateFlow()
 
-    private fun load(): PathProgress = runCatching { PathProgress.fromJson(JSONObject(file.readText())) }.getOrElse { PathProgress() }
+    private fun load(): PathProgress = de.abicoach.data.SafeFile.load(file) { PathProgress.fromJson(JSONObject(it)) } ?: PathProgress()
 
     @Synchronized
     fun update(change: (PathProgress) -> PathProgress) {
         val next = change(_progress.value)
         _progress.value = next
-        runCatching {
-            val tmp = File(file.parentFile, file.name + ".tmp")
-            tmp.writeText(next.toJson().toString())
-            tmp.renameTo(file)
-        }
+        de.abicoach.data.SafeFile.write(file, next.toJson().toString())
     }
 
-    fun reset() = update { PathProgress() }
+    fun reset() {
+        update { PathProgress() }
+        de.abicoach.data.SafeFile.dropBackup(file)
+    }
 }

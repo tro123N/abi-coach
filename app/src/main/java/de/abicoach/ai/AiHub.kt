@@ -34,7 +34,7 @@ import java.util.concurrent.ConcurrentHashMap
  */
 class AiHub(context: Context, private val http: OkHttpClient, private val settings: Settings) {
     private val appContext = context.applicationContext
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO + de.abicoach.data.CrashLog.handler)
 
     val gemini = GeminiRest(http) { settings.geminiKey }
     val openai = OpenAiRest(http) { settings.openAiKey }

@@ -51,12 +51,12 @@ class InsightStore(context: Context) {
     val all: StateFlow<List<Insight>> = _all.asStateFlow()
 
     private fun load(): List<Insight> =
-        runCatching { JSONArray(file.readText()).objects().map { Insight.fromJson(it) }.filter { it.text.isNotBlank() } }.getOrElse { emptyList() }
+        de.abicoach.data.SafeFile.load(file) { text -> JSONArray(text).objects().map { Insight.fromJson(it) }.filter { it.text.isNotBlank() } } ?: emptyList()
 
     @Synchronized
     private fun save(list: List<Insight>) {
         _all.value = list
-        runCatching { file.writeText(JSONArray().also { a -> list.forEach { a.put(it.toJson()) } }.toString()) }
+        de.abicoach.data.SafeFile.write(file, JSONArray().also { a -> list.forEach { a.put(it.toJson()) } }.toString())
     }
 
     @Synchronized
@@ -122,7 +122,10 @@ class InsightStore(context: Context) {
     fun knownTexts(limit: Int = 10): List<String> = _all.value.filter { !it.solved }.take(limit).map { it.text }
 
     @Synchronized
-    fun reset() = save(emptyList())
+    fun reset() {
+        save(emptyList())
+        de.abicoach.data.SafeFile.dropBackup(file)
+    }
 
     @Synchronized
     fun replaceAll(list: List<Insight>) = save(list)

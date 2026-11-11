@@ -39,7 +39,7 @@ class MicTest(private val app: AbiCoachApp) {
         val message: String = "Sag jetzt laut und deutlich: „Yesterday I goed to the cinema and my friends was there.“",
     )
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default + de.abicoach.data.CrashLog.handler)
     private val _state = MutableStateFlow(State())
     val state: StateFlow<State> = _state.asStateFlow()
     private val routing = AudioRouting(app)

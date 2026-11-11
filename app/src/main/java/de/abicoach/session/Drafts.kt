@@ -163,6 +163,28 @@ class PendingMaterialStore(context: Context) {
     }
 }
 
+/**
+ * The safety copy of a running live session. Every few seconds the transcript so far is written here; if Android
+ * closes the app in the middle (empty battery, a call, too little memory), the session is not lost: at the next
+ * start it is saved as a normal session that can be evaluated.
+ */
+class LiveDraftStore(context: Context) {
+    private val file = File(context.filesDir, "live_draft.json")
+
+    @Synchronized
+    fun save(record: SessionRecord) {
+        writeJson(file, JSONObject().put("record", record.toJson()).put("savedAt", System.currentTimeMillis()))
+    }
+
+    @Synchronized
+    fun load(): SessionRecord? = readJson(file)?.optJSONObject("record")?.let { runCatching { SessionRecord.fromJson(it) }.getOrNull() }
+
+    @Synchronized
+    fun clear() {
+        runCatching { file.delete() }
+    }
+}
+
 /** What the material job is doing right now; the app reads this to show progress and to jump to the result. */
 data class MaterialStatus(
     val key: String? = null,

@@ -35,6 +35,8 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         if (!isChangingConfigurations) vm.stopSpeaking()
+        // A running session gets its safety copy now, in case Android closes the app in the background.
+        vm.saveLiveDraft()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

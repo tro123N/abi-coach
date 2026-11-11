@@ -204,7 +204,8 @@ class PcmPlayer(private val rate: Int = 24_000, private val usage: Int = AudioAt
 class WavWriter(file: File, private val rate: Int) {
     private val out = RandomAccessFile(file, "rw").apply {
         setLength(0)
-        write(ByteArray(44))
+        // A valid header from the first moment: if the app is closed in the middle, the recording can be repaired.
+        write(header(0))
     }
     private var dataBytes = 0L
     private var closed = false
@@ -212,8 +213,19 @@ class WavWriter(file: File, private val rate: Int) {
     @Synchronized
     fun write(pcm: ByteArray) {
         if (closed) return
-        out.write(pcm)
-        dataBytes += pcm.size
+        // A full disk must not end the session: the recording stops, the conversation goes on.
+        try {
+            out.write(pcm)
+            dataBytes += pcm.size
+        } catch (e: java.io.IOException) {
+            closed = true
+            runCatching {
+                out.seek(0)
+                out.write(header(dataBytes))
+                out.close()
+            }
+            de.abicoach.data.CrashLog.nonFatal("Aufnahme", e)
+        }
     }
 
     @Synchronized

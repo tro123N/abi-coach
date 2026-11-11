@@ -112,23 +112,23 @@ class PronStore(context: Context) {
     val scores: StateFlow<Map<String, Int>> = _scores.asStateFlow()
 
     private fun load(): Map<String, Int> =
-        runCatching {
-            val o = JSONObject(file.readText())
+        de.abicoach.data.SafeFile.load(file) { text ->
+            val o = JSONObject(text)
             o.keys().asSequence().associateWith { o.optInt(it) }
-        }.getOrElse { emptyMap() }
+        } ?: emptyMap()
 
     @Synchronized
     fun record(word: String, score: Int) {
         val key = word.lowercase().trim()
         val next = _scores.value + (key to maxOf(score, _scores.value[key] ?: 0))
         _scores.value = next
-        runCatching { file.writeText(JSONObject(next as Map<*, *>).toString()) }
+        de.abicoach.data.SafeFile.write(file, JSONObject(next as Map<*, *>).toString())
     }
 }
 
 /** Records a few seconds from the microphone and returns a WAV file in memory. */
 class ShortRecorder(private val maxSeconds: Int = 15) {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default + de.abicoach.data.CrashLog.handler)
     private val buffer = ByteArrayOutputStream()
     private var mic: MicStreamer? = null
 

@@ -428,6 +428,20 @@ class SmokeTest {
         shot("einstellungen_update_laedt")
         ui { de.abicoach.update.AppUpdater.demo(de.abicoach.update.AppUpdater.State.Available(demoRelease)); vm.settingsSection = null; vm.nav.openTab(Tab.WEG) }
         shot("heute_update_verfuegbar")
+        ui { de.abicoach.update.AppUpdater.demo(de.abicoach.update.AppUpdater.State.Idle) }
+        // The app's own safety net: a session that was cut off comes back from its safety copy, a crash report is
+        // shown and can be copied, and the reminder to save the progress.
+        app.store.sessions.value.firstOrNull()?.let { some ->
+            app.liveDrafts.save(some.copy(id = "cut-off", debrief = null, startedAt = System.currentTimeMillis()))
+            ui { vm.demoSystem(true) }
+            Log.i(TAG, "Wiederhergestellt: ${app.store.get("cut-off") != null} · Banner ${vm.recoveredSession} · Entwurf weg ${app.liveDrafts.load() == null}")
+            shot("heute_sicherheitsnetz")
+            runCatching { compose.onNodeWithTag("crash_banner").performClick() }
+            shot("fehlerbericht")
+            runCatching { compose.onNodeWithTag("popupConfirm").performClick() }
+            ui { vm.demoSystem(false); app.store.delete("cut-off") }
+            Log.i(TAG, "Fehlerbericht zu: ${vm.crashReport == null}")
+        }
         ui { de.abicoach.update.AppUpdater.demo(de.abicoach.update.AppUpdater.State.Idle); vm.nav.push(Screen.Settings) }
         // The other AI companies (the settings change only what is shown here; no key is needed for the picture).
         ui { app.settings.provider = de.abicoach.ai.Provider.OPENAI; vm.settingsSection = "KI" }

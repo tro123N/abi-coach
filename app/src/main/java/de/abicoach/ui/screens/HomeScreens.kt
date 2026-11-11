@@ -118,6 +118,7 @@ fun AbiWegScreen(vm: AppViewModel) {
         actions = { Box(Modifier.tourTarget("action_settings")) { TopBarAction(R.drawable.settings_24dp, "Einstellungen", { vm.tap(); vm.nav.push(Screen.Settings) }, tag = "action_settings") } },
     ) {
         if (vm.errorMessage != null || vm.notice != null || vm.readyDebrief != null || vm.readyMaterialMinutes > 0) item { MessageBanners(vm) }
+        if (vm.crashReport != null || vm.recoveredSession != null || vm.backupDue) item(key = "system_banners") { SystemBanners(vm) }
         // Without a key nothing works: say so first and lead to the setup.
         if (version >= 0 && !app.ai.ready) {
             item(key = "setup_missing") {

@@ -170,6 +170,33 @@ class AnalysisCenter {
     }
 }
 
+/** The evaluations whose result is saved but not yet counted for the profile and the memories. */
+class FoldStore(context: Context) {
+    private val file = java.io.File(context.filesDir, "pending_folds.json")
+    private val ids: MutableSet<String> =
+        de.abicoach.data.SafeFile.load(file) { text -> org.json.JSONArray(text).let { a -> (0 until a.length()).map { a.optString(it) }.filter { it.isNotBlank() }.toMutableSet() } } ?: mutableSetOf()
+
+    @Synchronized
+    fun all(): List<String> = ids.toList()
+
+    @Synchronized
+    fun pending(id: String): Boolean = id in ids
+
+    @Synchronized
+    fun begin(id: String) {
+        if (ids.add(id)) save()
+    }
+
+    @Synchronized
+    fun done(id: String) {
+        if (ids.remove(id)) save()
+    }
+
+    private fun save() {
+        de.abicoach.data.SafeFile.write(file, org.json.JSONArray(ids.toList()).toString())
+    }
+}
+
 /** Evaluates a session and folds the result into the profile, the Abi-Weg and the vocabulary. */
 object AnalysisRunner {
     /** [newCloudJob] false (a retry of the background worker): no new cloud job – a running one is still picked up. */
@@ -196,17 +223,31 @@ object AnalysisRunner {
                 Analyzer(app).analyze(record, onProgress)
             }
         // The comparison with earlier sessions is made afterwards: the grader itself never sees earlier points.
-        val debrief = graded.copy(progress = runCatching { ProgressMaker.make(app, record, graded) }.getOrNull())
+        // The plausibility check: points that contradict the grader's own ratings are corrected, and a session with
+        // very little speech counts less (or not at all) for the forecast.
+        val checked = runCatching { GradeGuard.review(record, graded).debrief }.getOrDefault(graded)
+        val debrief = checked.copy(progress = runCatching { ProgressMaker.make(app, record, checked) }.getOrNull())
+        // From here until the end the result is "saved, but not counted yet": if the app is closed in between,
+        // the next start finishes the counting instead of losing it.
+        app.folds.begin(record.id)
         app.store.save(record.copy(debrief = debrief))
+        fold(app, record, debrief)
+        app.folds.done(record.id)
+        return debrief
+    }
+
+    /** Folds a finished evaluation into everything that learns from it: profile, error memory, learner memory, Abi-Weg. */
+    fun fold(app: AbiCoachApp, record: SessionRecord, debrief: Debrief) {
         app.vocab.addAll(de.abicoach.practice.PracticeFeed.fromDebrief(debrief, record.topicId))
         // A second attempt at the same text counts less for the profile, so it does not inflate the forecast.
         // Two independent gradings that agree make the rating more reliable; a clear disagreement makes it count less.
         val reliability = debrief.secondOpinion?.let { if (it.agrees) 1.15 else 0.8 } ?: 1.0
-        val weight = (record.kind.profileWeight * (if (record.retryOf.isNotBlank()) 0.4 else 1.0) * reliability).coerceAtMost(1.0)
+        val weight = (record.kind.profileWeight * (if (record.retryOf.isNotBlank()) 0.4 else 1.0) * reliability * debrief.reliability).coerceAtMost(1.0)
         val now = System.currentTimeMillis()
         // Content knowledge counts for the topic field of the session (and, in a simulation, for the part-2 topics).
         val topicPoints = debrief.skills[de.abicoach.profile.Skill.SACHWISSEN] ?: debrief.inhaltPoints
-        app.profiles.update { p ->
+        // A session with next to nothing said teaches the profile nothing.
+        if (weight > 0.0) app.profiles.update { p ->
             var rated = p.withRatings(debrief.skills, weight, now, record.kind.short)
             rated = rated.withTopic(record.topicId, topicPoints, weight, now)
             if (record.kind.hasPart2) record.task?.part2?.forEach { t -> rated = rated.withTopic(t.topicId, topicPoints, weight * 0.4, now) }
@@ -237,7 +278,6 @@ object AnalysisRunner {
             val profile = app.profiles.profile.value
             app.path.update { de.abicoach.path.PathEngine.applyPlacement(it, app.worlds(), profile) }
         }
-        return debrief
     }
 }
 
@@ -290,6 +330,11 @@ class AnalysisWorker(context: Context, params: WorkerParameters) : CoroutineWork
         val id = inputData.getString(KEY_ID) ?: return Result.failure()
         val record = app.store.get(id) ?: return Result.failure()
         if (record.debrief != null) {
+            // Saved, but the app was closed before the result was counted: count it now.
+            if (app.folds.pending(id)) {
+                runCatching { AnalysisRunner.fold(app, record, record.debrief) }.onFailure { de.abicoach.data.CrashLog.nonFatal("Auswertung nachtragen", it) }
+                app.folds.done(id)
+            }
             app.analysis.done(id, record.debrief.totalPoints)
             return Result.success()
         }

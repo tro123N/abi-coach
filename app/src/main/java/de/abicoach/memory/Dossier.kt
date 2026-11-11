@@ -125,22 +125,15 @@ class DossierStore(context: Context) {
     val status: StateFlow<DossierStatus> = _status.asStateFlow()
 
     private fun load(): Map<Int, TopicDossier> =
-        dir.listFiles()?.mapNotNull { f -> runCatching { TopicDossier.fromJson(JSONObject(f.readText())) }.getOrNull() }
+        dir.listFiles()?.map { it.name.removeSuffix(".bak").removeSuffix(".tmp") }?.filter { it.endsWith(".json") }?.distinct()
+            ?.mapNotNull { name -> de.abicoach.data.SafeFile.load(File(dir, name)) { TopicDossier.fromJson(JSONObject(it)) } }
             ?.filter { it.topic in 0..13 }?.associateBy { it.topic }.orEmpty()
 
     fun get(topic: Int): TopicDossier? = _all.value[topic]
 
     @Synchronized
     fun save(d: TopicDossier) {
-        runCatching {
-            val f = File(dir, "${d.topic}.json")
-            val tmp = File(dir, "${d.topic}.json.tmp")
-            tmp.writeText(d.toJson().toString())
-            if (!tmp.renameTo(f)) {
-                f.writeText(tmp.readText())
-                tmp.delete()
-            }
-        }
+        de.abicoach.data.SafeFile.write(File(dir, "${d.topic}.json"), d.toJson().toString())
         _all.value = _all.value + (d.topic to d)
     }
 

@@ -50,6 +50,12 @@ android {
         compose = true
     }
 
+    testOptions {
+        // The unit tests check the app's own logic (grading check, profile, stores). Android classes they touch by
+        // the way answer with defaults instead of failing.
+        unitTests.isReturnDefaultValues = true
+    }
+
     packaging {
         resources {
             excludes += setOf("META-INF/LICENSE.md", "META-INF/LICENSE-notice.md")
@@ -78,6 +84,10 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.okhttp.dnsoverhttps)
     implementation(libs.haze)
+
+    testImplementation(libs.junit)
+    // The real JSON classes for the unit tests (on the phone Android brings its own).
+    testImplementation(libs.org.json)
 
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.junit)

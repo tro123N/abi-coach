@@ -304,6 +304,10 @@ data class Debrief(
     val observations: List<Observation> = emptyList(),
     /** The independent second grading, if there was one. */
     val secondOpinion: SecondOpinion? = null,
+    /** What the plausibility check changed or noticed after the grading (German sentences). */
+    val guardNotes: List<String> = emptyList(),
+    /** How much this grading may count for the profile (1 = fully; less for very short sessions). */
+    val reliability: Double = 1.0,
 ) {
     val stars: Int get() = when {
         totalPoints >= 13 -> 3
@@ -341,6 +345,8 @@ data class Debrief(
             .put("goalResults", goalResults.toJsonArray { it.toJson() })
             .put("observations", observations.toJsonArray { it.toJson() })
             .put("secondOpinion", secondOpinion?.toJson() ?: JSONObject.NULL)
+            .put("guardNotes", guardNotes.toJsonArray())
+            .put("reliability", reliability)
     }
 
     companion object {
@@ -376,6 +382,8 @@ data class Debrief(
                 goalResults = o.optJSONArray("goalResults").objects().map { GoalResult.fromJson(it) },
                 observations = o.optJSONArray("observations").objects().map { Observation.fromJson(it) },
                 secondOpinion = o.optJSONObject("secondOpinion")?.let { SecondOpinion.fromJson(it) },
+                guardNotes = o.optJSONArray("guardNotes").strings(),
+                reliability = o.optDouble("reliability", 1.0).let { if (it.isNaN()) 1.0 else it.coerceIn(0.0, 1.0) },
             )
         }
     }

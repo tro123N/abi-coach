@@ -140,29 +140,24 @@ data class ErrorPattern(
  * kind over time. The coach interrupts for active patterns, the examiner asks questions that need these structures,
  * the speaking training drills them with spaced repetition, and the plan and the statistics show what is still open.
  */
-class ErrorMemoryStore(context: Context) {
-    private val file = File(context.filesDir, "error_memory.json")
-    private val ingestedFile = File(context.filesDir, "error_memory_sessions.json")
+class ErrorMemoryStore(root: File) {
+    constructor(context: Context) : this(context.filesDir)
+
+    private val file = File(root, "error_memory.json")
+    private val ingestedFile = File(root, "error_memory_sessions.json")
     private val _patterns = MutableStateFlow(load())
     val patterns: StateFlow<List<ErrorPattern>> = _patterns.asStateFlow()
     private val ingested: MutableSet<String> = loadIngested()
 
     private fun load(): List<ErrorPattern> =
-        runCatching { JSONArray(file.readText()).objects().map { ErrorPattern.fromJson(it) }.filter { it.key.isNotBlank() } }.getOrElse { emptyList() }
+        de.abicoach.data.SafeFile.load(file) { text -> JSONArray(text).objects().map { ErrorPattern.fromJson(it) }.filter { it.key.isNotBlank() } } ?: emptyList()
 
-    private fun loadIngested(): MutableSet<String> = runCatching { JSONArray(ingestedFile.readText()).strings().toMutableSet() }.getOrElse { mutableSetOf() }
+    private fun loadIngested(): MutableSet<String> = de.abicoach.data.SafeFile.load(ingestedFile) { JSONArray(it).strings().toMutableSet() } ?: mutableSetOf()
 
     @Synchronized
     private fun save(list: List<ErrorPattern>) {
         _patterns.value = list
-        runCatching {
-            val tmp = File(file.parentFile, file.name + ".tmp")
-            tmp.writeText(JSONArray().also { a -> list.forEach { a.put(it.toJson()) } }.toString())
-            if (!tmp.renameTo(file)) {
-                file.writeText(tmp.readText())
-                tmp.delete()
-            }
-        }
+        de.abicoach.data.SafeFile.write(file, JSONArray().also { a -> list.forEach { a.put(it.toJson()) } }.toString())
     }
 
     /**
@@ -172,7 +167,7 @@ class ErrorMemoryStore(context: Context) {
     @Synchronized
     fun ingest(errors: List<LiveError>, sessionId: String, source: String, at: Long, assessableWords: Int) {
         if (sessionId.isNotBlank() && !ingested.add(sessionId)) return
-        runCatching { ingestedFile.writeText(JSONArray(ingested.toList().takeLast(500)).toString()) }
+        de.abicoach.data.SafeFile.write(ingestedFile, JSONArray(ingested.toList().takeLast(500)).toString())
         val list = _patterns.value.toMutableList()
         val seen = HashSet<String>()
         val clean =
@@ -302,8 +297,9 @@ class ErrorMemoryStore(context: Context) {
     @Synchronized
     fun reset() {
         ingested.clear()
-        runCatching { ingestedFile.delete() }
+        de.abicoach.data.SafeFile.delete(ingestedFile)
         save(emptyList())
+        de.abicoach.data.SafeFile.dropBackup(file)
     }
 
     /** Puts prepared patterns in (emulator test). */

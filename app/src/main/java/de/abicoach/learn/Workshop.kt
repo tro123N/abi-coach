@@ -121,8 +121,8 @@ class WorkshopStore(context: Context) {
     val memories: StateFlow<Map<String, TutorMemory>> = _memories.asStateFlow()
 
     private fun load(): Map<String, TutorMemory> =
-        runCatching { JSONArray(file.readText()).objects().map { TutorMemory.fromJson(it) }.filter { it.patternKey.isNotBlank() }.associateBy { it.patternKey } }
-            .getOrElse { emptyMap() }
+        de.abicoach.data.SafeFile.load(file) { text -> JSONArray(text).objects().map { TutorMemory.fromJson(it) }.filter { it.patternKey.isNotBlank() }.associateBy { it.patternKey } }
+            ?: emptyMap()
 
     fun get(key: String): TutorMemory? = _memories.value[key]
 
@@ -130,13 +130,13 @@ class WorkshopStore(context: Context) {
     fun put(memory: TutorMemory) {
         val next = _memories.value + (memory.patternKey to memory)
         _memories.value = next
-        runCatching { file.writeText(JSONArray().also { a -> next.values.forEach { a.put(it.toJson()) } }.toString()) }
+        de.abicoach.data.SafeFile.write(file, JSONArray().also { a -> next.values.forEach { a.put(it.toJson()) } }.toString())
     }
 
     @Synchronized
     fun reset() {
         _memories.value = emptyMap()
-        file.delete()
+        de.abicoach.data.SafeFile.delete(file)
     }
 }
 

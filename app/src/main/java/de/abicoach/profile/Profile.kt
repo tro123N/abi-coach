@@ -259,23 +259,24 @@ data class Profile(
 }
 
 /** Keeps the learner profile in one JSON file. */
-class ProfileStore(context: Context) {
-    private val file = File(context.filesDir, "profile.json")
+class ProfileStore(root: File) {
+    constructor(context: Context) : this(context.filesDir)
+
+    private val file = File(root, "profile.json")
     private val _profile = MutableStateFlow(load())
     val profile: StateFlow<Profile> = _profile.asStateFlow()
 
-    private fun load(): Profile = runCatching { Profile.fromJson(JSONObject(file.readText())) }.getOrElse { Profile() }
+    private fun load(): Profile = de.abicoach.data.SafeFile.load(file) { Profile.fromJson(JSONObject(it)) } ?: Profile()
 
     @Synchronized
     fun update(change: (Profile) -> Profile) {
         val next = change(_profile.value)
         _profile.value = next
-        runCatching {
-            val tmp = File(file.parentFile, file.name + ".tmp")
-            tmp.writeText(next.toJson().toString())
-            tmp.renameTo(file)
-        }
+        de.abicoach.data.SafeFile.write(file, next.toJson().toString())
     }
 
-    fun reset() = update { Profile() }
+    fun reset() {
+        update { Profile() }
+        de.abicoach.data.SafeFile.dropBackup(file)
+    }
 }

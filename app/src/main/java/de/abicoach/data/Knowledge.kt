@@ -166,4 +166,25 @@ object Knowledge {
             "oder sehr gut sind differenzierte Leistungen im Anforderungsbereich III nötig. Notenstufen: 15–13 sehr gut " +
             "(Anforderungen in besonderem Maße erfüllt), 12–10 gut (voll), 9–7 befriedigend (im Allgemeinen), 6–5 " +
             "ausreichend (Mängel, im Ganzen noch), 4 schwach ausreichend, 3–1 mangelhaft, 0 ungenügend."
+
+    /**
+     * Fixed descriptions of what each band of points looks like in this exam, so that the same performance gets the
+     * same points every time (an AI otherwise drifts towards friendly middle values).
+     */
+    const val BAND_ANCHORS =
+        "- Anker für die Punkte – halte dich daran, damit gleiche Leistungen immer gleiche Punkte bekommen:\n" +
+            "  Inhalt 13–15: alle Aufgaben vollständig und genau; Analyse mit treffenden Textbelegen und deren Wirkung; differenzierte, " +
+            "begründete Stellungnahme mit eigenen Beispielen und Kurswissen (Anforderungsbereich III klar erreicht). " +
+            "10–12: alle Aufgaben bearbeitet, Kernaussagen richtig, Analyse nachvollziehbar mit einigen Belegen, Stellungnahme begründet, aber wenig differenziert. " +
+            "7–9: Aufgaben im Wesentlichen bearbeitet, aber teils oberflächlich oder Nacherzählung statt Analyse; Stellungnahme allgemein. " +
+            "5–6: deutliche Lücken, eine Aufgabe nur angerissen, kaum Belege. 1–4: Aufgaben weitgehend verfehlt oder nur Bruchstücke.\n" +
+            "  Darstellung 13–15: spricht frei, flüssig und klar gegliedert; breiter, genauer Wortschatz mit Fachbegriffen und Redemitteln; " +
+            "komplexe Sätze fast fehlerfrei; klare Aussprache; reagiert im Gespräch flexibel und setzt eigene Impulse. " +
+            "10–12: weitgehend frei und flüssig, klare Struktur, angemessener Wortschatz, einige Fehler ohne Verständnisprobleme. " +
+            "7–9: verständlich, aber häufige Pausen und Füllwörter, einfacher Wortschatz, wiederkehrende Grundfehler, stark an Notizen gebunden. " +
+            "5–6: stockend, begrenzter Wortschatz, viele Fehler, die das Verstehen manchmal erschweren. 1–4: kaum zusammenhängende Äußerungen.\n" +
+            "  Grenzen: Wer eine der drei Aufgaben gar nicht bearbeitet, bekommt im Inhalt höchstens 9 Punkte; ohne erkennbare Leistung im " +
+            "Anforderungsbereich III sind 10 oder mehr Punkte im Inhalt ausgeschlossen. Die Punkte eines Bereichs müssen zu den Punkten " +
+            "der einzelnen Kompetenzen passen (höchstens 2 Punkte vom Durchschnitt entfernt). 13 und mehr Punkte sind für wirklich " +
+            "herausragende Leistungen; eine solide, aber unauffällige Leistung liegt bei 7–9."
 }

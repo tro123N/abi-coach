@@ -53,9 +53,10 @@ object Backup {
             zip.write(app.settings.exportPrefs().toString(2).toByteArray())
             zip.closeEntry()
             FILES.map { File(app.filesDir, it) }.filter { it.isFile }.forEach { f -> addFile(zip, f, f.name) }
+            // Backup copies and half-written files of the safe writer stay on the phone.
             (DIRS + if (withMaterial) listOf(MATERIAL) else emptyList()).forEach { dir ->
                 val root = File(app.filesDir, dir)
-                root.walkTopDown().filter { it.isFile }.forEach { f -> addFile(zip, f, dir + "/" + f.relativeTo(root).invariantSeparatorsPath) }
+                root.walkTopDown().filter { it.isFile && !SafeFile.isHelper(it) }.forEach { f -> addFile(zip, f, dir + "/" + f.relativeTo(root).invariantSeparatorsPath) }
             }
         }
         return info
@@ -112,7 +113,9 @@ object Backup {
         FILES.forEach { name ->
             val from = File(staging, name)
             val to = File(app.filesDir, name)
-            if (from.isFile) from.copyTo(to, overwrite = true) else to.delete()
+            // The backup copy of the old progress goes too – otherwise it would come back when a file is missing.
+            SafeFile.delete(to)
+            if (from.isFile) from.copyTo(to, overwrite = true)
         }
         (DIRS + if (info.withMaterial) listOf(MATERIAL) else emptyList()).forEach { dir ->
             val to = File(app.filesDir, dir)
@@ -123,6 +126,8 @@ object Backup {
         File(staging, SETTINGS).takeIf { it.isFile }?.let { f -> runCatching { app.settings.importPrefs(JSONObject(f.readText())) } }
         // Evaluations that were running belong to the old progress.
         File(app.filesDir, "cloud_jobs.json").delete()
+        SafeFile.delete(File(app.filesDir, "pending_folds.json"))
+        File(app.filesDir, "live_draft.json").delete()
         staging.deleteRecursively()
         return info
     }

@@ -139,7 +139,7 @@ class OpenAiLiveAgent(
             runCatching { s.send(JSONObject().put("type", "session.close").toString()) }
             Thread {
                 runCatching { Thread.sleep(1500) }
-                s.close(1000, "done")
+                runCatching { s.close(1000, "done") }
             }.apply { isDaemon = true }.start()
         } else {
             s?.close(1000, "done")
@@ -412,7 +412,7 @@ class OpenAiTranscriber(
                 val at = modelIndex
                 Thread {
                     runCatching { Thread.sleep(3_000) }
-                    if (socket === ws && !closedByUser && modelIndex == at) becomeReady()
+                    runCatching { if (socket === ws && !closedByUser && modelIndex == at) becomeReady() }
                 }.apply { isDaemon = true }.start()
             }
             "conversation.item.input_audio_transcription.delta" -> {

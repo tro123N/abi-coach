@@ -11,9 +11,11 @@ import java.time.LocalDate
 import java.time.ZoneId
 
 /** Stores every session as one JSON file on the phone. Nothing leaves the device except the API calls. */
-class SessionStore(context: Context) {
-    private val dir = File(context.filesDir, "sessions").apply { mkdirs() }
-    private val audioDir = File(context.filesDir, "audio").apply { mkdirs() }
+class SessionStore(root: File) {
+    constructor(context: Context) : this(context.filesDir)
+
+    private val dir = File(root, "sessions").apply { mkdirs() }
+    private val audioDir = File(root, "audio").apply { mkdirs() }
 
     private val _sessions = MutableStateFlow<List<SessionRecord>>(emptyList())
     val sessions: StateFlow<List<SessionRecord>> = _sessions.asStateFlow()
@@ -22,34 +24,69 @@ class SessionStore(context: Context) {
         reload()
     }
 
+    /** Reads every session from the disk (once at the start and after a restore). A broken file falls back to its backup. */
     @Synchronized
     fun reload() {
-        val files = dir.listFiles { f -> f.extension == "json" } ?: emptyArray()
+        val names =
+            (dir.listFiles() ?: emptyArray())
+                .map { it.name.removeSuffix(".bak").removeSuffix(".tmp") }
+                .filter { it.endsWith(".json") }
+                .distinct()
         _sessions.value =
-            files.mapNotNull { f -> runCatching { SessionRecord.fromJson(JSONObject(f.readText())) }.getOrNull() }
+            names.mapNotNull { name -> SafeFile.load(File(dir, name)) { text -> SessionRecord.fromJson(JSONObject(text)) } }
                 .sortedByDescending { it.startedAt }
     }
 
+    /** Saves one session. The list in memory is updated directly – the other files are not read again. */
     @Synchronized
     fun save(record: SessionRecord) {
-        File(dir, record.id + ".json").writeText(record.toJson().toString())
-        reload()
+        if (!SafeFile.write(File(dir, record.id + ".json"), record.toJson().toString())) {
+            CrashLog.nonFatal("Sitzung speichern", java.io.IOException("Sitzung ${record.id} konnte nicht gespeichert werden (Speicher voll?)"))
+        }
+        _sessions.value = (_sessions.value.filter { it.id != record.id } + record).sortedByDescending { it.startedAt }
     }
 
     fun get(id: String): SessionRecord? = _sessions.value.firstOrNull { it.id == id }
 
     @Synchronized
     fun delete(id: String) {
-        File(dir, "$id.json").delete()
+        SafeFile.delete(File(dir, "$id.json"))
         (0..2).forEach { audioFile(id, it).delete() }
-        reload()
+        _sessions.value = _sessions.value.filter { it.id != id }
     }
 
     @Synchronized
     fun deleteAll() {
         dir.listFiles()?.forEach { it.delete() }
         audioDir.listFiles()?.forEach { it.delete() }
-        reload()
+        _sessions.value = emptyList()
+    }
+
+    /** Bytes used by all recordings. */
+    fun audioBytes(): Long = audioDir.listFiles()?.sumOf { it.length() } ?: 0L
+
+    /**
+     * Frees space: deletes the recordings of sessions that are evaluated and older than [days] days (the evaluation,
+     * the transcript and everything learnt from it stay). Recordings without a session are removed too.
+     * Returns the bytes freed.
+     */
+    @Synchronized
+    fun tidyAudio(days: Int, now: Long = System.currentTimeMillis()): Long {
+        if (days <= 0) return 0L
+        val byId = _sessions.value.associateBy { it.id }
+        var freed = 0L
+        audioDir.listFiles()?.forEach { f ->
+            val id = f.name.substringBeforeLast("_p")
+            val record = byId[id]
+            val old = now - f.lastModified() > days * 86_400_000L
+            // A recording nobody refers to any more (older than a day, so a session that is just starting is safe).
+            val orphan = record == null && now - f.lastModified() > 86_400_000L
+            if (orphan || (record != null && record.debrief != null && old)) {
+                val size = f.length()
+                if (f.delete()) freed += size
+            }
+        }
+        return freed
     }
 
     /** Recording of the student's microphone; part 0 = training, 1 = presentation, 2 = exam conversation. */

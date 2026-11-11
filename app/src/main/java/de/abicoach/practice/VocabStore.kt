@@ -104,23 +104,19 @@ object Scheduler {
 }
 
 /** The vocabulary deck: phrases and sentences from the debriefs and words from the course material. */
-class VocabStore(context: Context) {
-    private val file = File(context.filesDir, "vocab.json")
+class VocabStore(root: File) {
+    constructor(context: Context) : this(context.filesDir)
+
+    private val file = File(root, "vocab.json")
     private val _cards = MutableStateFlow(load())
     val cards: StateFlow<List<VocabCard>> = _cards.asStateFlow()
 
-    private fun load(): List<VocabCard> = runCatching { JSONArray(file.readText()).objects().map { VocabCard.fromJson(it) } }.getOrElse { emptyList() }
+    private fun load(): List<VocabCard> = de.abicoach.data.SafeFile.load(file) { text -> JSONArray(text).objects().map { VocabCard.fromJson(it) } } ?: emptyList()
 
     @Synchronized
     private fun save(list: List<VocabCard>) {
         _cards.value = list
-        runCatching {
-            val array = JSONArray()
-            list.forEach { array.put(it.toJson()) }
-            val tmp = File(file.parentFile, file.name + ".tmp")
-            tmp.writeText(array.toString())
-            tmp.renameTo(file)
-        }
+        de.abicoach.data.SafeFile.write(file, JSONArray().also { a -> list.forEach { a.put(it.toJson()) } }.toString())
     }
 
     /** Adds cards whose front is not in the deck yet; returns how many were new. */
@@ -145,5 +141,8 @@ class VocabStore(context: Context) {
         return reviews + news
     }
 
-    fun reset() = save(emptyList())
+    fun reset() {
+        save(emptyList())
+        de.abicoach.data.SafeFile.dropBackup(file)
+    }
 }

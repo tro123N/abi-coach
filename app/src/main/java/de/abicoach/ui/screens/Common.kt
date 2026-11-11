@@ -11,6 +11,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -167,6 +170,72 @@ fun MessageBanners(vm: AppViewModel) {
         }
         vm.errorMessage?.let { Banner(it, red, icon = R.drawable.error_24dp, onClose = { vm.errorMessage = null }) }
         vm.notice?.let { Banner(it, green, icon = R.drawable.info_24dp, onClose = { vm.notice = null }) }
+    }
+}
+
+/**
+ * Messages of the app about itself, on the start page only: a crash in the last run (with the report to copy), a
+ * session that was rescued after the app was closed in the middle, and a reminder to save the learning progress.
+ */
+@Composable
+fun SystemBanners(vm: AppViewModel) {
+    var showCrash by remember { mutableStateOf(false) }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (vm.crashReport != null) {
+            Banner(
+                "AbiCoach wurde beim letzten Mal unerwartet beendet. Dein Lernstand ist sicher. Tippe hier für den Fehlerbericht.",
+                yellow,
+                icon = R.drawable.error_24dp,
+                onClose = { vm.dismissCrash() },
+                modifier = Modifier.clip(RoundedCornerShape(16.dp)).clickable { vm.tap(); showCrash = true }.testTag("crash_banner"),
+            )
+        }
+        vm.recoveredSession?.let { id ->
+            Banner(
+                "Deine letzte Übung wurde unterbrochen – sie ist gerettet. Tippe hier, um sie auszuwerten oder zu löschen.",
+                accent,
+                icon = R.drawable.task_alt_24dp,
+                onClose = { vm.recoveredSession = null },
+                modifier = Modifier.clip(RoundedCornerShape(16.dp)).clickable { vm.recoveredSession = null; vm.openSession(id) }.testTag("recovered_banner"),
+            )
+        }
+        if (vm.backupDue) {
+            Banner(
+                vm.backupDueText(),
+                green,
+                icon = R.drawable.download_24dp,
+                onClose = { vm.snoozeBackup() },
+                modifier = Modifier.clip(RoundedCornerShape(16.dp)).clickable { vm.tap(); vm.settingsSection = SettingsSection.DATEN.name; vm.nav.push(de.abicoach.ui.Screen.Settings) }.testTag("backup_banner"),
+            )
+        }
+    }
+    if (showCrash) CrashReportPopUp(vm.crashReport ?: de.abicoach.data.CrashLog.report()) { showCrash = false; vm.dismissCrash() }
+}
+
+/** Shows a crash report (the beginning) and copies the whole of it, so it can be sent to whoever looks after the app. */
+@Composable
+fun CrashReportPopUp(report: String, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    PopUp(
+        title = "Fehlerbericht",
+        description = "Der Bericht bleibt auf deinem Handy. Kopiere ihn, wenn du ihn weitergeben willst – er enthält keine Schlüssel und nichts von dem, was du gesagt hast.",
+        confirmText = "Kopieren",
+        cancelText = "Schließen",
+        onConfirm = {
+            context.getSystemService(android.content.ClipboardManager::class.java)?.setPrimaryClip(android.content.ClipData.newPlainText("AbiCoach Fehlerbericht", report))
+            onDismiss()
+        },
+        onDismiss = onDismiss,
+    ) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .heightIn(max = 240.dp)
+                .verticalScroll(rememberScrollState())
+                .testTag("crash_report_text"),
+        ) {
+            Text(report.take(2_500), fontSize = AbiTheme.dimens.fonts.caption, color = MaterialTheme.colorScheme.onPrimary)
+        }
     }
 }
 

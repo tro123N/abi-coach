@@ -203,7 +203,7 @@ class PhoneSpeech(context: Context, private val localeOf: () -> Locale = { Local
  * Android's speech recognition. Used with Claude; the examiner listens to the same pieces.
  */
 class PhoneEar(private val phone: PhoneSpeech) : LiveTranscriber {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default + de.abicoach.data.CrashLog.handler)
     private val listeners = CopyOnWriteArrayList<(String) -> Unit>()
     private val segmenter =
         SpeechSegmenter { segment ->
@@ -279,7 +279,7 @@ class PhoneVoiceAgent(
 ) : VoiceAgent {
     override val outputRate: Int = 24_000
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default + de.abicoach.data.CrashLog.handler)
     private val lock = Any()
     private val talk = Mutex()
     private val history = ArrayList<Pair<String, String>>()

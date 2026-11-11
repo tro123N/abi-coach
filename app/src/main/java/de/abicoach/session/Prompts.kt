@@ -409,6 +409,7 @@ Arbeitsweise:
 - Das Transkript ist wortgetreu. Füllwörter, Wiederholungen und Selbstkorrekturen sind normal; zähle sie nicht als Grammatikfehler, berücksichtige sie aber bei der Flüssigkeit. Die Live-Mitschrift lässt Füllwörter (ähm, um, uh, er) oft weg: Verlass dich dafür auf die Aufnahme bzw. die gezählten Füllwörter der Audio-Auswertung.
 - Wenn eine Audiodatei des Prüflings beiliegt, höre sie an: Bewerte Aussprache, Intonation und Flüssigkeit daraus und prüfe damit das Transkript. Liegt stattdessen eine Audio-Auswertung als Text bei, übernimm deren Befunde.
 - Bewerte ehrlich und streng wie im echten Abitur, nicht freundlicher. Vergib Punkte (0–15) getrennt für die inhaltliche Leistung und die Darstellungsleistung; die App rechnet sie 40:60 zusammen.
+${Knowledge.BAND_ANCHORS}
 - Bewerte nur das, was in DIESER Sitzung zu hören und zu lesen ist. Frühere Ergebnisse kennst du nicht und brauchst du nicht: Vergib die Punkte unabhängig davon, ohne dich an einer früheren Zahl zu orientieren – wer besser spricht, bekommt mehr Punkte, wer schlechter spricht, weniger.
 - Nutze den Erwartungshorizont der Aufgaben und das Kursmaterial des Schülers: Was davon hat er genutzt, was hätte gepasst?
 - Eine kurze Sitzung bewertest du nach dem, was da ist, und sagst das in der Begründung.
@@ -522,6 +523,7 @@ Du bist die zweite Prüferin im NRW-Abitur (mündliche Prüfung Englisch, 4. Fac
 ${Knowledge.EXAM_FACTS}
 - Lies das wortgetreue Transkript (Füllwörter und Selbstkorrekturen sind normal) und – falls vorhanden – die Audio-Auswertung.
 - Bewerte streng wie im echten Abitur, nur nach dem, was in dieser Sitzung zu hören und zu lesen ist: Punkte (0–15) für die inhaltliche Leistung (Aufgabenbezug, Erwartungshorizont, Tiefe, Beispiele) und für die Darstellungsleistung (Aufbau, freies Sprechen, Gesprächsführung, Wortschatz, Grammatik, Aussprache).
+${Knowledge.BAND_ANCHORS}
 - skills: für jede Kompetenz 0–15, -1 wenn sie hier nicht beurteilbar war:
 ${skillLines()}
 - reason: je zwei Sätze Begründung auf Deutsch im Stil einer Notenbegründung.
@@ -584,6 +586,10 @@ Du hörst die Aufnahme eines deutschen Schülers, der für die mündliche Englis
         val verified = if (reference.isBlank()) all else all.filter { isQuoted(it.quote, reference) }
         val inhalt = o.optJSONObject("inhalt")
         val darstellung = o.optJSONObject("darstellung")
+        // An answer without points is no grading: better an error (and a new try) than zero points in the profile.
+        if (inhalt?.has("points") != true || darstellung?.has("points") != true) {
+            throw IllegalStateException("Die Bewertung der KI war unvollständig (keine Punkte) – bitte noch einmal auswerten.")
+        }
         val inhaltPoints = (inhalt?.optInt("points", 0) ?: 0).coerceIn(0, 15)
         val darstellungPoints = (darstellung?.optInt("points", 0) ?: 0).coerceIn(0, 15)
         val total = (0.4 * inhaltPoints + 0.6 * darstellungPoints).roundToInt().coerceIn(0, 15)

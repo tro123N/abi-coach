@@ -45,6 +45,7 @@ import de.abicoach.session.Prompts
 import de.abicoach.session.SystemCheck
 import de.abicoach.ui.components.Tab
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -179,10 +180,27 @@ data class AskMessage(
 class AppViewModel(application: Application) : AndroidViewModel(application) {
     val app = application as AbiCoachApp
 
+    /**
+     * An error in background work must never close the app: it is noted in the crash log, the student sees a
+     * message, and the app is usable again.
+     */
+    private val guard =
+        kotlinx.coroutines.CoroutineExceptionHandler { _, e ->
+            de.abicoach.data.CrashLog.nonFatal("App", e)
+            busy = null
+            errorMessage = "Das hat nicht geklappt (${e.message?.take(160) ?: e.javaClass.simpleName}). Die App läuft weiter – versuch es bitte noch einmal."
+        }
+
     /** The Fehler-Werkstatt (its state lives as long as the app screen). */
-    val workshop = WorkshopController(app, viewModelScope) { notice = it }
+    val workshop = WorkshopController(app, CoroutineScope(viewModelScope.coroutineContext + guard)) { notice = it }
     /** Leaving a page stops anything that is being read aloud on it. */
-    val nav = Navigator().also { n -> n.onChange = { left -> leavePage(left) } }
+    val nav =
+        Navigator().also { n ->
+            n.onChange = { left ->
+                de.abicoach.data.CrashLog.breadcrumb("verlässt Seite $left")
+                leavePage(left)
+            }
+        }
 
     var busy by mutableStateOf<String?>(null)
         private set
@@ -347,7 +365,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         // A text that was prepared in advance: the preparation starts at once.
         MaterialPrefetch.takeFor(app, s)?.let { ready ->
             adoptMaterial(pendingFor("", s, ready.task.topicId), ready.task, ready.note, openNow = true)
-            viewModelScope.launch(Dispatchers.Default) { MaterialPrefetch.maybeStart(app) }
+            viewModelScope.launch(guard + Dispatchers.Default) { MaterialPrefetch.maybeStart(app) }
             return
         }
         val topicId = resolveTopic(s.topicChoice)
@@ -413,14 +431,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         val end = prepEndsAt
         val minutes = prepMinutes
         val text = notes
-        viewModelScope.launch(Dispatchers.IO) { app.drafts.save(record.copy(notes = text), end, minutes) }
+        viewModelScope.launch(guard + Dispatchers.IO) { app.drafts.save(record.copy(notes = text), end, minutes) }
     }
 
     fun updateNotes(text: String) {
         notes = text
         saveJob?.cancel()
         saveJob =
-            viewModelScope.launch {
+            viewModelScope.launch(guard) {
                 delay(700)
                 persistDraft()
             }
@@ -437,7 +455,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Follows the background job that writes the material: progress, result and errors. */
     private fun watchMaterial() {
-        viewModelScope.launch {
+        viewModelScope.launch(guard) {
             app.material.status.collect { st ->
                 val key = pendingKey
                 if (key != null && st.key == key && st.text.isNotBlank()) progressText = st.text
@@ -491,7 +509,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         // Still being written in the background?
-        viewModelScope.launch {
+        viewModelScope.launch(guard) {
             val infos =
                 withContext(Dispatchers.IO) {
                     runCatching { androidx.work.WorkManager.getInstance(app).getWorkInfosForUniqueWork(MaterialScheduler.workName(pending.key)).get() }.getOrNull()
@@ -534,7 +552,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     strictness = app.settings.strictness.name,
                 )
         draft = record
-        viewModelScope.launch {
+        viewModelScope.launch(guard) {
             val context =
                 withContext(Dispatchers.Default) {
                     val main = runCatching { app.course.forTopic(topicId, maxChars = if (extras.isEmpty()) 4_000 else 2_600) }.getOrDefault("")
@@ -631,7 +649,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         busy = "Wechsel zu Teil 2 …"
-        viewModelScope.launch {
+        viewModelScope.launch(guard) {
             try {
                 val result = conversation.stop()
                 val updated =
@@ -695,13 +713,24 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         if (busy != null) return
         busy = "Beende die Sitzung …"
         app.feedback.play(FeedbackType.STOP)
-        viewModelScope.launch {
-            val result = conversation.stop()
+        de.abicoach.data.CrashLog.breadcrumb("Sitzung beenden")
+        viewModelScope.launch(guard) {
+            // Whatever goes wrong while stopping: what was said is kept and the app does not hang.
+            val result =
+                try {
+                    conversation.stop()
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    de.abicoach.data.CrashLog.nonFatal("Sitzung beenden", e)
+                    conversation.peek().also { runCatching { conversation.abort() } }
+                }
             live = null
             val previous = draft
             draft = null
             busy = null
             if (previous == null) {
+                app.liveDrafts.clear()
                 nav.resetTo()
                 return@launch
             }
@@ -716,6 +745,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     tech = joinTech(previous.tech, result.tech),
                 )
             app.store.save(record)
+            app.liveDrafts.clear()
             // The evaluation starts in the background right away, whatever the student does next.
             analyze(record.id)
             val practice = record.feedback != FeedbackMode.PRUEFUNG && record.kind != SessionKind.SIMULATION && record.kind != SessionKind.PLACEMENT
@@ -726,6 +756,72 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             }
             // The next exam text is prepared while the student reads the result.
             launch(Dispatchers.Default) { MaterialPrefetch.maybeStart(app) }
+        }
+    }
+
+    /** The running session as it would be saved right now (null when nothing real is running). */
+    private fun liveSnapshot(): SessionRecord? {
+        val conversation = live ?: return null
+        val current = draft ?: return null
+        if (!conversation.real) return null
+        val r = conversation.peek()
+        return current.copy(
+            utterances = current.utterances + r.utterances,
+            liveErrors = current.liveErrors + r.liveErrors,
+            durationSec = current.durationSec + r.seconds,
+            part1Sec = if (conversation.part == 1) r.seconds else current.part1Sec,
+            examiner = r.examinerLabel.ifBlank { current.examiner },
+            examinerSeconds = current.examinerSeconds + r.examinerSeconds,
+            tech = joinTech(current.tech, r.tech),
+        )
+    }
+
+    /** Writes the safety copy of the running session (every few seconds and when the app goes to the background). */
+    fun saveLiveDraft() {
+        val snapshot = runCatching { liveSnapshot() }.getOrNull() ?: return
+        viewModelScope.launch(guard + Dispatchers.IO) { app.liveDrafts.save(snapshot) }
+    }
+
+    /**
+     * A live session that was cut off because the app was closed: it comes back as a normal session, ready to be
+     * evaluated. Too little speech is not worth keeping.
+     */
+    internal fun recoverLive() {
+        val saved = app.liveDrafts.load() ?: return
+        app.liveDrafts.clear()
+        val words = saved.studentText.split(Regex("\\s+")).count { it.isNotBlank() }
+        if (words < MIN_RECOVER_WORDS) {
+            if (app.store.get(saved.id) == null) (0..2).forEach { app.store.audioFile(saved.id, it).delete() }
+            return
+        }
+        (0..2).forEach { part -> runCatching { de.abicoach.audio.Wav.repair(app.store.audioFile(saved.id, part)) } }
+        app.store.save(saved.copy(tech = joinTech(saved.tech, "Hinweis: Diese Übung wurde unterbrochen (die App wurde geschlossen) und aus der Sicherheitskopie wiederhergestellt.")))
+        de.abicoach.data.CrashLog.breadcrumb("Übung wiederhergestellt: ${saved.id}")
+        recoveredSession = saved.id
+    }
+
+    /** The id of a session that was restored after the app was closed in the middle (for a banner on the start page). */
+    var recoveredSession by mutableStateOf<String?>(null)
+
+    /** The report of a crash in the last run that the student has not seen yet. */
+    var crashReport by mutableStateOf<String?>(null)
+        private set
+
+    fun dismissCrash() {
+        de.abicoach.data.CrashLog.markSeen()
+        crashReport = null
+    }
+
+    /** For the emulator test: shows the messages of the safety net (a rescued session, a crash report, the backup reminder). */
+    fun demoSystem(on: Boolean) {
+        if (on) {
+            recoverLive()
+            crashReport = "ABSTURZ am 12.11.2026 00:41:07\nAbiCoach 1.0.44 · Android 16 (API 36) · Beispiel-Handy\nThread: main\n\njava.lang.IllegalStateException: Beispiel für einen Fehlerbericht\n\tat de.abicoach.Beispiel.zeile(Beispiel.kt:42)\nDavor:\n12.11.2026 00:41:02 verlässt Seite Root\n"
+            backupDue = true
+        } else {
+            recoveredSession = null
+            crashReport = null
+            backupDue = false
         }
     }
 
@@ -788,6 +884,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun cancelLive() {
         live?.abort()
         live = null
+        app.liveDrafts.clear()
         draft?.let { d ->
             if (app.store.get(d.id) != null) app.store.delete(d.id) else (0..2).forEach { app.store.audioFile(d.id, it).delete() }
         }
@@ -822,7 +919,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         if (!force && current != null && current.signature == de.abicoach.coach.BriefingMaker.signature(app)) return
         briefingBusy = true
         briefingError = null
-        viewModelScope.launch {
+        viewModelScope.launch(guard) {
             try {
                 val made = withContext(Dispatchers.Default) { de.abicoach.coach.BriefingMaker.make(app) }
                 app.briefings.save(made)
@@ -858,7 +955,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         de.abicoach.session.AnalysisScheduler.cancel(app, id)
         app.analysis.cancel(id)
         readyDebrief = null
-        viewModelScope.launch(Dispatchers.IO) { runCatching { de.abicoach.session.CloudAnalysis.cancel(app, id) } }
+        viewModelScope.launch(guard + Dispatchers.IO) { runCatching { de.abicoach.session.CloudAnalysis.cancel(app, id) } }
         notice = "Auswertung abgebrochen. Die Sitzung bleibt gespeichert – du kannst sie jederzeit über „Zuletzt“ auswerten."
         if (nav.current == Screen.Analyzing) nav.pop()
     }
@@ -889,7 +986,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Reacts when the background evaluation finishes: jump to the result or show a banner. */
     private fun watchAnalysis() {
-        viewModelScope.launch {
+        viewModelScope.launch(guard) {
             app.analysis.status.collect { s ->
                 val finished = s.finishedId ?: return@collect
                 app.analysis.consumeFinished()
@@ -916,7 +1013,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         val files = pendingImport ?: return
         pendingImport = null
         importBusy = true
-        viewModelScope.launch {
+        viewModelScope.launch(guard) {
             try {
                 val created = withContext(Dispatchers.IO) { app.importer.import(files, kind, title.trim(), halbjahr) }
                 if (created.isEmpty()) {
@@ -963,7 +1060,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         val history = askMessages.map { (if (it.fromUser) "user" else "assistant") to it.text }
         askMessages += AskMessage(true, q)
         askBusy = true
-        viewModelScope.launch {
+        viewModelScope.launch(guard) {
             try {
                 val answer = withContext(Dispatchers.Default) { MaterialQuestion.ask(app, q, history) }
                 askMessages += AskMessage(false, answer.text, answer.hits.mapIndexed { i, h -> "[${i + 1}] ${h.citation}" }, answer.by, answer.actions)
@@ -1089,7 +1186,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
         val target = pronTarget
         pronBusy = true
-        viewModelScope.launch {
+        viewModelScope.launch(guard) {
             try {
                 val result = withContext(Dispatchers.Default) { de.abicoach.practice.PronunciationCheck.check(app, target, wav) }
                 pronResult = result
@@ -1152,7 +1249,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         sayBusy = true
-        viewModelScope.launch {
+        viewModelScope.launch(guard) {
             try {
                 val result = withContext(Dispatchers.Default) { SayItCheck.check(app, target, wav) }
                 if (sayTarget == target) {
@@ -1180,7 +1277,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         if (systemChecking) return
         systemChecking = true
         systemCheck = emptyList()
-        viewModelScope.launch {
+        viewModelScope.launch(guard) {
             try {
                 withContext(Dispatchers.Default) { SystemCheck(app).runAll { systemCheck = it } }
             } catch (e: CancellationException) {
@@ -1197,7 +1294,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun checkKey(provider: String) {
         keyChecking = provider
-        viewModelScope.launch {
+        viewModelScope.launch(guard) {
             val result = app.ai.checkKey(de.abicoach.ai.Provider.of(provider))
             keyChecks = keyChecks + (provider to result)
             keyChecking = null
@@ -1299,7 +1396,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         modelBusy = id
-        viewModelScope.launch {
+        viewModelScope.launch(guard) {
             try {
                 val parts = withContext(Dispatchers.Default) { de.abicoach.session.ModelTalk.make(app, record) }
                 app.store.get(id)?.let { r -> r.debrief?.let { d -> app.store.save(r.copy(debrief = d.copy(model = parts))) } }
@@ -1374,7 +1471,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         if (chosen.isEmpty()) return
         drillLoading = true
         drillJob =
-            viewModelScope.launch {
+            viewModelScope.launch(guard) {
                 try {
                     val made = withContext(Dispatchers.Default) { DrillMaker.make(app, chosen, count = if (chosen.size == 1) 5 else 8) }
                     drills.addAll(made)
@@ -1416,7 +1513,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         drillBusy = true
-        viewModelScope.launch {
+        viewModelScope.launch(guard) {
             try {
                 val result = withContext(Dispatchers.Default) { DrillCheck.check(app, drill, wav) }
                 if (drills.getOrNull(drillIndex)?.id == drill.id) {
@@ -1516,7 +1613,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         dossierBusy = topic
-        viewModelScope.launch {
+        viewModelScope.launch(guard) {
             try {
                 withContext(Dispatchers.Default) { DossierMaker.make(app, topic) }
                 app.feedback.play(FeedbackType.ENABLE)
@@ -1616,7 +1713,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         stopSpeaking()
         speaking = text
         speechJob =
-            viewModelScope.launch {
+            viewModelScope.launch(guard) {
                 try {
                     if (!app.ai.ready || app.ai.provider == de.abicoach.ai.Provider.ANTHROPIC) {
                         androidTts.say(text)
@@ -1663,13 +1760,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun checkUpdate() {
         tap()
-        viewModelScope.launch { de.abicoach.update.AppUpdater.check(app) }
+        viewModelScope.launch(guard) { de.abicoach.update.AppUpdater.check(app) }
     }
 
     /** Downloads and installs [release]; the installation goes on in Android's installer. */
     fun installUpdate(release: de.abicoach.update.AppUpdater.Release) {
         tap()
-        viewModelScope.launch { de.abicoach.update.AppUpdater.update(app, release) }
+        viewModelScope.launch(guard) { de.abicoach.update.AppUpdater.update(app, release) }
     }
 
     /** The open area of the settings (SettingsSection name), null = the overview. */
@@ -1703,15 +1800,57 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     var pendingRestore by mutableStateOf<Pair<android.net.Uri, de.abicoach.data.Backup.Info>?>(null)
         private set
 
+    /** True when the learning progress has grown for a while without being saved as a file. */
+    var backupDue by mutableStateOf(false)
+        private set
+
+    private fun checkBackupDue() {
+        val now = System.currentTimeMillis()
+        val graded = app.store.graded()
+        val since = maxOf(app.settings.lastBackupAt, graded.minOfOrNull { it.startedAt } ?: now)
+        val newSessions = graded.count { it.startedAt > app.settings.lastBackupAt }
+        backupDue = newSessions >= BACKUP_MIN_SESSIONS && now - since > BACKUP_REMIND_DAYS * 86_400_000L && now > app.settings.backupSnoozeUntil
+    }
+
+    fun backupDueText(): String =
+        if (app.settings.lastBackupAt == 0L) {
+            "Dein Lernstand liegt nur auf diesem Handy. Sichere ihn als Datei, damit er bei einem Defekt oder Handywechsel nicht verloren geht – tippe hier."
+        } else {
+            val days = ((System.currentTimeMillis() - app.settings.lastBackupAt) / 86_400_000L).toInt()
+            "Deine letzte Sicherung ist $days Tage alt. Tippe hier, um den Lernstand neu zu sichern."
+        }
+
+    /** "Not now": the reminder comes back in a week. */
+    fun snoozeBackup() {
+        app.settings.backupSnoozeUntil = System.currentTimeMillis() + 7 * 86_400_000L
+        backupDue = false
+    }
+
+    /** Text for the settings: how much room the recordings take. */
+    fun audioUsage(): String {
+        val mb = app.store.audioBytes() / 1_048_576.0
+        return if (mb < 1) "Aufnahmen: unter 1 MB" else "Aufnahmen: ${"%.0f".format(mb)} MB"
+    }
+
+    /** Deletes old recordings now, after the number of days was changed. */
+    fun tidyAudioNow() {
+        viewModelScope.launch(guard + Dispatchers.IO) {
+            val freed = app.store.tidyAudio(app.settings.keepAudioDays)
+            if (freed > 1_048_576L) notice = "${freed / 1_048_576L} MB alte Aufnahmen gelöscht. Auswertungen und Mitschriften bleiben."
+        }
+    }
+
     fun exportBackup(uri: android.net.Uri, withMaterial: Boolean) {
         backupBusy = "Sichere deinen Lernstand …"
-        viewModelScope.launch {
+        viewModelScope.launch(guard) {
             try {
                 val info =
                     withContext(Dispatchers.IO) {
                         app.contentResolver.openOutputStream(uri)?.use { de.abicoach.data.Backup.export(app, it, withMaterial) }
                             ?: throw IllegalStateException("Die Datei konnte nicht geschrieben werden.")
                     }
+                app.settings.lastBackupAt = System.currentTimeMillis()
+                backupDue = false
                 notice = "Lernstand gesichert: ${info.sessions} Sitzungen, Lernprofil, Fehlergedächtnis und Einstellungen" + if (withMaterial) " – mit deinem Kursmaterial." else "."
             } catch (e: CancellationException) {
                 throw e
@@ -1724,7 +1863,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun inspectBackup(uri: android.net.Uri) {
-        viewModelScope.launch {
+        viewModelScope.launch(guard) {
             val info = withContext(Dispatchers.IO) { runCatching { app.contentResolver.openInputStream(uri)?.use { de.abicoach.data.Backup.inspect(it) } }.getOrNull() }
             if (info == null) {
                 errorMessage = "Diese Datei ist keine AbiCoach-Sicherung."
@@ -1743,7 +1882,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         val (uri, _) = pendingRestore ?: return
         pendingRestore = null
         backupBusy = "Lade deinen Lernstand …"
-        viewModelScope.launch {
+        viewModelScope.launch(guard) {
             try {
                 withContext(Dispatchers.IO) {
                     app.contentResolver.openInputStream(uri)?.use { de.abicoach.data.Backup.restore(app, it) } ?: throw IllegalStateException("Die Datei konnte nicht gelesen werden.")
@@ -1866,7 +2005,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             app.analysis.cancel(id)
             app.store.delete(id)
         }
-        viewModelScope.launch(Dispatchers.IO) { gone.forEach { id -> runCatching { de.abicoach.session.CloudAnalysis.cancel(app, id) } } }
+        viewModelScope.launch(guard + Dispatchers.IO) { gone.forEach { id -> runCatching { de.abicoach.session.CloudAnalysis.cancel(app, id) } } }
         if (readyDebrief?.first in gone) readyDebrief = null
         notice = if (gone.size == 1) "Sitzung gelöscht." else "${gone.size} Sitzungen gelöscht."
         (nav.current as? Screen.Debrief)?.let { if (it.id in gone) nav.pop() }
@@ -1887,10 +2026,20 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         // Last, so that everything above is ready.
         watchAnalysis()
         watchMaterial()
-        restoreWork()
+        crashReport = de.abicoach.data.CrashLog.unseenCrash()
+        runCatching { checkBackupDue() }
+        runCatching { recoverLive() }.onFailure { de.abicoach.data.CrashLog.nonFatal("Wiederherstellen", it) }
+        runCatching { restoreWork() }.onFailure { de.abicoach.data.CrashLog.nonFatal("Vorbereitung wiederherstellen", it) }
+        // The safety copy of a running session, every few seconds.
+        viewModelScope.launch(guard) {
+            while (true) {
+                kotlinx.coroutines.delay(LIVE_SAVE_MS)
+                saveLiveDraft()
+            }
+        }
         // A new version on GitHub? Asked by itself at most every 12 hours, quietly (a banner only if there is one).
         if (System.currentTimeMillis() - app.settings.lastUpdateCheck > 12 * 3_600_000L) {
-            viewModelScope.launch { runCatching { de.abicoach.update.AppUpdater.check(app, quiet = true) } }
+            viewModelScope.launch(guard) { runCatching { de.abicoach.update.AppUpdater.check(app, quiet = true) } }
         }
         // The very first start: the setup shows what the app needs to work (someone who already uses it skips it).
         if (!app.settings.onboardingDone) {
@@ -1907,5 +2056,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
         /** Topic fields that can be added to a conversation (with the main one: up to three, as many as fit in 10–15 minutes). */
         const val MAX_EXTRA_TOPICS = 2
+
+        /** How often the safety copy of a running session is written. */
+        private const val LIVE_SAVE_MS = 12_000L
+
+        /** A cut-off session with fewer words than this is not worth keeping. */
+        private const val MIN_RECOVER_WORDS = 25
+
+        /** The reminder to save the progress: after this many days and this many new evaluated sessions. */
+        private const val BACKUP_REMIND_DAYS = 14
+        private const val BACKUP_MIN_SESSIONS = 5
     }
 }

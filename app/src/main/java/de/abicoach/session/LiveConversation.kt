@@ -161,7 +161,7 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
         )
     val state: StateFlow<LiveUiState> = _state.asStateFlow()
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default + de.abicoach.data.CrashLog.handler)
     private val routing = AudioRouting(app)
     private val player = PcmPlayer(24_000)
     private val tts = Tts(app, call = true) { app.settings.accent.locale }
@@ -287,6 +287,7 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
     }
 
     fun start() {
+        real = true
         if (!app.ai.ready) {
             _state.update { it.copy(error = "Kein ${app.ai.provider.company}-Schlüssel eingetragen (Einstellungen → KI).") }
             return
@@ -1009,6 +1010,16 @@ class LiveConversation(private val app: AbiCoachApp, private val config: Config)
         shutdown()
         return result()
     }
+
+    /** What was said so far, without ending anything (for the safety copy while the session runs). */
+    fun peek(): Result = result()
+
+    /** 1 = presentation, 2 = exam conversation, 0 = training. */
+    val part: Int get() = config.part
+
+    /** True for a real session with microphone (not the prepared state of the emulator test). */
+    @Volatile var real: Boolean = false
+        private set
 
     /** Immediate stop without waiting, e.g. when the session is cancelled. */
     fun abort() {

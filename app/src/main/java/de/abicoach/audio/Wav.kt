@@ -54,6 +54,30 @@ object Wav {
         return toBytes(out)
     }
 
+    /**
+     * Repairs a recording whose writer was never closed (the app was killed): the lengths in the header are set from
+     * the real size of the file. Returns the seconds of sound, 0 if the file is no usable recording.
+     */
+    fun repair(file: java.io.File, rate: Int = 16_000): Int {
+        if (!file.exists() || file.length() <= 44) return 0
+        return runCatching {
+            java.io.RandomAccessFile(file, "rw").use { raf ->
+                val head = ByteArray(44)
+                raf.readFully(head)
+                if (String(head, 0, 4, Charsets.US_ASCII) != "RIFF") return@use 0
+                val data = (raf.length() - 44) and 1L.inv()
+                if (le32(head, 40).toLong() != data) {
+                    val b = ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN)
+                    raf.seek(4)
+                    raf.write(b.putInt(0, (36 + data).toInt()).array())
+                    raf.seek(40)
+                    raf.write(b.putInt(0, data.toInt()).array())
+                }
+                (data / (rate * 2L)).toInt()
+            }
+        }.getOrDefault(0)
+    }
+
     private fun toBytes(samples: IntArray): ByteArray {
         val out = ByteArray(samples.size * 2)
         samples.forEachIndexed { i, v ->

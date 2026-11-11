@@ -433,6 +433,10 @@ private fun SummaryCard(record: SessionRecord, d: Debrief) {
         Gap(10.dp)
         Text(formatDate(record.startedAt) + " · " + ((record.durationSec + 30) / 60).coerceAtLeast(1) + " Min.", fontSize = 12.sp, color = Color.White.copy(alpha = 0.8f))
         if (!d.audioAnalysed) Text("Ohne Aufnahme bewertet – Aussprache und Flüssigkeit sind nur geschätzt.", fontSize = 12.sp, lineHeight = 16.sp, color = Color.White.copy(alpha = 0.8f))
+        // What the plausibility check changed or noticed after the grading.
+        d.guardNotes.forEach { note ->
+            Text("Prüf-Check: $note", fontSize = 12.sp, lineHeight = 16.sp, color = Color.White.copy(alpha = 0.9f), modifier = Modifier.testTag("guard_note"))
+        }
     }
 }
 

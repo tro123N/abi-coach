@@ -54,6 +54,14 @@ class AbiCoachApp : Application() {
         private set
     lateinit var shelf: de.abicoach.session.MaterialShelf
         private set
+
+    /** The safety copy of a live session that is running. */
+    lateinit var liveDrafts: de.abicoach.session.LiveDraftStore
+        private set
+
+    /** Evaluations whose result is saved but not yet folded into the profile (finished at the next start). */
+    lateinit var folds: de.abicoach.session.FoldStore
+        private set
     lateinit var pendingMaterial: de.abicoach.session.PendingMaterialStore
         private set
 
@@ -103,6 +111,8 @@ class AbiCoachApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // First of all: from here on a crash leaves a report behind.
+        de.abicoach.data.CrashLog.install(this)
         settings = Settings(this)
         store = SessionStore(this)
         profiles = ProfileStore(this)
@@ -123,6 +133,8 @@ class AbiCoachApp : Application() {
         drafts = de.abicoach.session.DraftStore(this)
         shelf = de.abicoach.session.MaterialShelf(this).also { it.tidy() }
         pendingMaterial = de.abicoach.session.PendingMaterialStore(this)
+        liveDrafts = de.abicoach.session.LiveDraftStore(this)
+        folds = de.abicoach.session.FoldStore(this)
         de.abicoach.path.Reminder.createChannel(this)
         de.abicoach.session.Notifications.createChannels(this)
         registerActivityLifecycleCallbacks(
@@ -151,6 +163,10 @@ class AbiCoachApp : Application() {
         if (ai.ready) de.abicoach.memory.DossierScheduler.kick(this)
         // Evaluations that went on in Google's cloud while the app was closed: fetch their results.
         if (settings.geminiKey.isNotBlank()) cloudJobs.all().forEach { de.abicoach.session.AnalysisScheduler.resume(this, it.sessionId) }
+        // An evaluation that was saved but not yet counted for the profile (the app was closed in between): finish it.
+        folds.all().forEach { id -> if (store.get(id)?.debrief != null) de.abicoach.session.AnalysisScheduler.enqueue(this, id) else folds.done(id) }
+        // Old recordings of evaluated sessions make room (the evaluations stay).
+        Thread { runCatching { store.tidyAudio(settings.keepAudioDays) } }.apply { isDaemon = true }.start()
     }
 
     /** Continues reading material that is not finished yet (e.g. after a restart, a new key or another company). */

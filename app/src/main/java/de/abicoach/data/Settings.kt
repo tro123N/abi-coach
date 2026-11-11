@@ -238,6 +238,33 @@ class Settings(context: Context) {
         set(value) = putString("default_feedback", value.name)
 
     var uploadAudio by BoolPref("upload_audio", true)
+
+    /**
+     * How many days the recording of an evaluated session is kept (0 = for ever). The evaluation, the transcript and
+     * everything learnt from it always stay; only the sound file goes, which is by far the biggest part.
+     */
+    var keepAudioDays: Int
+        get() = prefs.getInt("keep_audio_days", 30)
+        set(value) {
+            prefs.edit().putInt("keep_audio_days", value).apply()
+            changed()
+        }
+
+    /** When the learning progress was last saved as a file (0 = never). */
+    var lastBackupAt: Long
+        get() = prefs.getLong("last_backup_at", 0L)
+        set(value) {
+            prefs.edit().putLong("last_backup_at", value).apply()
+            changed()
+        }
+
+    /** Until when the reminder to save the progress stays quiet. */
+    var backupSnoozeUntil: Long
+        get() = prefs.getLong("backup_snooze_until", 0L)
+        set(value) {
+            prefs.edit().putLong("backup_snooze_until", value).apply()
+            changed()
+        }
     var showTranscript by BoolPref("show_transcript", false)
 
     /** With headphones the whisper hint is also spoken very softly. */
