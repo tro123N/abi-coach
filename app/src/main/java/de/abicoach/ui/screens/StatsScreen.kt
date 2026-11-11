@@ -194,6 +194,7 @@ fun StatsScreen(vm: AppViewModel) {
                                 )
                                 CaptionText("Verlauf der Prognose nach jeder Auswertung")
                             }
+                            RealGradesBlock(vm, profile)
                         }
                     }
                 }

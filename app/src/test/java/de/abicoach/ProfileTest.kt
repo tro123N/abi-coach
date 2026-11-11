@@ -131,3 +131,62 @@ class ProfileTest {
         assertFalse(ProfileStore(dir).profile.value.skills.isNotEmpty())
     }
 }
+
+class CalibrationTest {
+    private fun profile(points: Int) =
+        Profile().withRatings(Skill.entries.associateWith { points }, 1.0, System.currentTimeMillis(), "Test")
+
+    @Test
+    fun withoutRealGradesThereIsNoComparison() {
+        assertNull(profile(10).calibration())
+        assertNull(Profile().withRealGrade(8, "Probe", 1L).calibration())
+    }
+
+    @Test
+    fun oneRealGradeCountsHalf() {
+        // The app says 10, the teacher gave 8: one grade moves the forecast by one point, not by two.
+        val c = profile(10).withRealGrade(8, "Probe-Prüfung", 1L).calibration()!!
+        assertEquals(-1.0, c.offset, 0.0001)
+        assertEquals(9, c.adjustedPoints)
+        assertEquals(1, c.count)
+        assertFalse(c.confirmed)
+    }
+
+    @Test
+    fun moreGradesCountMore() {
+        var p = profile(10)
+        repeat(3) { p = p.withRealGrade(8, "Probe", it.toLong()) }
+        assertEquals(-1.5, p.calibration()!!.offset, 0.0001)
+    }
+
+    @Test
+    fun aMatchingGradeConfirmsTheForecast() {
+        val c = profile(10).withRealGrade(10, "Kommunikationsprüfung", 1L).calibration()!!
+        assertTrue(c.confirmed)
+        assertEquals(10, c.adjustedPoints)
+    }
+
+    @Test
+    fun theAdjustedForecastStaysOnTheScale() {
+        var p = profile(14)
+        repeat(5) { p = p.withRealGrade(15, "Probe", it.toLong()) }
+        assertTrue(p.calibration()!!.adjusted <= 15.0)
+    }
+
+    @Test
+    fun realGradesSurviveSavingAndCanBeRemoved() {
+        val p = profile(10).withRealGrade(8, "Probe-Prüfung", 42L)
+        val back = Profile.fromJson(JSONObject(p.toJson().toString()))
+        assertEquals(1, back.realGrades.size)
+        assertEquals(8, back.realGrades[0].points)
+        assertEquals("Probe-Prüfung", back.realGrades[0].label)
+        assertEquals(10.0, back.realGrades[0].forecast!!, 0.0001)
+        assertTrue(back.withoutRealGrade(42L).realGrades.isEmpty())
+    }
+
+    @Test
+    fun aGradeEnteredBeforeAnyPracticeHasNoForecastAndIsIgnored() {
+        val p = Profile().withRealGrade(8, "Probe", 1L).withRatings(mapOf(Skill.GRAMMATIK to 10), 1.0, System.currentTimeMillis(), "Test")
+        assertNull(p.calibration())
+    }
+}

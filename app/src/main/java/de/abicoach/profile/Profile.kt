@@ -54,6 +54,31 @@ data class Readiness(val part1: Double?, val part2: Double?)
 /** One point of the forecast history, for the chart in the statistics. */
 data class ForecastPoint(val at: Long, val total: Double, val source: String)
 
+/**
+ * A real grade for speaking that the student got at school (a mock oral exam, the Kommunikationsprüfung, the oral
+ * mark of a term), with what the app forecast on that day. The app's points are an AI's estimate – real grades show
+ * whether that estimate tends to be too friendly or too strict.
+ */
+data class RealGrade(val at: Long, val points: Int, val label: String, val forecast: Double?) {
+    fun toJson(): JSONObject = JSONObject().put("at", at).put("points", points).put("label", label).put("forecast", forecast ?: JSONObject.NULL)
+
+    companion object {
+        fun fromJson(o: JSONObject) =
+            RealGrade(o.optLong("at"), o.optInt("points").coerceIn(0, 15), o.optString("label"), o.optDouble("forecast").takeIf { !it.isNaN() })
+    }
+}
+
+/**
+ * How the app's forecast compares with real grades. [offset] is what the real grades were on average above (+) or
+ * below (−) the forecast, pulled towards zero while there are only a few grades; [adjusted] is the forecast with it.
+ */
+data class Calibration(val offset: Double, val count: Int, val adjusted: Double) {
+    val adjustedPoints: Int get() = adjusted.roundToInt().coerceIn(0, 15)
+
+    /** Within one point the forecast counts as confirmed. */
+    val confirmed: Boolean get() = abs(offset) < 1.0
+}
+
 /** The expected exam result with a range that narrows the more the student practises. */
 data class Prognosis(val total: Double, val inhalt: Double?, val darstellung: Double?, val low: Double, val high: Double, val confidence: Double) {
     val points: Int get() = total.roundToInt().coerceIn(0, 15)
@@ -74,7 +99,27 @@ data class Profile(
     val topics: Map<Int, SkillState> = emptyMap(),
     /** The last ratings of each skill (oldest first), for the trend. */
     val skillLog: Map<Skill, List<Int>> = emptyMap(),
+    /** Real grades for speaking from school, to check the forecast against. */
+    val realGrades: List<RealGrade> = emptyList(),
 ) {
+    /** Adds a real grade and remembers what the app forecast at that moment. */
+    fun withRealGrade(points: Int, label: String, at: Long): Profile =
+        copy(realGrades = (realGrades + RealGrade(at, points.coerceIn(0, 15), label.trim().take(60), prognosis()?.total)).takeLast(20))
+
+    fun withoutRealGrade(at: Long): Profile = copy(realGrades = realGrades.filter { it.at != at })
+
+    /**
+     * The comparison of forecast and real grades; null without a grade that has a forecast next to it. One grade is
+     * weak evidence, so the difference only counts in part: with n grades it counts n/(n+1).
+     */
+    fun calibration(): Calibration? {
+        val pairs = realGrades.filter { it.forecast != null }
+        val now = prognosis() ?: return null
+        if (pairs.isEmpty()) return null
+        val offset = pairs.sumOf { it.points - it.forecast!! } / (pairs.size + 1)
+        return Calibration(offset, pairs.size, (now.total + offset).coerceIn(0.0, 15.0))
+    }
+
     /**
      * How sure the app still is about a rating: knowledge fades when a skill is not practised (half-life 30 days),
      * so the forecast range widens again and the skill comes back into the plan.
@@ -228,6 +273,7 @@ data class Profile(
             .put("teacherNotes", JSONArray(teacherNotes))
             .put("topics", JSONObject().also { t -> topics.forEach { (k, v) -> t.put(k.toString(), v.toJson()) } })
             .put("skillLog", JSONObject().also { l -> skillLog.forEach { (k, v) -> l.put(k.key, JSONArray(v)) } })
+            .put("realGrades", JSONArray().also { a -> realGrades.forEach { a.put(it.toJson()) } })
     }
 
     companion object {
@@ -248,11 +294,13 @@ data class Profile(
                 skills = skills,
                 placementDone = o.optBoolean("placementDone"),
                 placementAt = o.optLong("placementAt"),
-                history = o.optJSONArray("history").objects().map { ForecastPoint(it.optLong("at"), it.optDouble("total"), it.optString("source")) },
+                // A point without a number (a damaged file) would break the chart.
+                history = o.optJSONArray("history").objects().map { ForecastPoint(it.optLong("at"), it.optDouble("total"), it.optString("source")) }.filter { !it.total.isNaN() },
                 klausurErrors = errors,
                 teacherNotes = notes,
                 topics = topics,
                 skillLog = log,
+                realGrades = o.optJSONArray("realGrades").objects().map { RealGrade.fromJson(it) },
             )
         }
     }

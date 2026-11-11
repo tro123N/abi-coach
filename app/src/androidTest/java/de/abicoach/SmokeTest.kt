@@ -298,6 +298,18 @@ class SmokeTest {
 
         ui { vm.nav.openTab(Tab.STATS) }
         shot("statistik")
+        // The check of the forecast against a real grade from school.
+        ui { vm.addRealGrade(8, "Probe-Prüfung") }
+        runCatching { compose.onNodeWithTag("list_stats").performScrollToIndex(2) }
+        runCatching { compose.onNodeWithTag("real_grade_add").performScrollTo() }
+        shot("fortschritt_echte_noten")
+        runCatching { compose.onNodeWithTag("real_grade_add").performClick() }
+        shot("echte_note_eintragen")
+        runCatching { compose.onNodeWithTag("real_grade_points_3").performClick() }
+        runCatching { compose.onNodeWithTag("popupConfirm").performClick() }
+        ui { }
+        Log.i(TAG, "Echte Noten: ${app.profiles.profile.value.realGrades.map { it.points }} · Abgleich ${app.profiles.profile.value.calibration()?.adjustedPoints}")
+        runCatching { compose.onNodeWithTag("list_stats").performScrollToIndex(0) }
         runCatching { compose.onNodeWithTag("dev_areas").performClick() }
         shot("entwicklung_inhalt_sprache")
         runCatching { compose.onNodeWithTag("dev_skill").performClick() }
@@ -322,6 +334,11 @@ class SmokeTest {
         shot("auswertung")
         runCatching { compose.onNodeWithTag("debrief_goals").performScrollTo() }
         shot("auswertung_ziele")
+        // How the time of the presentation was shared between the tasks.
+        Log.i(TAG, "Zeitaufteilung: ${app.store.get(Demo.SIMULATION)?.let { r -> r.debrief?.let { de.abicoach.session.Pacing.split(r, it) } }?.parts?.map { it.number to it.percent }}")
+        runCatching { compose.onNodeWithTag("debrief_pacing").performScrollTo().performClick() }
+        shot("auswertung_zeitaufteilung")
+        runCatching { compose.onNodeWithTag("debrief_pacing").performClick() }
         runCatching { compose.onNodeWithTag("debrief_next").performScrollTo() }
         shot("auswertung_naechster_schritt")
         runCatching { compose.onNodeWithTag("debrief_fillers").performScrollTo() }
@@ -427,6 +444,7 @@ class SmokeTest {
         ui { de.abicoach.update.AppUpdater.demo(de.abicoach.update.AppUpdater.State.Downloading(demoRelease, 0.42f)) }
         shot("einstellungen_update_laedt")
         ui { de.abicoach.update.AppUpdater.demo(de.abicoach.update.AppUpdater.State.Available(demoRelease)); vm.settingsSection = null; vm.nav.openTab(Tab.WEG) }
+        runCatching { compose.onNodeWithTag("list_weg").performScrollToIndex(0) }
         shot("heute_update_verfuegbar")
         ui { de.abicoach.update.AppUpdater.demo(de.abicoach.update.AppUpdater.State.Idle) }
         // The app's own safety net: a session that was cut off comes back from its safety copy, a crash report is
@@ -434,6 +452,7 @@ class SmokeTest {
         app.store.sessions.value.firstOrNull()?.let { some ->
             app.liveDrafts.save(some.copy(id = "cut-off", debrief = null, startedAt = System.currentTimeMillis()))
             ui { vm.demoSystem(true) }
+            runCatching { compose.onNodeWithTag("list_weg").performScrollToIndex(0) }
             Log.i(TAG, "Wiederhergestellt: ${app.store.get("cut-off") != null} · Banner ${vm.recoveredSession} · Entwurf weg ${app.liveDrafts.load() == null}")
             shot("heute_sicherheitsnetz")
             runCatching { compose.onNodeWithTag("crash_banner").performClick() }
@@ -807,7 +826,11 @@ object Demo {
                 startedAt = now - DAY,
                 durationSec = 1260,
                 part1Sec = 610,
-                debrief = debrief.copy(segments = listOf(1 to "The article Lagos Rising", 2 to "Moving on to the analysis", 3 to "Now I would like to comment")),
+                debrief =
+                    debrief.copy(
+                        segments = listOf(1 to "The article Lagos Rising", 2 to "Moving on to the analysis", 3 to "Now I would like to comment"),
+                        guardNotes = listOf("Inhalt: 12 → 11 Punkte, weil die einzelnen Kompetenzen dieses Bereichs im Schnitt bei 8,8 liegen."),
+                    ),
                 examiner = "Gemini 3.8 Live",
                 goals = goals,
                 liveErrors = debrief.errors,

@@ -83,6 +83,23 @@ Danach startet auf Wunsch eine **geführte Tour durch die echte App**: Der Bilds
 - **So bewertet deine Lehrkraft:** Kommentare und häufigste Anstreichungen aus deinen Klausuren.
 - Verlauf der Prognose, alle Kompetenzen, Übungszeit pro Tag, häufigste Fehler (Übungen und Klausuren) mit „Gezielt üben“, Themenfelder (geübt und Material), alle Sitzungen.
 
+- **Abgleich mit echten Noten:** Die Punkte der App schätzt eine KI. Trägst du eine echte Note fürs Sprechen aus der Schule ein (Probe-Prüfung, Kommunikationsprüfung, mündliche Zeugnisnote), merkt sich die App ihre Prognose von diesem Tag und zeigt dir, ob sie eher zu freundlich oder zu streng ist – und womit du dann eher rechnen solltest. Eine einzelne Note zählt dabei nur zur Hälfte.
+
+## So bleibt die Bewertung ehrlich
+
+- **Feste Punkte-Anker:** Beide Bewertungs-KIs bekommen dieselbe Beschreibung, wie 13–15, 10–12, 7–9, 5–6 und 1–4 Punkte in Inhalt und Darstellung aussehen. So bekommt dieselbe Leistung dieselben Punkte.
+- **Prüf-Check nach jeder Bewertung** (`GradeGuard`, reine Rechnung, keine KI): Die Punkte eines Bereichs müssen zu den einzeln bewerteten Kompetenzen passen (höchstens 2 Punkte Abstand). Fehlt in einem ganzen Vortrag eine Aufgabe, ist der Inhalt gedeckelt (ohne Stellungnahme höchstens 9 Punkte). Hat der Check etwas geändert, steht es als „Prüf-Check: …“ in der Auswertung.
+- **Kurze Sitzungen zählen weniger:** Unter 120 Wörtern zählt eine Sitzung nur zum Teil für die Prognose, unter 15 Wörtern gar nicht. Eine KI-Antwort ohne Punkte gilt als Fehler und wird nicht als „0 Punkte“ gespeichert.
+- **Zeitaufteilung im Vortrag:** Die Auswertung zeigt, wie viel deiner Redezeit auf Zusammenfassung, Analyse und Stellungnahme entfiel (Richtwert 25 / 40 / 35 %), und sagt in ein, zwei Sätzen, was du ändern solltest. Während des Vortrags steht unter der Uhr, welche Aufgabe jetzt dran wäre.
+
+## Sicherheitsnetz
+
+- **Fehlerberichte:** Stürzt die App ab, schreibt sie vorher einen Bericht. Beim nächsten Start steht auf „Heute“ ein Hinweis; den Bericht kannst du ansehen und kopieren (auch unter Einstellungen → Update, Hilfe, Über → Fehlerberichte). Er bleibt auf dem Handy und enthält weder Schlüssel noch das, was du gesagt hast. Fehler in Hintergrundarbeit schließen die App nicht mehr – sie werden notiert, und du siehst eine Meldung.
+- **Nichts geht kaputt:** Lernprofil, Sitzungen, Fehlergedächtnis, Wortschatz und Abi-Weg werden erst in eine neue Datei geschrieben und dann getauscht; die vorige Fassung bleibt als Rückfall liegen. Ist eine Datei beschädigt, lädt die App die Fassung davor.
+- **Unterbrochene Übung:** Während einer Live-Sitzung legt die App alle 12 Sekunden eine Sicherheitskopie an. Schließt Android die App mittendrin (Akku leer, Anruf, zu wenig Speicher), ist die Übung beim nächsten Start als Sitzung da und kann ausgewertet werden; auch die Aufnahme wird repariert.
+- **Speicher:** Tonaufnahmen ausgewerteter Sitzungen löscht die App nach 30 Tagen (einstellbar unter Daten und Sicherung: 7, 30, 90 Tage oder nie). Auswertung, Mitschrift und Lernstand bleiben.
+- **Erinnerung an die Sicherung:** Nach 14 Tagen und fünf neuen Auswertungen ohne Sicherung erinnert „Heute“ daran, den Lernstand als Datei zu sichern.
+
 ## Einstellungen
 
 Die Einstellungen sind in sieben Bereiche geordnet, jeder mit einer Zeile, was gerade eingestellt ist: **KI und Schlüssel** (Firma, Qualität, Schlüssel, System prüfen, wer was macht, Modelle), **Prüfung und Üben** (Termin, Übungszeit, Rückmeldung, Kursthemen), **Prüfer und Stimmen** (Gesprächsstil, Härte, Knopf halten, Stimmen), **Aufnahme, Anzeige, Erinnerung**, **Aussehen und Töne**, **Daten und Sicherung** sowie **Hilfe und Über AbiCoach** (Tour, Einrichtung, Version). Beim Einrichten einer Übung sind die Prüfer-Optionen und die KI-Übersicht zusammengeklappt – mit einer Zusammenfassung, was gilt.
@@ -134,8 +151,11 @@ Schlüssel gibt es unter aistudio.google.com/apikey (Google), platform.openai.co
 - `data/Backup.kt` – Lernstand als ZIP sichern und laden (ohne Schlüssel)
 - `session/` – Prompts, Live-Gespräch (mit Mikrofon-Dienst), Live-Fehlerprüfung, Material im Hintergrund, gespeicherte Vorbereitung und Alarm, Auswertung und Fortschritt, Systemprüfung
 - `ui/` – Oberfläche im Stil von Mental Math Plus (Farbthemen, Karten, Sterne, Töne)
+- `data/SafeFile.kt`, `data/CrashLog.kt` – sicheres Schreiben mit Rückfall-Kopie und Fehlerberichte
+- `session/GradeGuard.kt`, `session/Pacing.kt` – Prüf-Check der Bewertung und Zeitaufteilung im Vortrag (reine Rechnung)
+- `app/src/test/` – Unit-Tests für die Logik (Speicherung, Lernprofil, Abgleich mit echten Noten, Prüf-Check, Zeitaufteilung, Fehlergedächtnis, Wortschatz, Abi-Weg, Aufnahmen)
 
-Jeder Push auf `main` baut automatisch eine neue APK. Mit `[smoke]` in der Commit-Nachricht läuft zusätzlich ein Test auf einem virtuellen Handy; die Bildschirmfotos liegen danach auf dem Branch `ci-smoke`.
+Jeder Push auf `main` lässt zuerst die Unit-Tests laufen und baut dann eine neue APK – schlägt ein Test fehl, wird nichts veröffentlicht. Mit `[smoke]` in der Commit-Nachricht läuft zusätzlich ein Test auf einem virtuellen Handy; die Bildschirmfotos liegen danach auf dem Branch `ci-smoke`.
 
 ## Lizenz
 

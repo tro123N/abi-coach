@@ -1800,6 +1800,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     var pendingRestore by mutableStateOf<Pair<android.net.Uri, de.abicoach.data.Backup.Info>?>(null)
         private set
 
+    /** A real grade for speaking from school, to check the app's forecast against. */
+    fun addRealGrade(points: Int, label: String) {
+        app.profiles.update { it.withRealGrade(points, label, System.currentTimeMillis()) }
+    }
+
+    fun removeRealGrade(at: Long) {
+        app.profiles.update { it.withoutRealGrade(at) }
+    }
+
     /** True when the learning progress has grown for a while without being saved as a file. */
     var backupDue by mutableStateOf(false)
         private set

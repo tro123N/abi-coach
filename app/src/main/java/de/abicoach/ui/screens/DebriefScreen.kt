@@ -243,6 +243,18 @@ private fun DetailsGroup(vm: AppViewModel, record: SessionRecord, d: Debrief) {
             if (d.taskReviews.isNotEmpty()) {
                 add(Fold("Die Aufgaben im Einzelnen", R.drawable.assignment_24dp, accent, "debrief_tasks", count = d.taskReviews.size.toString()) { TaskReviewContent(record, d) })
             }
+            // How the time of the presentation was shared between the three tasks.
+            de.abicoach.session.Pacing.split(record, d)?.let { split ->
+                add(
+                    Fold(
+                        "Zeitaufteilung im Vortrag",
+                        R.drawable.timer_24dp,
+                        if (split.balanced) green else yellow,
+                        "debrief_pacing",
+                        subtitle = split.parts.joinToString(" · ") { "A${it.number}: ${it.percent} %" } + if (split.balanced) " – passt" else " – hier ist etwas zu holen",
+                    ) { PacingContent(split) },
+                )
+            }
             if (d.errors.isNotEmpty()) {
                 val grouped = d.errors.groupBy { it.category }.entries.sortedByDescending { it.value.size }
                 add(
@@ -490,6 +502,27 @@ private fun TaskReviewContent(record: SessionRecord, d: Debrief) {
         r.missing.forEach { GoalRow(ok = false, text = it) }
         if (r.tip.isNotBlank()) CaptionText("Tipp: " + r.tip, color = accent)
     }
+}
+
+/** The share of the talk each task got, against the rule of thumb, and what to change. */
+@Composable
+private fun PacingContent(split: de.abicoach.session.Pacing.Split) {
+    val dimens = AbiTheme.dimens
+    split.parts.forEachIndexed { i, part ->
+        if (i > 0) Gap(10.dp)
+        val off = kotlin.math.abs(part.share - part.target) > 0.12
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Aufgabe ${part.number} · ${part.name}", fontSize = dimens.fonts.body, color = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.weight(1f))
+            Text("${part.seconds / 60}:${"%02d".format(part.seconds % 60)} Min. · ${part.percent} %", fontSize = dimens.fonts.body, color = if (off) yellow else green)
+        }
+        Gap(4.dp)
+        ProgressLine(part.share.toFloat().coerceIn(0f, 1f), color = if (off) yellow else green)
+        CaptionText("Richtwert: etwa ${part.targetPercent} %")
+    }
+    Gap(10.dp)
+    split.advice.forEach { BulletText(it) }
+    Gap(4.dp)
+    CaptionText("Geschätzt aus der Mitschrift: wie viele deiner Wörter auf jede Aufgabe entfielen.")
 }
 
 /** The student's own performance rewritten at 15-point level (made on request). */

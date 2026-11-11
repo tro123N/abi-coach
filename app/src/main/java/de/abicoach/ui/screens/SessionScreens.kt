@@ -667,6 +667,11 @@ fun LiveScreen(vm: AppViewModel) {
                 Spacer(Modifier.width(10.dp))
                 CaptionText("Ziel " + mmss(state.targetSec))
             }
+            // In a whole presentation: which task should be on now, so that the comment is not squeezed out.
+            if (vm.live?.part == 1 && draft?.focusTask == 0 && (draft?.task?.tasks?.size ?: 0) >= 3) {
+                Gap(4.dp)
+                CaptionText(de.abicoach.session.Pacing.guide(state.elapsedSec, state.targetSec), modifier = Modifier.testTag("pacing_guide"))
+            }
         }
         state.error?.let { Banner(it, red, icon = R.drawable.error_24dp) }
         state.info?.let { Banner(it, yellow) }
