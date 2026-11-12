@@ -45,7 +45,9 @@ import de.abicoach.data.SessionRecord
 import de.abicoach.learn.DrillType
 import de.abicoach.learn.ErrorPattern
 import de.abicoach.learn.PatternState
+import de.abicoach.memory.DocKind
 import de.abicoach.memory.DossierMaker
+import de.abicoach.memory.ExamUnit
 import de.abicoach.memory.ExamUnits
 import de.abicoach.profile.Profile
 import de.abicoach.session.LiveUiState
@@ -65,12 +67,13 @@ import de.abicoach.ui.components.CaptionText
 import de.abicoach.ui.components.CardTitle
 import de.abicoach.ui.components.ExpandableCard
 import de.abicoach.ui.components.Gap
-import de.abicoach.ui.components.PillRow
 import de.abicoach.ui.components.GoalRow
 import de.abicoach.ui.components.LoadingCard
 import de.abicoach.ui.components.Pill
+import de.abicoach.ui.components.PillRow
 import de.abicoach.ui.components.PopUp
 import de.abicoach.ui.components.ProgressLine
+import de.abicoach.ui.components.SectionLabel
 import de.abicoach.ui.components.StartButton
 import de.abicoach.ui.components.Tab
 import de.abicoach.ui.theme.AbiTheme
@@ -659,7 +662,7 @@ fun RealTasksCard(vm: AppViewModel) {
     AbiCard(modifier = Modifier.testTag("train_real")) {
         CardTitle("Echte Prüfungsaufgaben", icon = R.drawable.workspace_premium_24dp, iconTint = green)
         if (units.isEmpty()) {
-            CaptionText("Lade unter „Kurs“ echtes Abi-Material hoch (Art: „Echte Abi-Prüfungsaufgaben“ oder „Abi-Vorbereitung“). Die App findet darin Text, Original-Aufgaben und Erwartungshorizont – dann übst du hier genau diese Aufgaben.")
+            CaptionText("Lade unter „Kurs“ bei „Echtes Prüfungsmaterial“ echte Aufgaben hoch (ein Abi-Buch geht auch, als Art „Abi-Vorbereitung“). Die App findet darin Text, Original-Aufgaben und Erwartungshorizont – dann übst du hier genau diese Aufgaben.")
             Gap(8.dp)
             ActionButton("Material hochladen", R.drawable.cloud_upload_24dp, accent, { vm.tap(); vm.nav.openTab(Tab.KURS) }, container = MaterialTheme.colorScheme.background)
         } else {
@@ -690,24 +693,40 @@ fun RealTasksScreen(vm: AppViewModel) {
     val used = remember(sessions) { ExamUnits.used(vm.app) }
     DetailScaffold(title = "Echte Prüfungsaufgaben", onBack = { vm.tap(); vm.nav.pop() }, tag = "real_tasks") {
         if (units.isEmpty()) {
-            AbiCard { BodyText("Noch keine Original-Aufgaben gefunden. Lade Abi-Material unter „Kurs“ hoch.") }
+            AbiCard { BodyText("Noch keine Original-Aufgaben gefunden. Lade sie unter „Kurs“ bei „Echtes Prüfungsmaterial“ hoch.") }
             return@DetailScaffold
         }
-        units.forEach { u ->
-            AbiCard {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(u.title, fontSize = AbiTheme.dimens.fonts.label, color = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.weight(1f))
-                    if (u.id in used) Pill("geübt", green)
-                }
-                CaptionText(u.source + " · " + Knowledge.topicShort(u.topic) + if (u.solution.isNotBlank()) " · mit Lösungsvorschlag" else "")
-                Gap(6.dp)
-                u.tasks.take(3).forEachIndexed { i, t -> BulletText("${i + 1}. ${t.instruction}") }
-                Gap(8.dp)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ActionButton("Vortrag", R.drawable.co_present_24dp, accent, { vm.startRealTask(u.id, whole = false) }, modifier = Modifier.weight(1f), container = MaterialTheme.colorScheme.background)
-                    ActionButton("Ganze Prüfung", R.drawable.workspace_premium_24dp, green, { vm.startRealTask(u.id, whole = true) }, modifier = Modifier.weight(1f), container = MaterialTheme.colorScheme.background)
-                }
-            }
+        // The student's own real exam material first, apart from the tasks found in preparation books.
+        val kindOf = docs.associate { it.id to it.kind }
+        val own = units.filter { kindOf[it.docId] == DocKind.PRUEFUNG }
+        val books = units.filter { kindOf[it.docId] != DocKind.PRUEFUNG }
+        CaptionText("Tippe bei einer Aufgabe auf „Vortrag“ (nur Teil 1) oder „Ganze Prüfung“. Bewertet wird nach dem Original-Erwartungshorizont.")
+        if (own.isNotEmpty()) {
+            if (books.isNotEmpty()) SectionLabel("Dein echtes Prüfungsmaterial (${own.size})")
+            own.forEach { u -> RealTaskCard(vm, u, u.id in used) }
+        }
+        if (books.isNotEmpty()) {
+            SectionLabel(if (own.isNotEmpty()) "Aus der Abi-Vorbereitung (${books.size})" else "Aus deinem Abi-Material (${books.size})")
+            books.forEach { u -> RealTaskCard(vm, u, u.id in used) }
+        }
+    }
+}
+
+/** One original task to choose: where it is from, its three tasks, and the two ways to practise it. */
+@Composable
+private fun RealTaskCard(vm: AppViewModel, u: ExamUnit, done: Boolean) {
+    AbiCard(modifier = Modifier.testTag("real_task")) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(u.title, fontSize = AbiTheme.dimens.fonts.label, color = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.weight(1f))
+            if (done) Pill("geübt", green)
+        }
+        CaptionText(u.source + (if (u.topic >= 0) " · " + Knowledge.topicShort(u.topic) else "") + if (u.solution.isNotBlank()) " · mit Lösungsvorschlag" else "")
+        Gap(6.dp)
+        u.tasks.take(3).forEachIndexed { i, t -> BulletText("${i + 1}. ${t.instruction}") }
+        Gap(8.dp)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ActionButton("Vortrag", R.drawable.co_present_24dp, accent, { vm.startRealTask(u.id, whole = false) }, modifier = Modifier.weight(1f), container = MaterialTheme.colorScheme.background)
+            ActionButton("Ganze Prüfung", R.drawable.workspace_premium_24dp, green, { vm.startRealTask(u.id, whole = true) }, modifier = Modifier.weight(1f), container = MaterialTheme.colorScheme.background)
         }
     }
 }

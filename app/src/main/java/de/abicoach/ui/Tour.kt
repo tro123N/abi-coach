@@ -112,7 +112,7 @@ object TourSteps {
             ),
             TourStep(
                 Tab.KURS, "course_add", R.drawable.menu_book_24dp, "Dein Kurs",
-                "Lade Schulbuch, Klausuren und Arbeitsblätter hoch – als PDF oder Foto. Die KI liest alles und baut Prüfungstexte, Fragen und den Prüfer auf deinen Unterricht.",
+                "Ein Knopf für alles: Schulbuch, Klausuren, Arbeitsblätter – als PDF, Foto, Word oder PowerPoint. Die KI liest alles und baut Prüfungstexte, Fragen und den Prüfer auf deinen Unterricht. Echte Prüfungsaufgaben lädst du darunter getrennt hoch.",
             ),
             TourStep(
                 Tab.KURS, "course_halfyears", R.drawable.calendar_clock_24dp, "Halbjahre",

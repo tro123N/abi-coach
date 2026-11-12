@@ -67,7 +67,8 @@ Danach startet auf Wunsch eine **geführte Tour durch die echte App**: Der Bilds
 - **Auswertung** nach dem NRW-Raster (Inhalt 40 %, Darstellungsleistung 60 %): Punkte und Sterne, größte Hebel, jede Aufgabe gegen den Erwartungshorizont, Kompetenzen, Fehler mit Zitat, „So klingt es nach 15 Punkten“ zum Anhören, Aussprache, passende Inhalte aus deinem Kurs, Redemittel.
 
 ### Kurs – das Gedächtnis
-- **Komplettes Schulbuch, alle Klausuren, Unterrichtsmaterial, später Abi-Vorbereitungsbücher** hochladen: PDF (auch mehrere hundert Seiten), Fotos, Word, Text oder Seiten direkt fotografieren.
+- **Komplettes Schulbuch, alle Klausuren, Unterrichtsmaterial, später Abi-Vorbereitungsbücher** hochladen – **ein Knopf für alle Dateitypen**, auch gemischt: PDF (auch mehrere hundert Seiten), Fotos, Word, PowerPoint, OpenDocument, RTF, Webseiten, Text. Oder Seiten direkt fotografieren. Eine Datei, die sich nicht lesen lässt, wird genannt; die anderen werden trotzdem übernommen.
+- **Echtes Prüfungsmaterial** hat im Kurs einen eigenen Upload und eine eigene Liste, getrennt vom übrigen Material. Von dort wählst du aus, welche Original-Aufgabe du übst (nur Vortrag oder ganze Prüfung).
 - Die KI liest alles im Hintergrund Seite für Seite (auch Handschrift und Lehrer-Korrekturen), ordnet es den 14 Themenfeldern der Abiturvorgaben 2027 zu und merkt sich Fakten, Wortschatz und Texte, die als Prüfungsmaterial taugen.
 - Aus **Klausuren** lernt die App deine typischen Fehler und die Kommentare deiner Lehrkraft.
 - **Alles hängt zusammen:** Prüfungstexte entstehen passend zu deinem Kurs oder direkt aus deinem Material, der Prüfer fragt nach euren Unterrichtsinhalten, die Auswertung nennt Beispiele aus deinem Kurs.

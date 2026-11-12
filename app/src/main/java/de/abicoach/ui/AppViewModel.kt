@@ -244,6 +244,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Files picked in "Mein Kurs" that wait for the "Was ist das?" dialog. */
     var pendingImport by mutableStateOf<List<Importer.Picked>?>(null)
+
+    /** True while the picked files are real exam material (kept apart from the course material). */
+    var pendingExam by mutableStateOf(false)
     var importBusy by mutableStateOf(false)
         private set
 
@@ -1018,9 +1021,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     // ---------- course material ----------
 
-    fun onPicked(uris: List<Uri>) {
+    fun onPicked(uris: List<Uri>, exam: Boolean = false) {
         if (uris.isEmpty()) return
-        pendingImport = uris.map { app.importer.describe(it) }
+        pendingExam = exam
+        pendingImport = uris.distinct().map { app.importer.describe(it) }
     }
 
     fun confirmImport(kind: DocKind, title: String, halbjahr: String) {
@@ -1029,13 +1033,20 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         importBusy = true
         viewModelScope.launch(guard) {
             try {
-                val created = withContext(Dispatchers.IO) { app.importer.import(files, kind, title.trim(), halbjahr) }
+                val result = withContext(Dispatchers.IO) { app.importer.import(files, kind, title.trim(), halbjahr) }
+                val created = result.docs
+                // Files that could not be read are named – the others are imported all the same.
+                if (result.problems.isNotEmpty()) {
+                    errorMessage = result.problems.take(4).joinToString("\n") + if (result.problems.size > 4) "\n… und ${result.problems.size - 4} weitere" else ""
+                }
                 if (created.isEmpty()) {
-                    errorMessage = "Die Dateien konnten nicht gelesen werden."
+                    if (result.problems.isEmpty()) errorMessage = "Die Dateien konnten nicht gelesen werden."
                 } else {
                     app.feedback.play(FeedbackType.ENABLE)
                     notice =
-                        if (app.ai.ready) {
+                        if (kind == DocKind.PRUEFUNG && app.ai.ready) {
+                            "Prüfungsmaterial gespeichert – die KI sucht jetzt die Aufgaben heraus. Danach wählst du unter „Echtes Prüfungsmaterial“ aus, welche du übst."
+                        } else if (app.ai.ready) {
                             "${created.size} ${if (created.size == 1) "Dokument" else "Dokumente"} hinzugefügt – die KI liest jetzt im Hintergrund."
                         } else {
                             "Gespeichert. Sobald dein ${app.ai.provider.company}-Schlüssel eingetragen ist, liest die KI alles ein."
@@ -1737,6 +1748,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // ---------- demo hooks for the emulator test (screenshots without network) ----------
+
+    /** Shows the import dialog for prepared files (the emulator has no file picker to tap through). */
+    fun onPickedDemo(files: List<Importer.Picked>, exam: Boolean) {
+        pendingExam = exam
+        pendingImport = files
+    }
 
     fun demoPrep(demoTask: ExamTask, kind: SessionKind, focusTask: Int = 0, minutes: Int = 30) {
         task = demoTask

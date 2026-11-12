@@ -32,7 +32,10 @@ class Importer(private val context: Context, private val store: MemoryStore) {
                 }
             }
         }
-        val mime = resolver.getType(uri) ?: guessMime(name)
+        // Some file managers only say "some file": then the ending of the name decides.
+        val told = resolver.getType(uri)
+        val guessed = guessMime(name)
+        val mime = if (told == null || told == "application/octet-stream" || told == "*/*") guessed else told
         return Picked(uri, name, mime, size)
     }
 
@@ -43,16 +46,27 @@ class Importer(private val context: Context, private val store: MemoryStore) {
             "png" -> "image/png"
             "webp" -> "image/webp"
             "heic", "heif" -> "image/heic"
-            "txt", "md" -> "text/plain"
+            "gif" -> "image/gif"
+            "bmp" -> "image/bmp"
+            "txt", "md", "csv" -> "text/plain"
+            "html", "htm" -> "text/html"
+            "rtf" -> "application/rtf"
             "docx" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            "pptx" -> "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+            "odt" -> "application/vnd.oasis.opendocument.text"
             else -> "application/octet-stream"
         }
 
+    /** What an import brought: the new documents and, in plain words, the files that could not be read. */
+    data class Result(val docs: List<CourseDoc>, val problems: List<String>)
+
     /**
-     * Creates documents from the picked files. Photos picked together become one document (one page per photo);
-     * every PDF or text file becomes its own document.
+     * Creates documents from the picked files – any mix of types at once. Photos picked together become one
+     * document (one page per photo); every other file becomes its own document. A file that cannot be read does
+     * not stop the others: it is listed in [Result.problems].
      */
-    fun import(files: List<Picked>, kind: DocKind, title: String, halbjahr: String): List<CourseDoc> {
+    fun import(files: List<Picked>, kind: DocKind, title: String, halbjahr: String): Result {
+        val problems = ArrayList<String>()
         val images = files.filter { it.mime.startsWith("image/") }
         val others = files.filter { !it.mime.startsWith("image/") }
         val created = ArrayList<CourseDoc>()
@@ -61,7 +75,11 @@ class Importer(private val context: Context, private val store: MemoryStore) {
             var pages = 0
             var bytes = 0L
             images.forEach { picked ->
-                val jpeg = normalizedJpeg(picked.uri) ?: return@forEach
+                val jpeg = normalizedJpeg(picked.uri)
+                if (jpeg == null) {
+                    problems += "„${picked.name}“: Das Bild lässt sich nicht öffnen."
+                    return@forEach
+                }
                 pages++
                 store.imageFile(id, pages).writeBytes(jpeg)
                 bytes += jpeg.size
@@ -90,16 +108,58 @@ class Importer(private val context: Context, private val store: MemoryStore) {
                     others.size + (if (images.isEmpty()) 0 else 1) > 1 -> "$title (${i + 1})"
                     else -> title
                 }
-            createFromFile(picked, kind, docTitle, halbjahr)?.let { created += it }
+            try {
+                val doc = createFromFile(picked, kind, docTitle, halbjahr)
+                if (doc != null) created += doc else problems += "„${picked.name}“ lässt sich nicht öffnen."
+            } catch (e: Exception) {
+                problems += e.message?.takeIf { it.contains(picked.name) } ?: "„${picked.name}“ lässt sich nicht lesen."
+            }
         }
-        return created
+        return Result(created, problems)
+    }
+
+    /** The kind of file, decided by its type and – if that says nothing – by the ending of its name. */
+    private fun typeOf(picked: Picked): String {
+        val ext = picked.name.substringAfterLast('.', "").lowercase()
+        val mime = picked.mime.lowercase()
+        return when {
+            mime == "application/pdf" || ext == "pdf" -> "pdf"
+            mime.contains("wordprocessingml") || ext == "docx" -> "docx"
+            mime.contains("presentationml") || ext == "pptx" -> "pptx"
+            mime.contains("opendocument.text") || ext == "odt" -> "odt"
+            mime.contains("rtf") || ext == "rtf" -> "rtf"
+            mime == "text/html" || ext == "html" || ext == "htm" -> "html"
+            mime.startsWith("text/") || ext in setOf("txt", "md", "csv") -> "text"
+            ext in setOf("doc", "ppt", "pages", "key") -> "old"
+            else -> "unknown"
+        }
+    }
+
+    /** The text of a non-PDF file, or null if the app cannot read this kind of file. */
+    private fun readText(picked: Picked): String? {
+        val resolver = context.contentResolver
+        return when (typeOf(picked)) {
+            "docx" -> resolver.openInputStream(picked.uri)?.use { zipText(it, { n -> n == "word/document.xml" }, Regex("</w:p>")) }
+            "pptx" -> resolver.openInputStream(picked.uri)?.use { zipText(it, { n -> n.startsWith("ppt/slides/slide") && n.endsWith(".xml") }, Regex("</a:p>")) }
+            "odt" -> resolver.openInputStream(picked.uri)?.use { zipText(it, { n -> n == "content.xml" }, Regex("</text:(p|h)>")) }
+            "rtf" -> resolver.openInputStream(picked.uri)?.use { TextExtract.rtfText(it.readBytes().toString(Charsets.ISO_8859_1)) }
+            "html" -> resolver.openInputStream(picked.uri)?.use { TextExtract.htmlText(it.readBytes().toString(Charsets.UTF_8)) }
+            "text" -> resolver.openInputStream(picked.uri)?.use { it.readBytes().toString(Charsets.UTF_8) }
+            "unknown" -> {
+                // An unknown ending can still be plain text (notes, exports): take it if it reads like text.
+                if (picked.size > MAX_GUESS_BYTES) return null
+                val bytes = resolver.openInputStream(picked.uri)?.use { it.readBytes() } ?: return null
+                if (bytes.size > MAX_GUESS_BYTES || !TextExtract.looksLikeText(bytes)) null else bytes.toString(Charsets.UTF_8)
+            }
+            else -> null
+        }
     }
 
     private fun createFromFile(picked: Picked, kind: DocKind, title: String, halbjahr: String): CourseDoc? {
         val id = UUID.randomUUID().toString()
         val resolver = context.contentResolver
         return when {
-            picked.mime == "application/pdf" -> {
+            typeOf(picked) == "pdf" -> {
                 val target = store.pdfFile(id)
                 resolver.openInputStream(picked.uri)?.use { input -> target.outputStream().use { input.copyTo(it) } } ?: return null
                 val pages = pdfPageCount(target)
@@ -109,42 +169,46 @@ class Importer(private val context: Context, private val store: MemoryStore) {
                 }
                 CourseDoc(id, title, kind, halbjahr, System.currentTimeMillis(), picked.name, "pdf", pages, target.length()).also { store.add(it) }
             }
-            picked.mime.startsWith("text/") || picked.mime.contains("wordprocessingml") -> {
+            typeOf(picked) == "old" ->
+                throw IllegalStateException("„${picked.name}“: Dieses ältere Format kann die App nicht lesen. Speichere die Datei als PDF und lade sie dann hoch.")
+            else -> {
                 val text =
-                    if (picked.mime.contains("wordprocessingml")) {
-                        resolver.openInputStream(picked.uri)?.use { docxText(it) }
-                    } else {
-                        resolver.openInputStream(picked.uri)?.use { it.readBytes().toString(Charsets.UTF_8) }
-                    } ?: return null
+                    readText(picked)
+                        ?: throw IllegalStateException("„${picked.name}“: Dieses Format kann die App nicht lesen. Es gehen PDF, Fotos, Word, PowerPoint, OpenDocument und Text.")
                 if (text.isBlank()) throw IllegalStateException("„${picked.name}“ enthält keinen lesbaren Text.")
                 store.textFile(id).writeText(text)
                 val pages = max(1, (text.length + TEXT_PAGE - 1) / TEXT_PAGE)
                 CourseDoc(id, title, kind, halbjahr, System.currentTimeMillis(), picked.name, "text", pages, text.length.toLong()).also { store.add(it) }
             }
-            else -> throw IllegalStateException("„${picked.name}“: Dieses Format kann die App nicht lesen (PDF, Fotos, Word oder Text gehen).")
         }
     }
 
-    /** Text of a .docx file: the paragraphs of word/document.xml without the markup. */
-    private fun docxText(input: java.io.InputStream): String {
+    /** Text out of the XML parts of a zipped office file (Word, PowerPoint, OpenDocument) without the markup. */
+    private fun zipText(input: java.io.InputStream, wanted: (String) -> Boolean, paragraphEnd: Regex): String {
+        val parts = ArrayList<Pair<String, String>>()
         ZipInputStream(input).use { zip ->
             while (true) {
                 val entry = zip.nextEntry ?: break
-                if (entry.name == "word/document.xml") {
-                    val xml = zip.readBytes().toString(Charsets.UTF_8)
-                    return xml
-                        .replace(Regex("</w:p>"), "\n")
-                        .replace(Regex("<w:tab/>"), "\t")
-                        .replace(Regex("<w:br/>"), "\n")
-                        .replace(Regex("<[^>]+>"), "")
-                        .replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&apos;", "'")
-                        .lines().joinToString("\n") { it.trim() }
-                        .replace(Regex("\n{3,}"), "\n\n")
-                        .trim()
-                }
+                if (wanted(entry.name)) parts += entry.name to zip.readBytes().toString(Charsets.UTF_8)
             }
         }
-        return ""
+        // Slides in their order: slide2 before slide10.
+        val ordered = parts.sortedWith(compareBy({ it.first.filter { c -> c.isDigit() }.toIntOrNull() ?: 0 }, { it.first }))
+        return ordered.joinToString("\n\n") { TextExtract.plainText(it.second, paragraphEnd) }.trim()
+    }
+
+    companion object {
+        /** Longest side of a rendered PDF page: enough for small print and handwriting. */
+        const val PAGE_PIXELS = 1600
+
+        /** Longest side of a stored photo. */
+        const val PHOTO_PIXELS = 2000
+
+        /** Characters of a text file that count as one "page". */
+        const val TEXT_PAGE = 3000
+
+        /** Largest file of an unknown kind that is tried as plain text. */
+        const val MAX_GUESS_BYTES = 2_000_000L
     }
 
     fun pdfPageCount(file: File): Int =
@@ -225,16 +289,5 @@ class Importer(private val context: Context, private val store: MemoryStore) {
         val out = ByteArrayOutputStream()
         bitmap.compress(Bitmap.CompressFormat.JPEG, 82, out)
         return out.toByteArray()
-    }
-
-    companion object {
-        /** Longest side of a rendered PDF page: enough for small print and handwriting. */
-        const val PAGE_PIXELS = 1600
-
-        /** Longest side of a stored photo. */
-        const val PHOTO_PIXELS = 2000
-
-        /** Characters of a text file that count as one "page". */
-        const val TEXT_PAGE = 3000
     }
 }

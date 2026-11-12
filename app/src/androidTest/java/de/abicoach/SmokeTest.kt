@@ -240,6 +240,20 @@ class SmokeTest {
 
         ui { vm.nav.openTab(Tab.KURS) }
         shot("kurs")
+        // One upload button for every file type; real exam material has its own upload and its own dialog.
+        fun picked(name: String, mime: String) = de.abicoach.memory.Importer.Picked(android.net.Uri.EMPTY, name, mime, 1000)
+        ui { vm.onPickedDemo(listOf(picked("Green_Line_Oberstufe.pdf", "application/pdf"), picked("Brexit_Folien.pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation"), picked("IMG_1.jpg", "image/jpeg"), picked("IMG_2.jpg", "image/jpeg")), exam = false) }
+        shot("import_gemischt")
+        ui { vm.onPickedDemo(listOf(picked("muendliche_pruefung_2024.pdf", "application/pdf")), exam = true) }
+        shot("import_pruefungsmaterial")
+        ui { vm.pendingImport = null }
+        val examChoose = runCatching { compose.onNodeWithTag("exam_choose").assertExists() }.isSuccess
+        android.util.Log.i("SmokeTest", "Prüfungsmaterial-Karte: Auswahl-Knopf da=$examChoose")
+        runCatching { compose.onNodeWithTag("exam_choose").performScrollTo().performClick() }
+        compose.waitForIdle()
+        shot("pruefungsmaterial_auswahl")
+        android.util.Log.i("SmokeTest", "Auswahl geöffnet=${vm.nav.current == Screen.RealTasks}")
+        ui { if (vm.nav.current == Screen.RealTasks) vm.nav.pop() }
         swipeShot("list_kurs", "kurs_mitte", 1)
         swipeShot("list_kurs", "kurs_unten", 2)
         ui { vm.nav.push(Screen.Doc(Demo.BOOK)) }

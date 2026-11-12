@@ -2,7 +2,6 @@ package de.abicoach.ui.screens
 
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -13,8 +12,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -52,12 +51,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import de.abicoach.R
-import de.abicoach.ui.tourTarget
 import de.abicoach.data.Knowledge
 import de.abicoach.data.SessionKind
 import de.abicoach.memory.CourseDoc
 import de.abicoach.memory.DocKind
 import de.abicoach.memory.DocStatus
+import de.abicoach.memory.ExamUnits
 import de.abicoach.memory.Importer
 import de.abicoach.memory.MemoryStats
 import de.abicoach.ui.AppViewModel
@@ -94,6 +93,7 @@ import de.abicoach.ui.theme.accent
 import de.abicoach.ui.theme.green
 import de.abicoach.ui.theme.red
 import de.abicoach.ui.theme.yellow
+import de.abicoach.ui.tourTarget
 import java.io.File
 
 /** "Mein Kurs": upload everything from the Oberstufe; the AI reads it into a permanent memory. */
@@ -103,8 +103,9 @@ fun CourseScreen(vm: AppViewModel) {
     val context = LocalContext.current
     val docs by app.memory.docs.collectAsState()
     val stats = remember(docs) { app.memory.stats() }
+    // One picker for everything: PDFs, photos, Word, PowerPoint, text – any mix at once.
     val pickFiles = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris -> vm.onPicked(uris) }
-    val pickPhotos = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(100)) { uris -> vm.onPicked(uris) }
+    val pickExam = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris -> vm.onPicked(uris, exam = true) }
     var shots by remember { mutableStateOf(listOf<Uri>()) }
     var pendingShot by remember { mutableStateOf<Uri?>(null) }
     val takePicture =
@@ -145,34 +146,14 @@ fun CourseScreen(vm: AppViewModel) {
             AbiCard(modifier = Modifier.testTag("course_add").tourTarget("course_add")) {
                 CardTitle("Hinzufügen", icon = R.drawable.cloud_upload_24dp)
                 ActionButton(
-                    "PDF oder Dokument",
+                    "Dateien hochladen",
                     R.drawable.upload_file_24dp,
                     accent,
-                    {
-                        vm.tap()
-                        pickFiles.launch(
-                            arrayOf(
-                                "application/pdf",
-                                "image/*",
-                                "text/plain",
-                                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                            ),
-                        )
-                    },
-                    subtitle = "Schulbuch, Abi-Buch, Arbeitsblätter, Word-Dateien",
+                    { vm.tap(); pickFiles.launch(arrayOf("*/*")) },
+                    subtitle = "Alles auf einmal: PDF, Fotos, Word, PowerPoint, Text – auch gemischt",
                     enabled = !vm.importBusy,
                     container = MaterialTheme.colorScheme.background,
                     modifier = Modifier.testTag("add_files"),
-                )
-                Gap(8.dp)
-                ActionButton(
-                    "Fotos aus der Galerie",
-                    R.drawable.image_24dp,
-                    accent,
-                    { vm.tap(); pickPhotos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
-                    subtitle = "Mehrere Fotos werden zu einem Dokument (z. B. eine Klausur)",
-                    enabled = !vm.importBusy,
-                    container = MaterialTheme.colorScheme.background,
                 )
                 Gap(8.dp)
                 ActionButton(
@@ -180,16 +161,19 @@ fun CourseScreen(vm: AppViewModel) {
                     R.drawable.add_a_photo_24dp,
                     accent,
                     { newShot() },
-                    subtitle = if (shots.isEmpty()) "Seite für Seite, auch mit Lehrer-Korrekturen" else "${shots.size} ${if (shots.size == 1) "Seite" else "Seiten"} fotografiert",
+                    subtitle = if (shots.isEmpty()) "Wenn du es nur auf Papier hast" else "${shots.size} ${if (shots.size == 1) "Seite" else "Seiten"} fotografiert",
                     enabled = !vm.importBusy,
                     container = MaterialTheme.colorScheme.background,
                 )
                 if (shots.isNotEmpty()) {
                     Gap(8.dp)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        ActionButton("Fertig", R.drawable.check_24dp, green, { vm.tap(); vm.onPicked(shots); shots = emptyList() }, Modifier.weight(1f), container = MaterialTheme.colorScheme.background)
-                        ActionButton("Verwerfen", R.drawable.delete_24dp, red, { vm.tap(); shots = emptyList() }, Modifier.weight(1f), container = MaterialTheme.colorScheme.background)
-                    }
+                    CaptionText("Wohin mit den fotografierten Seiten?")
+                    Gap(6.dp)
+                    ActionButton("Zum Kursmaterial", R.drawable.check_24dp, green, { vm.tap(); vm.onPicked(shots); shots = emptyList() }, container = MaterialTheme.colorScheme.background)
+                    Gap(8.dp)
+                    ActionButton("Als echtes Prüfungsmaterial", R.drawable.workspace_premium_24dp, green, { vm.tap(); vm.onPicked(shots, exam = true); shots = emptyList() }, container = MaterialTheme.colorScheme.background)
+                    Gap(8.dp)
+                    ActionButton("Verwerfen", R.drawable.delete_24dp, red, { vm.tap(); shots = emptyList() }, container = MaterialTheme.colorScheme.background)
                 }
                 if (vm.importBusy) {
                     Gap(10.dp)
@@ -198,11 +182,13 @@ fun CourseScreen(vm: AppViewModel) {
                 }
             }
         }
+        item(key = "exam_material") { ExamMaterialCard(vm, docs, enabled = !vm.importBusy) { vm.tap(); pickExam.launch(arrayOf("*/*")) } }
         if (docs.isNotEmpty()) item { StatusCard(stats, docs) }
         item(key = "halfyears") { HalfYearsCard(vm) }
         if (stats.passages > 0) item { DossiersCard(vm) }
         if (stats.passages > 0) item { KnowledgeMapCard(stats) }
-        DocKind.entries.forEach { kind ->
+        // Real exam material has its own card above and is not mixed with the rest.
+        DocKind.entries.filter { it != DocKind.PRUEFUNG }.forEach { kind ->
             val list = docs.filter { it.kind == kind }
             if (list.isNotEmpty()) {
                 item(key = kind.name) {
@@ -227,7 +213,65 @@ fun CourseScreen(vm: AppViewModel) {
             }
         }
     }
-    vm.pendingImport?.let { files -> ImportDialog(files, onConfirm = { kind, title, halbjahr -> vm.confirmImport(kind, title, halbjahr) }, onDismiss = { vm.pendingImport = null }) }
+    vm.pendingImport?.let { files ->
+        ImportDialog(files, exam = vm.pendingExam, onConfirm = { kind, title, halbjahr -> vm.confirmImport(kind, title, halbjahr) }, onDismiss = { vm.pendingImport = null })
+    }
+}
+
+/**
+ * Real exam material (original tasks of the oral exam) lives apart from the course material: its own upload, its
+ * own list, and from here the student picks which task to practise.
+ */
+@Composable
+private fun ExamMaterialCard(vm: AppViewModel, docs: List<CourseDoc>, enabled: Boolean, onUpload: () -> Unit) {
+    val sessions by vm.app.store.sessions.collectAsState()
+    val mine = docs.filter { it.kind == DocKind.PRUEFUNG }
+    val ids = mine.map { it.id }.toSet()
+    val units = remember(docs) { ExamUnits.all(vm.app).filter { it.docId in ids } }
+    val used = remember(sessions) { ExamUnits.used(vm.app) }
+    AbiCard(modifier = Modifier.testTag("course_exam")) {
+        CardTitle("Echtes Prüfungsmaterial", icon = R.drawable.workspace_premium_24dp, iconTint = green)
+        CaptionText(
+            if (mine.isEmpty()) {
+                "Echte Aufgaben der mündlichen Prüfung – von deiner Lehrkraft oder aus früheren Jahren. Sie bleiben getrennt vom übrigen Material, und du wählst selbst aus, welche du übst."
+            } else {
+                "Getrennt vom übrigen Material. Du wählst selbst aus, welche Aufgabe du übst."
+            },
+        )
+        Gap(8.dp)
+        ActionButton(
+            "Prüfungsmaterial hochladen",
+            R.drawable.upload_file_24dp,
+            green,
+            onUpload,
+            subtitle = "Alle Dateitypen: PDF, Fotos, Word, PowerPoint, Text",
+            enabled = enabled,
+            container = MaterialTheme.colorScheme.background,
+            modifier = Modifier.testTag("add_exam"),
+        )
+        if (mine.isNotEmpty()) {
+            Gap(8.dp)
+            val open = units.count { it.id !in used }
+            val reading = mine.any { it.status != DocStatus.DONE && it.status != DocStatus.FAILED }
+            ActionButton(
+                if (units.isEmpty()) "Aufgabe auswählen" else "Aufgabe auswählen (${units.size})",
+                R.drawable.format_list_bulleted_24dp,
+                accent,
+                { vm.openRealTasks() },
+                subtitle =
+                    when {
+                        units.isNotEmpty() -> if (open == 0) "Alle schon geübt – du kannst jede wiederholen" else "$open noch nicht geübt"
+                        reading -> "Die KI sucht die Aufgaben gerade heraus …"
+                        else -> "In diesen Dateien wurde keine Aufgabe mit Text gefunden"
+                    },
+                enabled = units.isNotEmpty(),
+                container = MaterialTheme.colorScheme.background,
+                modifier = Modifier.testTag("exam_choose"),
+            )
+            Gap(6.dp)
+            mine.forEach { d -> DocRow(d) { vm.tap(); vm.nav.push(Screen.Doc(d.id)) } }
+        }
+    }
 }
 
 @Composable
@@ -323,32 +367,46 @@ private fun DocRow(d: CourseDoc, onClick: () -> Unit) {
 
 /** "Was ist das?" – kind, title and term of the picked files. */
 @Composable
-private fun ImportDialog(files: List<Importer.Picked>, onConfirm: (DocKind, String, String) -> Unit, onDismiss: () -> Unit) {
+private fun ImportDialog(files: List<Importer.Picked>, exam: Boolean, onConfirm: (DocKind, String, String) -> Unit, onDismiss: () -> Unit) {
     val single = files.size == 1 || files.all { it.mime.startsWith("image/") }
-    var kind by remember { mutableStateOf(if (files.all { it.mime.startsWith("image/") }) DocKind.KLAUSUR else DocKind.SCHULBUCH) }
+    var kind by remember {
+        mutableStateOf(
+            when {
+                exam -> DocKind.PRUEFUNG
+                files.all { it.mime.startsWith("image/") } -> DocKind.KLAUSUR
+                else -> DocKind.SCHULBUCH
+            },
+        )
+    }
     var title by remember { mutableStateOf(if (files.size == 1) files.first().name.substringBeforeLast('.') else "") }
     var halbjahr by remember { mutableStateOf("unbekannt") }
     val images = files.count { it.mime.startsWith("image/") }
     PopUp(
-        title = "Was ist das?",
+        title = if (exam) "Echtes Prüfungsmaterial" else "Was ist das?",
         description =
             buildString {
                 append(if (files.size == 1) files.first().name else "${files.size} Dateien")
                 if (images > 1) append(" – die $images Fotos werden ein Dokument")
+                if (files.size > images && files.size > 1) append(if (images > 1) ", jede andere Datei ein eigenes" else " – jede wird ein eigenes Dokument")
             },
         confirmText = "Einlesen",
         onConfirm = { onConfirm(kind, title, halbjahr) },
         onDismiss = onDismiss,
     ) {
-        ChoiceChips(DocKind.entries, kind, { it.label }, { kind = it }, tagPrefix = "kind")
-        Gap(10.dp)
-        if (single) {
-            AbiTextField(title, { title = it }, label = "Titel", placeholder = "z. B. Klausur Q1.2 Brexit", tag = "import_title")
+        if (!exam) {
+            // Real exam material has its own upload, so it is not offered here.
+            ChoiceChips(DocKind.entries.filter { it != DocKind.PRUEFUNG }, kind, { it.label }, { kind = it }, tagPrefix = "kind")
             Gap(10.dp)
         }
-        BodyText("Halbjahr")
-        Gap(6.dp)
-        ChoiceChips(Knowledge.HALBJAHRE, halbjahr, { it }, { halbjahr = it }, tagPrefix = "halbjahr")
+        if (single) {
+            AbiTextField(title, { title = it }, label = "Titel", placeholder = if (exam) "z. B. Mündliche Prüfung 2024" else "z. B. Klausur Q1.2 Brexit", tag = "import_title")
+            Gap(10.dp)
+        }
+        if (!exam) {
+            BodyText("Halbjahr")
+            Gap(6.dp)
+            ChoiceChips(Knowledge.HALBJAHRE, halbjahr, { it }, { halbjahr = it }, tagPrefix = "halbjahr")
+        }
         if (kind == DocKind.KLAUSUR) {
             Gap(8.dp)
             CaptionText("Tipp: Auch die Seiten mit den Korrekturen und dem Kommentar der Lehrkraft mitnehmen – daraus lernt die App deine typischen Fehler.")
