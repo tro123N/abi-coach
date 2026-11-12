@@ -25,6 +25,7 @@ object CoachContext {
         val sessions = app.store.sessions.value
         val sb = StringBuilder("Stand des Schülers:")
         Planner.daysUntilExam(app)?.let { sb.append(" Prüfung in ").append(it).append(" Tagen.") }
+        app.settings.targetPoints.takeIf { it > 0 }?.let { sb.append(" Ziel des Schülers für die Prüfung: ").append(it).append(" Punkte – richte deine Ratschläge darauf aus.") }
         profile.prognosis()?.let { sb.append(" Prognose ").append(it.points).append(" Punkte (Spanne ").append(it.lowPoints).append("–").append(it.highPoints).append(").") }
         if (profile.skills.isNotEmpty()) {
             sb.append("\nKompetenzen (0–15): ")

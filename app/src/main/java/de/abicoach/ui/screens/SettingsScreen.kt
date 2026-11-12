@@ -224,6 +224,11 @@ fun SettingsScreen(vm: AppViewModel) {
                 modifier = Modifier.testTag("settings_date"),
             )
             Gap(12.dp)
+            BodyText("Mein Ziel in der Prüfung")
+            Gap(6.dp)
+            ChoiceChips(de.abicoach.learn.Goal.CHOICES, settings.targetPoints, { "$it P." }, { vm.tap(); settings.targetPoints = it; vm.ensureDay(force = true) }, tagPrefix = "goal")
+            CaptionText(if (settings.targetPoints > 0) "${settings.targetPoints} Punkte = ${de.abicoach.ui.Planner.gradeLabel(settings.targetPoints)}. Der Tagesplan übt zuerst, was noch darunter liegt." else "Noch kein Ziel gewählt. Mit Ziel übt der Tagesplan zuerst, was noch darunter liegt.")
+            Gap(12.dp)
             BodyText("Übungszeit pro Tag")
             Gap(6.dp)
             ChoiceChips(listOf(10, 15, 20, 30, 45), settings.dailyMinutes, { "$it Min." }, { vm.tap(); settings.dailyMinutes = it }, tagPrefix = "minutes")

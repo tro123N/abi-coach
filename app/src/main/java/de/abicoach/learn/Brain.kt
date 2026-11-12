@@ -130,7 +130,8 @@ object LearningBrain {
             val unsure = 1.0 - (st?.let { p.effectiveConfidence(it, now) } ?: 0.0)
             val stale = st?.let { min(0.5, (now - it.updatedAt) / DAY / 40.0) } ?: 0.3
             val falling = if ((p.skillTrend(s) ?: 0.0) < -0.3) 1.2 else 1.0
-            (15.0 - score) * s.area.weight / (perArea[s.area] ?: 1) * (1.0 + 0.6 * unsure) * (1.0 + stale) * falling
+            // With a goal set, what lies below it counts fully and what is already above it only a little.
+            Goal.gap(score, app.settings.targetPoints) * s.area.weight / (perArea[s.area] ?: 1) * (1.0 + 0.6 * unsure) * (1.0 + stale) * falling
         }
     }
 

@@ -144,7 +144,7 @@ object TourSteps {
             ),
             TourStep(
                 Tab.WEG, "action_settings", R.drawable.settings_24dp, "Einstellungen",
-                "Das Zahnrad ist auf allen vier Seiten immer oben rechts. Dort wählst du deine KI und trägst den Schlüssel ein, stellst den Prüfungstermin ein und sicherst deinen Lernstand als Datei.",
+                "Das Zahnrad steht auf allen vier Seiten oben rechts neben dem Titel. Dort wählst du deine KI und trägst den Schlüssel ein, stellst den Prüfungstermin ein und sicherst deinen Lernstand als Datei.",
             ),
             TourStep(
                 null, null, R.drawable.rocket_launch_24dp, "Bereit!",
@@ -241,9 +241,23 @@ fun TourOverlay(vm: AppViewModel) {
         LaunchedEffect(index, live != null) {
             if (live == null) return@LaunchedEffect
             val target = step.target ?: return@LaunchedEffect
-            // The bar at the bottom and the settings button are always in sight.
-            if (target.startsWith("dock_") || target.startsWith("action_")) return@LaunchedEffect
+            // The bar at the bottom is always in sight.
+            if (target.startsWith("dock_")) return@LaunchedEffect
             frames(18)
+            // The settings button sits in the title line at the very top.
+            if (target.startsWith("action_")) {
+                val top = step.tab?.let { tour.lists[it] }
+                if (top != null && top.canScrollBackward) {
+                    scrolling = true
+                    try {
+                        top.animateScrollToItem(0)
+                        frames(3)
+                    } finally {
+                        scrolling = false
+                    }
+                }
+                return@LaunchedEffect
+            }
             fun visible(r: Rect?) = r != null && r.top >= topLimit && r.bottom <= low
             if (visible(tour.rect(target))) return@LaunchedEffect
             val list = step.tab?.let { tour.lists[it] }

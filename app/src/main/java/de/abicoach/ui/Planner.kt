@@ -205,7 +205,11 @@ object Planner {
             Milestone("10 Punkte in einer Simulation", best >= 10, if (simulations.isNotEmpty()) "bisher bestes Ergebnis: $best P." else null),
             Milestone("13 Punkte in einer Simulation", best >= 13),
             Milestone("Prognose 13 Punkte oder mehr", prognosis >= 13),
-        )
+        ).let { list ->
+            // The student's own goal is the milestone that counts.
+            val target = app.settings.targetPoints
+            if (target <= 0) list else list.filter { !(it.title.startsWith("Prognose 13") && target != 13) } + Milestone("Dein Ziel: Prognose $target Punkte", prognosis >= target, "aktuell $prognosis P.")
+        }
     }
 
     /** The covered topic field that was practised least. */

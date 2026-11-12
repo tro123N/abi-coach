@@ -1,5 +1,6 @@
 package de.abicoach.ui.screens
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -24,7 +25,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -39,6 +42,7 @@ import de.abicoach.R
 import de.abicoach.data.SessionKind
 import de.abicoach.data.SessionRecord
 import de.abicoach.learn.ActivityKind
+import de.abicoach.learn.Goal
 import de.abicoach.learn.LearningBrain
 import de.abicoach.learn.Phase
 import de.abicoach.path.PathEngine
@@ -61,6 +65,7 @@ import de.abicoach.ui.components.BodyText
 import de.abicoach.ui.components.BulletText
 import de.abicoach.ui.components.CaptionText
 import de.abicoach.ui.components.CardTitle
+import de.abicoach.ui.components.ChoiceChips
 import de.abicoach.ui.components.Gap
 import de.abicoach.ui.components.HeroCard
 import de.abicoach.ui.components.HeroChip
@@ -68,6 +73,7 @@ import de.abicoach.ui.components.HeroStat
 import de.abicoach.ui.components.LevelBadge
 import de.abicoach.ui.components.MiniAction
 import de.abicoach.ui.components.Pill
+import de.abicoach.ui.components.PopUp
 import de.abicoach.ui.components.SectionLabel
 import de.abicoach.ui.components.Segmented
 import de.abicoach.ui.components.StartButton
@@ -199,7 +205,7 @@ private fun OverviewCard(vm: AppViewModel, profile: Profile) {
                     }
                 } else {
                     Text("Noch keine Prognose", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                    Text("Nach der Einstufung siehst du hier, wo du stehst und was dir bis zur 15 fehlt.", fontSize = 13.sp, lineHeight = 17.sp, color = Color.White.copy(alpha = 0.9f))
+                    Text("Nach der Einstufung siehst du hier, wo du stehst und was dir bis zu deinem Ziel fehlt.", fontSize = 13.sp, lineHeight = 17.sp, color = Color.White.copy(alpha = 0.9f))
                 }
             }
         }
@@ -209,6 +215,58 @@ private fun OverviewCard(vm: AppViewModel, profile: Profile) {
             HeroStat(streak.toString(), if (streak == 1) "Tag in Folge" else "Tage in Folge", Modifier.weight(1f).fillMaxHeight())
             HeroStat("$today/${app.settings.dailyMinutes}", "Min. heute", Modifier.weight(1f).fillMaxHeight())
         }
+        Gap(8.dp)
+        // The goal the whole app steers by – a tap changes it.
+        val settingsTick by app.settings.version.collectAsState()
+        val goal = remember(profile, settingsTick) { Goal.state(app.settings.targetPoints, prognosis?.total, projection?.points) }
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color.White.copy(alpha = if (goal.status == Goal.Status.UNSET) 0.26f else 0.16f))
+                    .clickable { vm.tap(); vm.showGoal = true }
+                    .padding(horizontal = 12.dp, vertical = 9.dp)
+                    .testTag("goal_row"),
+        ) {
+            Icon(painterResource(if (goal.status == Goal.Status.REACHED) R.drawable.task_alt_24dp else R.drawable.target_24dp), contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp))
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(goal.headline, fontSize = 15.sp, lineHeight = 19.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                Text(goal.detail, fontSize = 12.sp, lineHeight = 16.sp, color = Color.White.copy(alpha = 0.9f))
+            }
+            Icon(painterResource(R.drawable.edit_note_24dp), contentDescription = "Ziel ändern", tint = Color.White.copy(alpha = 0.8f), modifier = Modifier.size(18.dp))
+        }
+    }
+    if (vm.showGoal) GoalDialog(vm)
+}
+
+/** Choosing the goal: how many points the oral exam should bring. */
+@Composable
+fun GoalDialog(vm: AppViewModel) {
+    val settings = vm.app.settings
+    var pick by remember { mutableStateOf(settings.targetPoints.takeIf { it > 0 } ?: 11) }
+    PopUp(
+        title = "Dein Ziel",
+        description = "Wie viele Punkte willst du in der mündlichen Prüfung erreichen?",
+        confirmText = "Übernehmen",
+        onConfirm = {
+            vm.showGoal = false
+            if (settings.targetPoints != pick) {
+                settings.targetPoints = pick
+                // The plan follows the new goal at once.
+                vm.ensureDay(force = true)
+                vm.notice = "Ziel: $pick Punkte. Dein Plan richtet sich jetzt danach."
+            }
+        },
+        onDismiss = { vm.showGoal = false },
+    ) {
+        ChoiceChips(Goal.CHOICES, pick, { "$it P." }, { vm.tap(); pick = it }, tagPrefix = "goal")
+        Gap(10.dp)
+        BodyText("$pick Punkte = ${Planner.gradeLabel(pick)}")
+        Gap(6.dp)
+        CaptionText("Danach richtet sich die App: Der Tagesplan übt zuerst, was noch unter deinem Ziel liegt. Die Übersicht zeigt, wie viel noch fehlt und ob dein Tempo reicht. Die Bewertung selbst bleibt gleich streng.")
     }
 }
 

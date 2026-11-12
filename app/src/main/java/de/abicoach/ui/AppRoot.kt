@@ -199,39 +199,11 @@ fun AppRoot(vm: AppViewModel) {
                     badge = { t -> t == Tab.KURS && docs.any { d -> d.status == de.abicoach.memory.DocStatus.FAILED } },
                 )
             }
-            // Settings are always one tap away: the button floats at the top right of all four areas.
-            AnimatedVisibility(
-                visible = vm.nav.current is Screen.Root,
-                modifier = Modifier.align(Alignment.TopEnd),
-                enter = fadeIn(tween(220)) + scaleIn(spring(dampingRatio = 0.7f, stiffness = 420f), initialScale = 0.7f),
-                exit = fadeOut(tween(140)) + scaleOut(tween(140), targetScale = 0.7f),
-            ) {
-                val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-                Box(Modifier.padding(top = top + SettingsTop, end = 20.dp).tourTarget("action_settings")) {
-                    GlassSurface(
-                        modifier = Modifier.size(SettingsSize).testTag("action_settings"),
-                        radius = SettingsSize / 2,
-                        fill = flow.solid.copy(alpha = if (flow.dark) 0.86f else 0.9f),
-                        onClick = { vm.tap(); vm.nav.push(Screen.Settings) },
-                    ) {
-                        Icon(
-                            painterResource(de.abicoach.R.drawable.settings_24dp),
-                            contentDescription = "Einstellungen",
-                            tint = flow.text,
-                            modifier = Modifier.align(Alignment.Center).size(SettingsSize * 0.46f),
-                        )
-                    }
-                }
-            }
             // The guided tour lies over everything while it runs.
             TourOverlay(vm)
         }
     }
 }
-
-/** Size and place of the floating settings button; the title line of each area keeps this room free. */
-val SettingsSize = 44.dp
-private val SettingsTop = 30.dp
 
 /**
  * Gives every card of a main area its motion without the screens having to care: cards rise in softly one after
@@ -305,8 +277,20 @@ fun TabScaffold(
         verticalArrangement = Arrangement.spacedBy(14.dp),
         content = {
             val moving = MovingScope(this, state, born, calm)
-            // The floating settings button sits at the right end of the title line: that room stays free.
-            moving.item(key = "header", contentType = null) { LargeHeader(title, caption, actions = { actions(); Spacer(Modifier.width(SettingsSize + 2.dp)) }) }
+            // The settings button has its fixed place at the right end of the title line of all four areas. It
+            // belongs to the title and scrolls away with it instead of floating over the cards.
+            moving.item(key = "header", contentType = null) {
+                LargeHeader(
+                    title,
+                    caption,
+                    actions = {
+                        actions()
+                        Box(Modifier.tourTarget("action_settings")) {
+                            de.abicoach.ui.components.TopBarAction(de.abicoach.R.drawable.settings_24dp, "Einstellungen", { vm.tap(); vm.nav.push(Screen.Settings) }, tag = "action_settings")
+                        }
+                    },
+                )
+            }
             moving.content()
         },
     )

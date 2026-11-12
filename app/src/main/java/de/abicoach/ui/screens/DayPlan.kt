@@ -151,7 +151,7 @@ fun DayPlanCard(vm: AppViewModel) {
                 ActionButton("Noch etwas üben", R.drawable.add_24dp, accent, { vm.addBonusStep() }, subtitle = "Die App sucht den nächsten sinnvollen Schritt", container = MaterialTheme.colorScheme.background, modifier = Modifier.testTag("plan_more"))
             } else if (day.steps.isNotEmpty()) {
                 Gap(8.dp)
-                CaptionText("Noch etwa ${day.minutesLeft} Min." + if (phase != Phase.START) " · Phase ${phase.label}" else "")
+                CaptionText("Noch etwa ${day.minutesLeft} Min." + (if (phase != Phase.START) " · Phase ${phase.label}" else "") + (vm.app.settings.targetPoints.takeIf { it > 0 }?.let { " · ausgerichtet auf dein Ziel: $it P." } ?: ""))
             }
             // Practice outside the plan counts as well – and is shown, so it is visible that it counted.
             val extra = day.ledger.filter { !it.planned }.takeLast(3)

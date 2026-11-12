@@ -186,6 +186,12 @@ class SmokeTest {
         Log.i(TAG, "Tagesplan: ${app.daily.day.value?.steps?.map { it.role.name + ":" + it.kind + (if (it.carried) "*" else "") }}")
         Log.i(TAG, "Fehler-Stufen: ${app.errorMemory.patterns.value.map { it.title + "=" + it.stage.name }}")
         shot("abiweg")
+        // The goal is shown on the overview and a tap opens the choice.
+        runCatching { compose.onNodeWithTag("goal_row").performClick() }
+        compose.waitForIdle()
+        shot("ziel_dialog")
+        android.util.Log.i("SmokeTest", "Ziel-Dialog offen=${vm.showGoal}, Ziel=${app.settings.targetPoints}")
+        ui { vm.showGoal = false }
         scrollShot("list_weg", 1, "abiweg_heute_dran")
         swipeShot("list_weg", "abiweg_unten", 2)
         // Two steps done (one with the result of its evaluation) and something extra outside the plan.
@@ -754,6 +760,7 @@ object Demo {
         val now = System.currentTimeMillis()
         val s = app.settings
         s.examDate = LocalDate.now().plusDays(118).toString()
+        s.targetPoints = 12
         s.geminiKey = "demo-gemini-key"
         s.courseTopics = "The Hate U Give, Brexit, Purple Hibiscus, Black Mirror"
         s.themeMode = ThemeMode.LIGHT

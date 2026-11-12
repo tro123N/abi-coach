@@ -187,7 +187,8 @@ fun StatsScreen(vm: AppViewModel) {
                                 LineChart(
                                     values = profile.history.takeLast(30).map { it.total.toFloat() },
                                     color = accent,
-                                    guides = listOf(ChartGuide(13f, "13", green), ChartGuide(10f, "10", yellow)),
+                                    // The line to reach is the student's own goal (13 and 10 while none is set).
+                                    guides = app.settings.targetPoints.takeIf { it > 0 }?.let { listOf(ChartGuide(it.toFloat(), "Ziel $it", green)) } ?: listOf(ChartGuide(13f, "13", green), ChartGuide(10f, "10", yellow)),
                                     minY = maxOf(0f, (profile.history.takeLast(30).minOf { it.total }.toFloat() - 2f)),
                                     maxY = 15f,
                                     valueText = { points(it.toDouble()) },

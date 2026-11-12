@@ -88,6 +88,8 @@ Danach startet auf Wunsch eine **geführte Tour durch die echte App**: Der Bilds
 
 ## Der Kern: Tagesplan und Gedächtnis
 
+**Dein Ziel:** Auf „Heute" steht, wie viele Punkte du erreichen willst, wie viel noch fehlt und ob dein Tempo reicht. Ein Tipp darauf ändert das Ziel (auch unter Einstellungen → Prüfung). Der Tagesplan übt zuerst, was noch unter dem Ziel liegt; die Bewertung bleibt gleich streng.
+
 Die App soll dir das Nachdenken abnehmen, *was* du üben musst. Dafür arbeiten drei Teile zusammen:
 
 - **Der Tagesplan** (`learn/Daily.kt`, `LearningBrain.day`): Sobald du die App an einem Tag zum ersten Mal öffnest, steht der Plan – in fester Reihenfolge:

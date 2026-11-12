@@ -243,6 +243,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         private set
 
     /** Files picked in "Mein Kurs" that wait for the "Was ist das?" dialog. */
+    /** True while the dialog for the goal (points to reach) is open. */
+    var showGoal by mutableStateOf(false)
+
     var pendingImport by mutableStateOf<List<Importer.Picked>?>(null)
 
     /** True while the picked files are real exam material (kept apart from the course material). */

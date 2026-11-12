@@ -233,6 +233,14 @@ class Settings(context: Context) {
             changed()
         }
 
+    /** The points the student wants to reach in the oral exam (0 = no goal set yet). */
+    var targetPoints: Int
+        get() = prefs.getInt("target_points", 0)
+        set(value) {
+            prefs.edit().putInt("target_points", value.coerceIn(0, 15)).apply()
+            changed()
+        }
+
     var defaultFeedback: FeedbackMode
         get() = enumValue("default_feedback", FeedbackMode.FLUESTERN)
         set(value) = putString("default_feedback", value.name)
