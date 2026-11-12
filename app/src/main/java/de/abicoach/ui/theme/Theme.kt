@@ -52,10 +52,12 @@ enum class Palette(val label: String) {
     SCHWARZ("Schwarz"),
 }
 
-val green = Color(0xFF39A241)
-val red = Color(0xFFD34747)
-val yellow = Color(0xFFFBC02D)
-val blue = Color(0xFF1976D2)
+// The signal colours share one character (clear, a little soft) so they sit calmly next to every colour theme:
+// emerald for "good", coral red for "wrong", amber for "watch out".
+val green = Color(0xFF2FAE6B)
+val red = Color(0xFFE2556A)
+val yellow = Color(0xFFF0A63A)
+val blue = Color(0xFF3B82F6)
 
 /**
  * Everything the Living Flow look needs: the page base, three soft light colours that flow behind the content,

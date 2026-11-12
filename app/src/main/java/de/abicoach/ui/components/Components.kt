@@ -20,6 +20,8 @@ along with this program.  If not, see https://www.gnu.org/licenses/gpl-3.0.md.
 package de.abicoach.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.LocalIndication
@@ -62,6 +64,7 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -97,6 +100,7 @@ import de.abicoach.ui.theme.green
 import de.abicoach.ui.theme.readable
 import de.abicoach.ui.theme.red
 import de.abicoach.ui.theme.yellow
+import kotlin.math.roundToInt
 
 /** Obere Leiste: durchsichtig, mit rundem Glas-Knopf zum Zurückgehen und großem Titel. */
 @Composable
@@ -156,7 +160,11 @@ fun AbiCard(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     GlassSurface(modifier = modifier.fillMaxWidth(), onClick = onClick, border = border) {
-        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 16.dp), content = content)
+        // A card that gets more or less content grows and shrinks softly instead of snapping.
+        Column(
+            modifier = Modifier.fillMaxWidth().animateContentSize(spring(dampingRatio = 0.9f, stiffness = 420f)).padding(horizontal = 18.dp, vertical = 16.dp),
+            content = content,
+        )
     }
 }
 
@@ -826,8 +834,11 @@ fun ProgressLine(fraction: Float?, modifier: Modifier = Modifier, color: Color =
             strokeCap = StrokeCap.Round,
         )
     } else {
+        // The bar fills up from where it was – on first sight from zero.
+        val shown = remember { Animatable(0f) }
+        LaunchedEffect(fraction) { shown.animateTo(fraction.coerceIn(0f, 1f), spring(dampingRatio = 0.9f, stiffness = 120f)) }
         LinearProgressIndicator(
-            progress = { fraction.coerceIn(0f, 1f) },
+            progress = { shown.value },
             modifier = modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
             color = color,
             trackColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.12f),
@@ -937,6 +948,11 @@ fun BigNumber(
 ) {
     val dimens = AbiTheme.dimens
     val fraction = value.toFloatOrNull()?.div(15f)?.coerceIn(0f, 1f)
+    // The ring draws itself and the number counts up to its value.
+    val sweep = remember { Animatable(0f) }
+    LaunchedEffect(fraction) { sweep.animateTo(fraction ?: 0f, spring(dampingRatio = 0.85f, stiffness = 90f)) }
+    val whole = value.toIntOrNull()
+    val counted = if (whole != null && fraction != null && fraction > 0f) (whole * (sweep.value / fraction).coerceIn(0f, 1f)).roundToInt().toString() else value
     // On the coloured hero card the given colours are used exactly; elsewhere they are made readable on glass.
     val ring = if (textColor != null) color else readable(color)
     val trackColor = track ?: color.copy(alpha = 0.16f)
@@ -950,13 +966,13 @@ fun BigNumber(
                     val inset = stroke / 2
                     val arcSize = Size(this.size.width - stroke, this.size.height - stroke)
                     drawArc(trackColor, 0f, 360f, useCenter = false, topLeft = Offset(inset, inset), size = arcSize, style = Stroke(stroke))
-                    if (fraction != null && fraction > 0f) {
-                        drawArc(ring, -90f, 360f * fraction, useCenter = false, topLeft = Offset(inset, inset), size = arcSize, style = Stroke(stroke, cap = StrokeCap.Round))
+                    if (fraction != null && sweep.value > 0f) {
+                        drawArc(ring, -90f, 360f * sweep.value.coerceIn(0f, 1f), useCenter = false, topLeft = Offset(inset, inset), size = arcSize, style = Stroke(stroke, cap = StrokeCap.Round))
                     }
                 },
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(value, fontSize = dimens.fonts.big * 0.72f, color = textColor ?: ring, fontWeight = FontWeight.Bold, maxLines = 1)
+            Text(counted, fontSize = dimens.fonts.big * 0.72f, color = textColor ?: ring, fontWeight = FontWeight.Bold, maxLines = 1)
             Text(caption, fontSize = dimens.fonts.caption * 0.82f, color = (textColor ?: MaterialTheme.colorScheme.onPrimary).copy(alpha = 0.75f), maxLines = 1)
         }
     }

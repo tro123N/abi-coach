@@ -1,5 +1,14 @@
 package de.abicoach.ui.screens
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -159,7 +168,11 @@ fun DayPlanCard(vm: AppViewModel) {
 @Composable
 private fun StepRow(number: Int, step: DayStep, isNext: Boolean, onClick: () -> Unit, tag: String) {
     val dimens = AbiTheme.dimens
-    val shape = RoundedCornerShape(16.dp)
+    val shape = RoundedCornerShape(20.dp)
+    val tile = MaterialTheme.colorScheme.background
+    val fill by animateColorAsState(if (step.done) tile.copy(alpha = tile.alpha * 0.45f) else tile, tween(400), label = "stepFill")
+    val edge by animateColorAsState(if (isNext) accent else accent.copy(alpha = 0f), tween(400), label = "stepEdge")
+    val bubble by animateColorAsState(if (step.done) green.copy(alpha = 0.18f) else accent.copy(alpha = if (isNext) 1f else 0.14f), tween(400), label = "stepBubble")
     val icon = runCatching { ActivityKind.valueOf(step.kind).icon }.getOrDefault(R.drawable.target_24dp)
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -167,20 +180,27 @@ private fun StepRow(number: Int, step: DayStep, isNext: Boolean, onClick: () -> 
             Modifier
                 .fillMaxWidth()
                 .clip(shape)
-                .background(MaterialTheme.colorScheme.background.let { if (step.done) it.copy(alpha = it.alpha * 0.45f) else it })
-                .then(if (isNext) Modifier.border(2.dp, accent, shape) else Modifier)
+                .background(fill)
+                .border(2.dp, edge, shape)
                 .clickable(onClick = onClick)
                 .padding(horizontal = 12.dp, vertical = 10.dp)
                 .testTag(tag),
     ) {
         Box(
             contentAlignment = Alignment.Center,
-            modifier = Modifier.size(36.dp).clip(CircleShape).background(if (step.done) green.copy(alpha = 0.18f) else accent.copy(alpha = if (isNext) 1f else 0.14f)),
+            modifier = Modifier.size(36.dp).clip(CircleShape).background(bubble),
         ) {
-            if (step.done) {
-                Icon(painterResource(R.drawable.check_24dp), contentDescription = "erledigt", tint = green, modifier = Modifier.size(20.dp))
-            } else {
-                Text("$number", fontSize = dimens.fonts.body, fontWeight = FontWeight.Bold, color = if (isNext) androidx.compose.ui.graphics.Color.White else accent)
+            // The number pops over into the tick when the step is done.
+            AnimatedContent(
+                targetState = step.done,
+                transitionSpec = { (scaleIn(spring(dampingRatio = 0.5f, stiffness = 380f), initialScale = 0.3f) + fadeIn(tween(160))) togetherWith (scaleOut(tween(140)) + fadeOut(tween(120))) },
+                label = "stepTick",
+            ) { done ->
+                if (done) {
+                    Icon(painterResource(R.drawable.check_24dp), contentDescription = "erledigt", tint = green, modifier = Modifier.size(20.dp))
+                } else {
+                    Text("$number", fontSize = dimens.fonts.body, fontWeight = FontWeight.Bold, color = if (isNext) androidx.compose.ui.graphics.Color.White else accent)
+                }
             }
         }
         Spacer(Modifier.width(12.dp))

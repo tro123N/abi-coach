@@ -1,8 +1,6 @@
 package de.abicoach.ui.screens
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -28,14 +27,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import de.abicoach.R
-import de.abicoach.ui.tourTarget
 import de.abicoach.data.SessionKind
 import de.abicoach.data.SessionRecord
 import de.abicoach.learn.ActivityKind
@@ -80,6 +80,7 @@ import de.abicoach.ui.theme.green
 import de.abicoach.ui.theme.pointsColor
 import de.abicoach.ui.theme.red
 import de.abicoach.ui.theme.yellow
+import de.abicoach.ui.tourTarget
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -114,7 +115,6 @@ fun AbiWegScreen(vm: AppViewModel) {
         Tab.WEG,
         "Heute",
         caption = todayCaption(Planner.daysUntilExam(app)),
-        actions = { Box(Modifier.tourTarget("action_settings")) { TopBarAction(R.drawable.settings_24dp, "Einstellungen", { vm.tap(); vm.nav.push(Screen.Settings) }, tag = "action_settings") } },
     ) {
         if (vm.errorMessage != null || vm.notice != null || vm.readyDebrief != null || vm.readyMaterialMinutes > 0) item { MessageBanners(vm) }
         if (vm.crashReport != null || vm.recoveredSession != null || vm.backupDue) item(key = "system_banners") { SystemBanners(vm) }
@@ -285,7 +285,6 @@ fun TrainingScreen(vm: AppViewModel) {
         Tab.TRAINING,
         "Üben",
         caption = if (due > 0) (if (due == 1) "1 Sache ist heute fällig" else "$due Dinge sind heute fällig") else "Frei üben oder Level für Level",
-        actions = { TopBarAction(R.drawable.settings_24dp, "Einstellungen", { vm.tap(); vm.nav.push(Screen.Settings) }) },
     ) {
         item(key = "views") {
             Segmented(
@@ -546,13 +545,14 @@ private fun GroupHeader(vm: AppViewModel, group: String, title: String, inside: 
     ) {
         Column(Modifier.weight(1f)) {
             Text(title, fontSize = AbiTheme.dimens.fonts.body, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimary)
-            if (!open) CaptionText(inside)
+            androidx.compose.animation.AnimatedVisibility(!open) { CaptionText(inside) }
         }
+        val turn by androidx.compose.animation.core.animateFloatAsState(if (open) 180f else 0f, androidx.compose.animation.core.spring(dampingRatio = 0.7f, stiffness = 300f), label = "groupTurn")
         Icon(
-            painterResource(if (open) R.drawable.keyboard_arrow_up_24dp else R.drawable.keyboard_arrow_down_24dp),
+            painterResource(R.drawable.keyboard_arrow_down_24dp),
             contentDescription = if (open) "Zuklappen" else "Aufklappen",
             tint = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.6f),
-            modifier = Modifier.size(24.dp),
+            modifier = Modifier.size(24.dp).graphicsLayer { rotationZ = turn },
         )
     }
 }

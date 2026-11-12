@@ -303,12 +303,15 @@ fun ShareBar(fraction: Float, color: Color, modifier: Modifier = Modifier, heigh
                 .background(MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.12f)),
         contentAlignment = Alignment.CenterStart,
     ) {
+        // The bar grows to its length.
+        val shown = androidx.compose.runtime.remember { androidx.compose.animation.core.Animatable(0f) }
+        androidx.compose.runtime.LaunchedEffect(fraction) { shown.animateTo(fraction.coerceIn(0f, 1f), androidx.compose.animation.core.spring(dampingRatio = 0.9f, stiffness = 110f)) }
         if (fraction > 0f) {
             Box(
                 modifier =
                     Modifier
                         .fillMaxHeight()
-                        .fillMaxWidth(fraction.coerceIn(0f, 1f))
+                        .fillMaxWidth(shown.value.coerceIn(0f, 1f))
                         .clip(RoundedCornerShape(height / 2))
                         .background(color),
             )
