@@ -167,7 +167,7 @@ private fun StepRow(number: Int, step: DayStep, isNext: Boolean, onClick: () -> 
             Modifier
                 .fillMaxWidth()
                 .clip(shape)
-                .background(MaterialTheme.colorScheme.background.copy(alpha = if (step.done) 0.45f else 1f))
+                .background(MaterialTheme.colorScheme.background.let { if (step.done) it.copy(alpha = it.alpha * 0.45f) else it })
                 .then(if (isNext) Modifier.border(2.dp, accent, shape) else Modifier)
                 .clickable(onClick = onClick)
                 .padding(horizontal = 12.dp, vertical = 10.dp)
@@ -180,7 +180,7 @@ private fun StepRow(number: Int, step: DayStep, isNext: Boolean, onClick: () -> 
             if (step.done) {
                 Icon(painterResource(R.drawable.check_24dp), contentDescription = "erledigt", tint = green, modifier = Modifier.size(20.dp))
             } else {
-                Text("$number", fontSize = dimens.fonts.body, fontWeight = FontWeight.Bold, color = if (isNext) MaterialTheme.colorScheme.background else accent)
+                Text("$number", fontSize = dimens.fonts.body, fontWeight = FontWeight.Bold, color = if (isNext) androidx.compose.ui.graphics.Color.White else accent)
             }
         }
         Spacer(Modifier.width(12.dp))
