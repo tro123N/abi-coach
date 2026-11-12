@@ -24,7 +24,7 @@ object Backup {
     private val FILES =
         listOf(
             "profile.json", "path.json", "error_memory.json", "error_memory_sessions.json", "insights.json",
-            "pronunciation.json", "vocab.json", "briefing.json", "workshop.json",
+            "pronunciation.json", "vocab.json", "briefing.json", "workshop.json", "daily.json",
         )
     private val DIRS = listOf("sessions", "dossiers")
     private const val MATERIAL = "memory"

@@ -19,10 +19,10 @@ Android-App zur Vorbereitung auf die **mündliche Abiturprüfung Englisch in NRW
 Danach startet auf Wunsch eine **geführte Tour durch die echte App**: Der Bildschirm wird abgedunkelt, das erklärte Element leuchtet hervor, eine Sprechblase sagt, wofür es da ist – von der Prognose über Üben, Fehler-Werkstatt und Kurs bis zum Fortschritt-Graphen und den Einstellungen. Die App wechselt dabei selbst die Bereiche und scrollt hin. Die Tour lässt sich jederzeit überspringen und unter Einstellungen → Über AbiCoach neu starten (dort auch „Einrichtung öffnen“).
 
 ### Heute
-- **Nur das Wichtigste:** Prognose mit Hochrechnung auf einer Hero-Karte, **Dein Plan für heute** (der Plan des Lern-Gehirns, vom KI-Coach in zwei Sätzen erklärt), das nächste Level und die letzte Auswertung als Kacheln. Kletterweg, Meilensteine und „Dein Stand“ sind nach „Üben → Abi-Weg“ und „Fortschritt“ umgezogen.
+- **Nur das Wichtigste:** die Prognose mit Hochrechnung, **Dein Plan für heute** und die letzte Auswertung – sonst nichts. Abi-Weg, Meilensteine und „Dein Stand“ liegen unter „Üben → Abi-Weg“ und „Fortschritt“.
 - **Kletterweg wie in Mental Math Plus:** 6 Welten zu Format und Aufgaben (Startklar, Zusammenfassen, Analysieren, Kommentieren, Vortrag, Prüfungsgespräch), je eine Welt pro Themenfeld (die mit dem meisten Material zuerst) und die Generalprobe mit drei Simulationen. Jedes Level: Erklärung mit Beispiel zum Anhören, dann die Übung; Sterne nach Punkten; Wiederholen nach 1, 3, 7, 14 und 30 Tagen; eingerostete Levels werden aufgefrischt.
 - **Punktprognose** mit Spanne, Countdown bis zur Prüfung, Tage in Folge, Übungszeit heute.
-- **Heute dran – das Lern-Gehirn:** Die App rechnet für jede mögliche Übung aus, wie viele Punkte sie dir *pro Minute* gerade bringt – aus allen Daten zusammen: jede Kompetenz mit ihrer Unsicherheit und wie lange sie nicht geübt wurde, Trends, Punkte je Aufgabe, Themen-Kompass, Fehlergedächtnis, Lerner-Gedächtnis, Wortschatz, Aussprache, Abwechslung und Tage bis zur Prüfung. Daraus wird der Tagesplan (kurzes Warm-up, Hauptübung, kurzer Abschluss) mit Begründung. Je nach **Phase** (Aufbau → Vertiefung → Generalprobe → Endspurt) plant sie anders, z. B. mehr ganze Prüfungen kurz vor dem Abi.
+- **Heute dran – das Lern-Gehirn:** Die App rechnet für jede mögliche Übung aus, wie viele Punkte sie dir *pro Minute* gerade bringt – aus allen Daten zusammen: jede Kompetenz mit ihrer Unsicherheit und wie lange sie nicht geübt wurde, Trends, Punkte je Aufgabe, Themen-Kompass, Fehlergedächtnis, Lerner-Gedächtnis, Wortschatz, Aussprache, Abwechslung und Tage bis zur Prüfung. Daraus wird der Tagesplan (Wiederholen, Fehler beheben, Schwerpunkt, Festigen) mit Begründung. Je nach **Phase** (Aufbau → Vertiefung → Generalprobe → Endspurt) plant sie anders, z. B. mehr ganze Prüfungen kurz vor dem Abi.
 - **Hochrechnung:** Aus dem Verlauf deiner Prognose rechnet die App hoch, wo du am Prüfungstag voraussichtlich stehst, und zeigt dein Tempo pro Woche.
 - **Meilensteine** bis zur Prognose von 13 Punkten.
 - **Einstufung** (ca. 15 Min.): kurzer Text, Vortrag und Gespräch – danach kennt die App deinen Stand und öffnet Welten, die du schon kannst.
@@ -85,6 +85,22 @@ Danach startet auf Wunsch eine **geführte Tour durch die echte App**: Der Bilds
 
 - **Abgleich mit echten Noten:** Die Punkte der App schätzt eine KI. Trägst du eine echte Note fürs Sprechen aus der Schule ein (Probe-Prüfung, Kommunikationsprüfung, mündliche Zeugnisnote), merkt sich die App ihre Prognose von diesem Tag und zeigt dir, ob sie eher zu freundlich oder zu streng ist – und womit du dann eher rechnen solltest. Eine einzelne Note zählt dabei nur zur Hälfte.
 
+## Der Kern: Tagesplan und Gedächtnis
+
+Die App soll dir das Nachdenken abnehmen, *was* du üben musst. Dafür arbeiten drei Teile zusammen:
+
+- **Der Tagesplan** (`learn/Daily.kt`, `LearningBrain.day`): Sobald du die App an einem Tag zum ersten Mal öffnest, steht der Plan – in fester Reihenfolge:
+  1. **Wiederholen** – was fällig ist (Wortschatz-Karten, ein Level des Abi-Wegs zum Auffrischen),
+  2. **Fehler beheben** – der Fehler, der dich gerade am meisten kostet,
+  3. **Schwerpunkt** – die Übung mit dem höchsten erwarteten Punktgewinn pro Minute,
+  4. **Festigen** – etwas Kurzes zum Abschluss, wenn noch Zeit ist.
+
+  Der Plan bleibt den Tag über stehen. Jeder Schritt wird **abgehakt**, sobald du ihn gemacht hast, und zeigt, **was er gebracht hat** („9 Punkte · Prognose 9,8 → 10,0 · 2 von 3 Zielen“). Auch was du außerhalb des Plans übst, wird als „Zusätzlich geübt – zählt auch“ notiert. Ist alles erledigt, gibt es auf Wunsch einen Zusatzschritt. Was offen bleibt, bekommt am nächsten Tag Vorrang („von gestern“).
+- **„Hakt noch“:** War dein letzter Versuch bei einer Übungsart deutlich unter deinem Niveau oder hast du alle Ziele verfehlt, bleibt die App dabei, statt zur nächsten Übung zu springen – bis es sitzt.
+- **Die Fehler-Leiter** (`ErrorStage` im Fehlergedächtnis): Jeder Fehler steigt eine Stufe höher, wenn er wiederkommt, und wieder herunter, wenn er wegbleibt:
+  **Gemerkt** (einmal aufgefallen) → **Training** (kurze Sprech-Übungen in wachsendem Abstand) → **Werkstatt** (kommt trotz Übung zurück: Regel Schritt für Schritt verstehen) → **Prüfungsziel** (kam sogar nach der Werkstatt zurück: festes Ziel in jeder Übung, der Prüfer achtet darauf) → **Kontrolle** (drei Sitzungen weg = behoben; Test nach zwei und nach sechs Wochen) → **Sicher**. Ein Rückfall wird gezählt und schickt den Fehler wieder nach oben. Der Tagesplan holt jeden Fehler zur richtigen Zeit – du musst nichts auswählen.
+- **Übersicht:** Unter „Üben“ steht oben immer der nächste Schritt des Plans. Die Übungen darunter sind in vier Gruppen gefaltet (Ganze Prüfung, Teil 1, Teil 2, Gezielt trainieren); ein Tipp auf die Überschrift klappt sie auf.
+
 ## So bleibt die Bewertung ehrlich
 
 - **Feste Punkte-Anker:** Beide Bewertungs-KIs bekommen dieselbe Beschreibung, wie 13–15, 10–12, 7–9, 5–6 und 1–4 Punkte in Inhalt und Darstellung aussehen. So bekommt dieselbe Leistung dieselben Punkte.
@@ -146,7 +162,7 @@ Schlüssel gibt es unter aistudio.google.com/apikey (Google), platform.openai.co
 - `profile/` – Lernprofil nach dem NRW-Raster, Prognose, Hebel
 - `path/` – Abi-Weg: Welten und Levels (`Curriculum`), Freischalten, Sterne und Wiederholungsplan (`PathEngine`), Erinnerung
 - `practice/` – Wortschatz-Karten mit Wiederholungsplan, Vortrags-Kennzahlen, Aussprache-Labor, „Sag es richtig“
-- `learn/` – Lern-Gehirn (`Brain.kt`: Tagesplan nach erwartetem Punktgewinn, Phasen, Ziele, angepasstes Material, Hochrechnung), Lerner-Gedächtnis (`Insights.kt`), Fehlergedächtnis (Fehlermuster mit Zustand und Wiederholplan), Sprech-Training und Fehler-Werkstatt mit Tutor-Gedächtnis (`Workshop.kt`)
+- `learn/` – Lern-Gehirn (`Brain.kt`: Tagesplan nach erwartetem Punktgewinn, Phasen, Ziele, angepasstes Material, Hochrechnung), Lerner-Gedächtnis (`Insights.kt`), Tagesplan mit Abhaken und Tages-Protokoll (`Daily.kt`), Fehlergedächtnis (Fehlermuster mit Zustand, Stufen-Leiter, Rückfällen, Kontrollen und Wiederholplan), Sprech-Training und Fehler-Werkstatt mit Tutor-Gedächtnis (`Workshop.kt`)
 - `memory/` zusätzlich: Themen-Dossiers (`Dossier.kt`), echte Prüfungsaufgaben (`ExamUnits.kt`) und Halbjahre (`HalfYears.kt`)
 - `data/Backup.kt` – Lernstand als ZIP sichern und laden (ohne Schlüssel)
 - `session/` – Prompts, Live-Gespräch (mit Mikrofon-Dienst), Live-Fehlerprüfung, Material im Hintergrund, gespeicherte Vorbereitung und Alarm, Auswertung und Fortschritt, Systemprüfung

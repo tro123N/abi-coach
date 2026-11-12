@@ -181,11 +181,34 @@ class SmokeTest {
         ui { Demo.seed(app) }
         val vm = compose.activity.vm
         ui { vm.nav.openTab(Tab.WEG) }
+        // The plan of the day: made by the app, in a fixed order, ticked off step by step.
+        ui { vm.ensureDay(force = true) }
+        Log.i(TAG, "Tagesplan: ${app.daily.day.value?.steps?.map { it.role.name + ":" + it.kind + (if (it.carried) "*" else "") }}")
+        Log.i(TAG, "Fehler-Stufen: ${app.errorMemory.patterns.value.map { it.title + "=" + it.stage.name }}")
         shot("abiweg")
-        scrollShot("list_weg", 4, "abiweg_heute_dran")
+        scrollShot("list_weg", 1, "abiweg_heute_dran")
+        swipeShot("list_weg", "abiweg_unten", 2)
+        // Two steps done (one with the result of its evaluation) and something extra outside the plan.
+        ui {
+            app.daily.day.value?.steps?.getOrNull(0)?.let { app.counted(it.kind, it.title, "6 Karten wiederholt – nächste Wiederholung ist eingeplant") }
+            app.daily.day.value?.steps?.getOrNull(1)?.let { app.counted(it.kind, it.title, "4 von 5 Sätzen richtig · 2 von 3 Fehlern sauber") }
+            app.counted("PRONUNCIATION", "Aussprache", "„thorough“: 82 %")
+        }
+        runCatching { compose.onNodeWithTag("list_weg").performScrollToIndex(1) }
+        shot("tagesplan_fortschritt")
+        swipeShot("list_weg", "tagesplan_fortschritt_unten", 1)
+        // Everything done.
+        ui { app.daily.day.value?.steps?.filter { !it.done }?.forEach { app.counted(it.kind, it.title, "9 Punkte · Prognose 9,8 → 10,0 · 2 von 3 Zielen") } }
+        runCatching { compose.onNodeWithTag("list_weg").performScrollToIndex(1) }
+        shot("tagesplan_geschafft")
+        swipeShot("list_weg", "tagesplan_geschafft_unten", 1)
+        Log.i(TAG, "Plan geschafft: ${app.daily.day.value?.allDone} · Serie ${app.daily.finishedStreak(java.time.LocalDate.now().toString())}")
+        runCatching { compose.onNodeWithTag("plan_more").performScrollTo().performClick() }
+        Log.i(TAG, "Zusatzschritt: ${app.daily.day.value?.steps?.lastOrNull()?.let { it.role.name + ":" + it.kind }}")
+        // Back to a fresh plan for the rest of the test.
+        ui { app.daily.reset(); vm.ensureDay() }
         ui { vm.nav.openTab(Tab.TRAINING); vm.nav.openTab(Tab.WEG) }
         runCatching { compose.onNodeWithTag("list_weg").performScrollToIndex(0) }
-        swipeShot("list_weg", "abiweg_unten", 2)
         // The climbing path now lives under "Üben → Abi-Weg".
         ui { vm.practiceView = 1; vm.nav.openTab(Tab.TRAINING) }
         runCatching { compose.onNodeWithTag("list_training").performScrollToIndex(0) }
@@ -205,9 +228,15 @@ class SmokeTest {
 
         ui { vm.nav.openTab(Tab.TRAINING) }
         runCatching { compose.onNodeWithTag("list_training").performScrollToIndex(0) }
+        // Folded: five headings instead of fifteen tiles.
         shot("training")
+        // Everything unfolded, to see every tile.
+        ui { vm.practiceOpen = setOf("exam", "part1", "part2", "target") }
+        shot("training_offen")
         swipeShot("list_training", "training_mitte", 1)
         swipeShot("list_training", "training_unten", 2)
+        swipeShot("list_training", "training_ganz_unten", 3)
+        ui { vm.practiceOpen = setOf("exam") }
 
         ui { vm.nav.openTab(Tab.KURS) }
         shot("kurs")

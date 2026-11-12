@@ -88,7 +88,7 @@ object TourSteps {
             ),
             TourStep(
                 Tab.WEG, "today_plan", R.drawable.target_24dp, "Dein Plan für heute",
-                "Die App rechnet aus, welche Übung dir gerade die meisten Punkte bringt, und erklärt es dir. Ein Tipp – und es geht los.",
+                "Jeden Tag macht die App dir einen Plan: erst wiederholen, dann dein teuerster Fehler, dann die Übung mit den meisten Punkten. Mach die Schritte von oben nach unten – jeder wird abgehakt und zeigt, was er gebracht hat.",
             ),
             TourStep(
                 Tab.WEG, "dock_TRAINING", R.drawable.mic_24dp, "Üben",
@@ -96,7 +96,7 @@ object TourSteps {
             ),
             TourStep(
                 Tab.TRAINING, "train_views", R.drawable.terrain_24dp, "Frei üben oder Abi-Weg",
-                "„Frei üben“: du wählst selbst. „Abi-Weg“: Level für Level vom ersten Vortrag bis zur Generalprobe – mit Erklärung vor jeder Übung.",
+                "Ganz oben steht immer der nächste Schritt deines Plans. „Frei üben“: du wählst selbst – tippe auf eine Überschrift, um die Übungen aufzuklappen. „Abi-Weg“: Level für Level bis zur Generalprobe.",
             ),
             TourStep(
                 Tab.TRAINING, "train_exam", R.drawable.school_24dp, "Die ganze Prüfung",

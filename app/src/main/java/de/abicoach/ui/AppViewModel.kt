@@ -224,6 +224,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     /** "Üben": 0 = free practice tiles, 1 = the Abi-Weg with its worlds and levels. */
     var practiceView by mutableIntStateOf(0)
 
+    /** Which groups of "Frei üben" are unfolded (the others show only their heading, so the page stays short). */
+    var practiceOpen by mutableStateOf(setOf("exam"))
+
+    fun togglePractice(group: String) {
+        tap()
+        practiceOpen = if (group in practiceOpen) practiceOpen - group else practiceOpen + group
+    }
+
     /** "Fortschritt": 0 = overview, 1 = competences, 2 = mistakes, 3 = topic fields. */
     var progressView by mutableIntStateOf(0)
 
@@ -299,6 +307,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             Target.Drills -> openDrills()
             Target.Pronunciation -> openPronunciation()
             is Target.Dossier -> openDossier(target.topic)
+            is Target.Workshop -> openWorkshop(target.patternKey.ifBlank { null })
+            is Target.Level -> openLevel(target.id)
         }
     }
 
@@ -746,6 +756,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 )
             app.store.save(record)
             app.liveDrafts.clear()
+            // It counts: ticked off in today's plan; the points follow when the evaluation is done.
+            if (de.abicoach.session.GradeGuard.words(record.studentText) >= de.abicoach.session.GradeGuard.MIN_WORDS) {
+                app.counted(activityKind(record), sessionTitle(record), "wird ausgewertet …", record.id)
+            }
             // The evaluation starts in the background right away, whatever the student does next.
             analyze(record.id)
             val practice = record.feedback != FeedbackMode.PRUEFUNG && record.kind != SessionKind.SIMULATION && record.kind != SessionKind.PLACEMENT
@@ -1123,7 +1137,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         vocabDone++
         vocabRevealed = false
         app.feedback.play(if (grade == de.abicoach.practice.Grade.AGAIN) FeedbackType.WRONG else FeedbackType.CORRECT)
-        if (vocabQueue.isEmpty()) app.feedback.play(FeedbackType.RESULT_GOOD)
+        if (vocabQueue.isEmpty()) {
+            app.feedback.play(FeedbackType.RESULT_GOOD)
+            app.counted("VOCAB", "Wortschatz", "$vocabDone Karten wiederholt – nächste Wiederholung ist eingeplant")
+        }
     }
 
     fun deleteCard(id: String) {
@@ -1191,6 +1208,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 val result = withContext(Dispatchers.Default) { de.abicoach.practice.PronunciationCheck.check(app, target, wav) }
                 pronResult = result
                 app.pron.record(target, result.score)
+                app.counted("PRONUNCIATION", "Aussprache", "„$target“: ${result.score} %")
                 app.feedback.play(de.abicoach.audio.Feedback.forPoints(result.score * 15 / 100))
             } catch (e: CancellationException) {
                 throw e
@@ -1554,9 +1572,75 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private fun finishDrills() {
         app.feedback.play(FeedbackType.RESULT_GOOD)
         val now = System.currentTimeMillis()
-        drillOutcomes.filter { !it.drill.id.endsWith("-again") }.groupBy { it.drill.patternKey }.forEach { (key, list) ->
-            app.errorMemory.reviewDrill(key, list.all { it.ok }, now)
+        val first = drillOutcomes.filter { !it.drill.id.endsWith("-again") }
+        val byPattern = first.groupBy { it.drill.patternKey }
+        byPattern.forEach { (key, list) -> app.errorMemory.reviewDrill(key, list.all { it.ok }, now) }
+        if (first.isNotEmpty()) {
+            val right = byPattern.count { (_, list) -> list.all { it.ok } }
+            val moved = byPattern.keys.mapNotNull { app.errorMemory.get(it) }.filter { it.stage == de.abicoach.learn.ErrorStage.KONTROLLE || it.stage == de.abicoach.learn.ErrorStage.SICHER }
+            app.counted(
+                "DRILLS",
+                "Sprech-Training",
+                "${first.count { it.ok }} von ${first.size} Sätzen richtig · $right von ${byPattern.size} Fehlern sauber" +
+                    if (moved.isNotEmpty()) " · behoben: ${moved.joinToString(", ") { it.title }}" else "",
+            )
         }
+    }
+
+    /** What kind of activity of the plan a session was. */
+    private fun activityKind(record: SessionRecord): String =
+        when {
+            record.levelId.isNotBlank() && app.daily.today(java.time.LocalDate.now().toString())?.steps?.any { !it.done && it.kind == "REFRESH" } == true -> "REFRESH"
+            record.kind == SessionKind.PLACEMENT -> "PLACEMENT"
+            record.kind == SessionKind.SIMULATION -> "SIMULATION"
+            record.kind == SessionKind.PART1 && record.task?.isReal == true -> "REAL_TASK"
+            record.kind == SessionKind.PART1 && record.focusTask in 1..3 -> "TASK${record.focusTask}"
+            record.kind == SessionKind.PART1 -> "PRESENTATION"
+            record.kind == SessionKind.TRAINING && record.durationSec in 1..300 -> "SPRINT"
+            else -> "CONVERSATION"
+        }
+
+    private fun sessionTitle(record: SessionRecord): String =
+        when {
+            record.kind == SessionKind.PART1 && record.focusTask in 1..3 -> "Aufgabe ${record.focusTask}"
+            else -> record.kind.short
+        } + (if (record.topicId in 0..13) " · ${Knowledge.topicShort(record.topicId)}" else "")
+
+    // ---------- today's plan ----------
+
+    private fun todayDate(): String = java.time.LocalDate.now().toString()
+
+    /**
+     * Makes sure there is a plan for today. It is made once, when the app is opened for the first time on a day
+     * (so the student sees a fixed list that he can tick off); [force] calculates the open steps again.
+     */
+    fun ensureDay(force: Boolean = false) {
+        val date = todayDate()
+        val current = app.daily.today(date)
+        // After the placement the real plan can be made; a plan from before the placement is replaced.
+        val stale = current != null && current.steps.all { it.kind == "PLACEMENT" } && LearningBrain.phase(app) != de.abicoach.learn.Phase.START
+        if (current != null && !force && !stale) return
+        val steps = runCatching { LearningBrain.day(app, openBefore = app.daily.openFromBefore(date)) }.onFailure { de.abicoach.data.CrashLog.nonFatal("Tagesplan", it) }.getOrDefault(emptyList())
+        if (current != null) app.daily.replan(date, steps) else app.daily.begin(de.abicoach.learn.Day(date, LearningBrain.phase(app).label, steps))
+    }
+
+    /** The plan is done and the student wants more: the best thing that is left becomes an extra step. */
+    fun addBonusStep() {
+        tap()
+        val date = todayDate()
+        val day = app.daily.today(date) ?: return
+        val have = day.steps.map { it.kind }.toSet()
+        val best = runCatching { LearningBrain.candidates(app) }.getOrDefault(emptyList()).firstOrNull { it.kind.name !in have } ?: return
+        app.daily.add(
+            date,
+            de.abicoach.learn.DayStep("extra-${best.kind.name.lowercase()}-${day.steps.size}", de.abicoach.learn.StepRole.EXTRA, best.kind.name, best.action, best.title, best.reason, best.minutes, best.topic, best.ref),
+        )
+    }
+
+    /** Starts a step of today's plan. */
+    fun openStep(step: de.abicoach.learn.DayStep) {
+        de.abicoach.data.CrashLog.breadcrumb("Tagesplan: ${step.kind}")
+        open(Planner.target(app, step))
     }
 
     /** Opens the Fehler-Werkstatt for one pattern, or for the most urgent one. */
@@ -1602,8 +1686,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun openDossier(topic: Int) {
         tap()
+        dossierOpenedAt = System.currentTimeMillis()
         nav.push(Screen.Dossier(topic))
     }
+
+    private var dossierOpenedAt = 0L
 
     /** Builds or renews the dossier of one topic field now. */
     fun makeDossier(topic: Int) {
@@ -1990,6 +2077,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             drillRecording = false
         }
         if (left == Screen.Workshop && workshop.recording) workshop.close()
+        // A dossier counts as read when the student stayed on it for a while.
+        if (left is Screen.Dossier && dossierOpenedAt > 0 && System.currentTimeMillis() - dossierOpenedAt >= 25_000 && app.dossiers.get(left.topic) != null) {
+            app.counted("DOSSIER", "Dossier: ${Knowledge.topicShort(left.topic)}", "gelesen – Wissen für Aufgabe 3 und das Gespräch")
+        }
+        if (left is Screen.Dossier) dossierOpenedAt = 0L
     }
 
     fun stopSpeaking() {
@@ -2041,6 +2133,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             if (errorMessage == null) errorMessage = "Im Hintergrund ist ein Fehler aufgetreten ($what). Die App läuft weiter; Einzelheiten unter Einstellungen → Update, Hilfe, Über → Fehlerberichte."
         }
         runCatching { checkBackupDue() }
+        // The plan of the day is there as soon as the app is open.
+        runCatching { ensureDay() }.onFailure { de.abicoach.data.CrashLog.nonFatal("Tagesplan", it) }
         runCatching { recoverLive() }.onFailure { de.abicoach.data.CrashLog.nonFatal("Wiederherstellen", it) }
         runCatching { restoreWork() }.onFailure { de.abicoach.data.CrashLog.nonFatal("Vorbereitung wiederherstellen", it) }
         // The safety copy of a running session, every few seconds.

@@ -1,5 +1,8 @@
 package de.abicoach.ui.screens
 
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -106,10 +109,6 @@ fun AbiWegScreen(vm: AppViewModel) {
     val progress by app.path.progress.collectAsState()
     val patterns by app.errorMemory.patterns.collectAsState()
     val habits by app.insights.all.collectAsState()
-    val recommendations = remember(version, profile, sessions, docs, patterns, habits) { Planner.today(app) }
-    val worlds = remember(docs) { app.worlds() }
-    val next = remember(progress, profile, worlds) { PathEngine.next(worlds, progress, profile) }
-    val due = remember(progress, worlds) { PathEngine.due(worlds, progress) }
     TabScaffold(
         vm,
         Tab.WEG,
@@ -145,41 +144,19 @@ fun AbiWegScreen(vm: AppViewModel) {
             }
         }
         item(key = "overview") { Box(Modifier.tourTarget("today_overview")) { OverviewCard(vm, profile) } }
-        item(key = "plan") { Box(Modifier.tourTarget("today_plan")) { PlanCard(vm, recommendations) } }
-        item(key = "next") {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
-                if (next != null) {
-                    Tile(
-                        title = next.level.title,
-                        subtitle = "Weiter auf dem Abi-Weg · Welt ${next.world.number}",
-                        icon = R.drawable.terrain_24dp,
-                        tint = green,
-                        onClick = { vm.openLevel(next.level.id) },
-                        modifier = Modifier.weight(1f).fillMaxHeight(),
-                        tag = "today_next_level",
-                    )
-                } else {
-                    Tile(
-                        title = "Alle Levels geschafft",
-                        subtitle = "Wiederhole regelmäßig, damit nichts einrostet",
-                        icon = R.drawable.terrain_24dp,
-                        tint = green,
-                        onClick = { vm.tap(); vm.practiceView = 1; vm.nav.openTab(Tab.TRAINING) },
-                        modifier = Modifier.weight(1f).fillMaxHeight(),
-                    )
-                }
-                LastResultTile(vm, sessions.firstOrNull { it.debrief != null }, Modifier.weight(1f).fillMaxHeight())
-            }
-        }
-        due.firstOrNull()?.let { d ->
-            item(key = "refresh") {
+        item(key = "plan") { Box(Modifier.tourTarget("today_plan")) { DayPlanCard(vm) } }
+        // The last evaluation, one tap away – everything else lives under "Üben" and "Fortschritt".
+        sessions.firstOrNull { it.debrief != null }?.let { last ->
+            val d = last.debrief ?: return@let
+            val reached = d.goalResults.count { it.reached }
+            item(key = "last") {
                 ActionButton(
-                    text = "Auffrischen: ${d.level.title}",
-                    subtitle = if (due.size > 1) "Noch ${due.size - 1} weitere fällig" else "Kurz wiederholen, damit es sitzt",
-                    icon = R.drawable.refresh_24dp,
-                    iconTint = yellow,
-                    onClick = { vm.openLevel(d.level.id) },
-                    modifier = Modifier.testTag("today_refresh"),
+                    text = "Letzte Auswertung: ${d.totalPoints} Punkte · ${last.kind.short}",
+                    subtitle = if (last.goals.isNotEmpty()) "$reached von ${last.goals.size} Zielen erreicht · ${formatDate(last.startedAt)}" else formatDate(last.startedAt),
+                    icon = kindIcon(last.kind),
+                    iconTint = pointsColor(d.totalPoints.toDouble()),
+                    onClick = { vm.tap(); vm.nav.push(Screen.Debrief(last.id)) },
+                    modifier = Modifier.testTag("today_last"),
                 )
             }
         }
@@ -233,108 +210,6 @@ private fun OverviewCard(vm: AppViewModel, profile: Profile) {
             HeroStat("$today/${app.settings.dailyMinutes}", "Min. heute", Modifier.weight(1f).fillMaxHeight())
         }
     }
-}
-
-/**
- * One card instead of two: the plan the learning brain calculated (what brings the most points per minute),
- * explained in two sentences by the AI coach.
- */
-@Composable
-private fun PlanCard(vm: AppViewModel, recommendations: List<Recommendation>) {
-    val briefing by vm.app.briefings.current.collectAsState()
-    val sessions by vm.app.store.sessions.collectAsState()
-    LaunchedEffect(sessions.size, vm.app.ai.ready) { vm.refreshBriefing(false) }
-    val phase = remember(recommendations) { LearningBrain.phase(vm.app) }
-    AbiCard(modifier = Modifier.testTag("today")) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                "Dein Plan für heute",
-                fontSize = AbiTheme.dimens.fonts.label * 0.9f,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onPrimary,
-                modifier = Modifier.weight(1f),
-            )
-            if (phase != Phase.START) Pill("Phase ${phase.label}")
-            if (briefing != null && !vm.briefingBusy) {
-                IconButton(onClick = { vm.tap(); vm.refreshBriefing(true) }, modifier = Modifier.size(36.dp).testTag("briefing_refresh")) {
-                    Icon(painterResource(R.drawable.refresh_24dp), contentDescription = "Neu erklären lassen", tint = accent, modifier = Modifier.size(20.dp))
-                }
-            }
-        }
-        Gap(6.dp)
-        val b = briefing
-        when {
-            b != null ->
-                Column(Modifier.testTag("briefing")) {
-                    Text(b.headline, fontSize = AbiTheme.dimens.fonts.body, lineHeight = AbiTheme.dimens.fonts.body * 1.3f, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onPrimary)
-                    Gap(2.dp)
-                    CaptionText(b.focus)
-                }
-            vm.briefingBusy ->
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    CircularProgressIndicator(color = accent, strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(10.dp))
-                    CaptionText("Der KI-Coach schaut auf deinen Stand und erklärt dir den Plan …")
-                }
-            else ->
-                CaptionText(
-                    if (phase == Phase.START) {
-                        "Erst die Einstufung – dann rechnet die App aus, was dir am meisten bringt."
-                    } else {
-                        "Berechnet aus deinem ganzen Lernstand: was dir pro Minute die meisten Punkte bringt."
-                    },
-                )
-        }
-        vm.briefingError?.let { CaptionText(it, color = red, modifier = Modifier.padding(top = 4.dp)) }
-        Gap(10.dp)
-        if (recommendations.isEmpty()) {
-            BodyText("Alles erledigt. Wenn du magst: eine Simulation oder ein Gespräch zu einem Themenfeld, das du lange nicht hattest.")
-        }
-        recommendations.forEachIndexed { i, r ->
-            if (i > 0) Gap(8.dp)
-            ActionButton(
-                text = r.title,
-                subtitle = r.subtitle,
-                icon = r.icon,
-                iconTint = tintColor(r.tint),
-                onClick = { vm.open(r.target) },
-                container = MaterialTheme.colorScheme.background,
-                modifier = Modifier.testTag("rec_$i"),
-            )
-        }
-        if (b != null) {
-            Gap(8.dp)
-            CaptionText("Plan: Lern-Gehirn der App · erklärt von ${b.by}")
-        }
-    }
-}
-
-/** The tile with the last evaluation: points and how many of the goals were reached. */
-@Composable
-private fun LastResultTile(vm: AppViewModel, last: SessionRecord?, modifier: Modifier) {
-    val d = last?.debrief
-    if (last == null || d == null) {
-        Tile(
-            title = "Noch keine Auswertung",
-            subtitle = "Nach deiner ersten Übung steht sie hier",
-            icon = R.drawable.grading_24dp,
-            tint = accent,
-            onClick = { vm.tap(); vm.nav.openTab(Tab.TRAINING) },
-            modifier = modifier,
-        )
-        return
-    }
-    val goals = last.goals.size
-    val reached = d.goalResults.count { it.reached }
-    Tile(
-        title = "${d.totalPoints} Punkte · ${last.kind.short}",
-        subtitle = if (goals > 0) "Letzte Auswertung · $reached von $goals Zielen erreicht" else "Letzte Auswertung · ${formatDate(last.startedAt)}",
-        icon = kindIcon(last.kind),
-        tint = pointsColor(d.totalPoints.toDouble()),
-        onClick = { vm.tap(); vm.nav.push(Screen.Debrief(last.id)) },
-        modifier = modifier,
-        tag = "today_last",
-    )
 }
 
 /** "Dein Stand": content and presentation with the biggest levers (shown under Fortschritt → Kompetenzen). */
@@ -465,8 +340,13 @@ private fun LazyListScope.freePractice(
         vm.nav.push(Screen.Setup(setup))
     }
 
-    item(key = "label_exam") { SectionLabel("Ganze Prüfung") }
-    item(key = "exam") {
+    // During the guided tour everything is unfolded, so every stop of the tour can be shown.
+    fun isOpen(group: String): Boolean = group in vm.practiceOpen || vm.tour.step != null
+
+    // What the plan says comes first: one tap, no searching.
+    item(key = "plan_next") { PlanNextCard(vm) }
+    item(key = "label_exam") { GroupHeader(vm, "exam", "Ganze Prüfung", "Simulation und Einstufung", isOpen("exam")) }
+    if (isOpen("exam")) item(key = "exam") {
         Box(Modifier.tourTarget("train_exam")) {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
             Tile(
@@ -493,8 +373,8 @@ private fun LazyListScope.freePractice(
         }
             }
 }
-    item(key = "label_part1") { SectionLabel("Teil 1 – Vortrag") }
-    item(key = "part1") {
+    item(key = "label_part1") { GroupHeader(vm, "part1", "Teil 1 – Vortrag", "Ganzer Vortrag, einzelne Aufgaben, echte Prüfungsaufgaben", isOpen("part1")) }
+    if (isOpen("part1")) item(key = "part1") {
         val lever =
             remember(sessions) {
                 runCatching {
@@ -530,9 +410,9 @@ private fun LazyListScope.freePractice(
             }
         }
     }
-    item(key = "real") { RealTasksCard(vm) }
-    item(key = "label_part2") { SectionLabel("Teil 2 – Prüfungsgespräch") }
-    item(key = "part2") {
+    if (isOpen("part1")) item(key = "real") { RealTasksCard(vm) }
+    item(key = "label_part2") { GroupHeader(vm, "part2", "Teil 2 – Prüfungsgespräch", "Gespräch, freies Training, Schwachstellen", isOpen("part2")) }
+    if (isOpen("part2")) item(key = "part2") {
         Box(Modifier.tourTarget("train_part2")) {
         val focus = remember(sessions) { Planner.topErrorCategories(app, 2) }
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -571,8 +451,11 @@ private fun LazyListScope.freePractice(
         }
             }
 }
-    item(key = "label_target") { SectionLabel("Gezielt trainieren") }
-    item(key = "target") {
+    item(key = "label_target") {
+        val dueNow = duePatterns + dueCards
+        GroupHeader(vm, "target", "Gezielt trainieren", "Fehler, Wortschatz, Aussprache, Kompetenzen" + if (dueNow > 0) " · $dueNow fällig" else "", isOpen("target"))
+    }
+    if (isOpen("target")) item(key = "target") {
         Box(Modifier.tourTarget("train_target")) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.testTag("train_coach")) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
@@ -642,6 +525,62 @@ private fun LazyListScope.freePractice(
                 )
             }
         }
+    }
+}
+
+/**
+ * The heading of a group of "Frei üben". A tap unfolds the group; folded, it says in one line what is inside – so
+ * the page shows five clear headings instead of fifteen tiles.
+ */
+@Composable
+private fun GroupHeader(vm: AppViewModel, group: String, title: String, inside: String, open: Boolean) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .clickable { vm.togglePractice(group) }
+                .padding(horizontal = 6.dp, vertical = 6.dp)
+                .testTag("group_$group"),
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(title, fontSize = AbiTheme.dimens.fonts.body, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimary)
+            if (!open) CaptionText(inside)
+        }
+        Icon(
+            painterResource(if (open) R.drawable.keyboard_arrow_up_24dp else R.drawable.keyboard_arrow_down_24dp),
+            contentDescription = if (open) "Zuklappen" else "Aufklappen",
+            tint = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.6f),
+            modifier = Modifier.size(24.dp),
+        )
+    }
+}
+
+/** On "Üben": the step of today's plan that is on now – so nobody has to choose among the tiles. */
+@Composable
+private fun PlanNextCard(vm: AppViewModel) {
+    val stored by vm.app.daily.day.collectAsState()
+    val day = stored?.takeIf { it.date == LocalDate.now().toString() } ?: return
+    val next = day.next
+    if (next != null) {
+        ActionButton(
+            text = "Jetzt dran: ${next.title}",
+            subtitle = "Schritt ${day.doneCount + 1} von ${day.steps.size} deines Tagesplans · ca. ${next.minutes} Min.",
+            icon = runCatching { ActivityKind.valueOf(next.kind).icon }.getOrDefault(R.drawable.target_24dp),
+            iconTint = accent,
+            onClick = { vm.openStep(next) },
+            modifier = Modifier.testTag("train_plan_next"),
+        )
+    } else if (day.steps.isNotEmpty()) {
+        ActionButton(
+            text = "Tagesplan geschafft",
+            subtitle = "Alles Weitere ist Zugabe – such dir unten aus, worauf du Lust hast.",
+            icon = R.drawable.task_alt_24dp,
+            iconTint = green,
+            onClick = { vm.tap(); vm.nav.openTab(Tab.WEG) },
+            modifier = Modifier.testTag("train_plan_done"),
+        )
     }
 }
 

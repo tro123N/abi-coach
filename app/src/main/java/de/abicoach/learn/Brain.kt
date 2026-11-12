@@ -39,6 +39,12 @@ enum class ActivityKind(val action: String, val icon: Int) {
     PRONUNCIATION("aussprache", R.drawable.graphic_eq_24dp),
     DOSSIER("dossier", R.drawable.library_books_24dp),
     SPRINT("sprint", R.drawable.speed_24dp),
+
+    /** The Fehler-Werkstatt for one mistake that keeps coming back. */
+    WORKSHOP("werkstatt", R.drawable.school_24dp),
+
+    /** A level of the Abi-Weg whose review is due. */
+    REFRESH("auffrischen", R.drawable.refresh_24dp),
 }
 
 /** A possible next activity with its expected benefit (roughly in grade points) and the reason, in German. */
@@ -49,6 +55,8 @@ data class PlanStep(
     val minutes: Int,
     val gain: Double,
     val topic: Int = -1,
+    /** What the step is about: the key of an error pattern or the id of an Abi-Weg level. */
+    val ref: String = "",
 ) {
     /** Benefit per time, with diminishing returns: long activities train more at once, but not proportionally more. */
     val value: Double get() = gain / minutes.coerceAtLeast(3).toDouble().pow(0.6)
@@ -59,6 +67,8 @@ data class PlanStep(
             when {
                 kind == ActivityKind.DOSSIER -> "dossier:$topic"
                 kind == ActivityKind.CONVERSATION && topic >= 0 -> "gespraech:$topic"
+                kind == ActivityKind.WORKSHOP -> "werkstatt:$ref"
+                kind == ActivityKind.REFRESH -> "level:$ref"
                 else -> kind.action
             }
 }
@@ -93,6 +103,7 @@ object LearningBrain {
             ActivityKind.PRONUNCIATION to mapOf(Skill.AUSSPRACHE to 1.0),
             ActivityKind.DOSSIER to mapOf(Skill.SACHWISSEN to 0.8, Skill.KOMMENTAR to 0.2),
             ActivityKind.SPRINT to mapOf(Skill.FLUESSIGKEIT to 1.0, Skill.INTERAKTION to 0.4),
+            ActivityKind.WORKSHOP to mapOf(Skill.GRAMMATIK to 0.8, Skill.WORTSCHATZ to 0.3),
         )
 
     private val MAINS = setOf(ActivityKind.TASK1, ActivityKind.TASK2, ActivityKind.TASK3, ActivityKind.PRESENTATION, ActivityKind.CONVERSATION, ActivityKind.SIMULATION, ActivityKind.REAL_TASK, ActivityKind.PLACEMENT)
@@ -161,6 +172,28 @@ object LearningBrain {
                 else -> 1.0
             }
         }
+        /**
+         * "Hakt noch": the last evaluated try at this kind of exercise (in the last ten days) stayed clearly below the
+         * student's level or missed all its goals. Then the brain stays with it instead of moving on – until it works.
+         */
+        fun stuck(match: (SessionRecord) -> Boolean): SessionRecord? {
+            val last = sessions.firstOrNull { match(it) && it.debrief != null } ?: return null
+            val age = daysSince(last.startedAt, now) ?: return null
+            if (age > 10) return null
+            val level = profile.prognosis()?.total ?: return null
+            val d = last.debrief ?: return null
+            val missed = last.goals.isNotEmpty() && d.goalResults.isNotEmpty() && d.goalResults.none { it.reached }
+            return if (d.totalPoints <= level - 1.5 || missed) last else null
+        }
+
+        /** Staying with what does not work yet counts more than variety (but not three times on one day). */
+        fun persist(step: PlanStep, match: (SessionRecord) -> Boolean): PlanStep {
+            val last = stuck(match) ?: return step
+            val today = sessions.count { match(it) && daysSince(it.startedAt, now) == 0L }
+            if (today >= 2) return step
+            val base = step.gain / recency(match)
+            return step.copy(gain = base * 1.35, reason = "Hakt noch: zuletzt ${last.debrief?.totalPoints} P. – bleib dran, bis es sitzt. " + step.reason)
+        }
         val out = ArrayList<PlanStep>()
 
         // Part 1, one task at a time.
@@ -179,7 +212,7 @@ object LearningBrain {
                 } else {
                     "Aufgabe $n zuletzt Ø ${"%.0f".format(tp)} P. · ${skill.label} ${score(skill)} P.${trendText(skill)}"
                 }
-            out += PlanStep(kind, "Aufgabe $n: ${taskName.getValue(n)}", reason, 12, gain)
+            out += persist(PlanStep(kind, "Aufgabe $n: ${taskName.getValue(n)}", reason, 12, gain)) { it.kind == SessionKind.PART1 && it.focusTask == n }
         }
         // The whole presentation.
         out +=
@@ -189,7 +222,7 @@ object LearningBrain {
                 "Aufbau & Vortrag ${score(Skill.STRUKTUR)} P., Flüssigkeit ${score(Skill.FLUESSIGKEIT)} P. – alle drei Aufgaben am Stück, mit Zeitgefühl.",
                 30,
                 impact(ActivityKind.PRESENTATION) * 1.1 * recency { it.kind == SessionKind.PART1 && it.focusTask == 0 },
-            )
+            ).let { step -> persist(step) { it.kind == SessionKind.PART1 && it.focusTask == 0 } }
         // A conversation on the topic field that needs it most.
         val topic = pickTopic(app, now, random = false)
         val topicState = profile.topics[topic]
@@ -207,7 +240,7 @@ object LearningBrain {
                 15,
                 (impact(ActivityKind.CONVERSATION) + topicBonus) * recency { it.kind == SessionKind.PART2 || (it.kind == SessionKind.TRAINING && !it.sprintLike()) },
                 topic = topic,
-            )
+            ).let { step -> persist(step) { it.kind == SessionKind.PART2 } }
         // A whole exam, regularly – more often close to the exam.
         val sinceSim = daysSince(sessions.firstOrNull { it.kind == SessionKind.SIMULATION }?.startedAt, now)
         val interval =
@@ -244,17 +277,56 @@ object LearningBrain {
                     impact(ActivityKind.REAL_TASK) * 1.15 * phaseBoost * recency { it.task?.isReal == true },
                 )
         }
-        // The error memory: due patterns.
+        // The error memory. A mistake that keeps coming back in spite of the short drills climbs the ladder:
+        // it gets a lesson in the Fehler-Werkstatt, where the rule is worked through step by step.
+        val lesson = app.errorMemory.atStage(ErrorStage.WERKSTATT, now).firstOrNull()
+        if (lesson != null) {
+            val why =
+                if (lesson.relapses > 0) {
+                    "War schon besser und ist ${if (lesson.relapses == 1) "wieder" else "${lesson.relapses}× wieder"} da"
+                } else {
+                    "Schon in ${lesson.sessions} Sitzungen aufgetreten (${lesson.total}×)"
+                }
+            out +=
+                PlanStep(
+                    ActivityKind.WORKSHOP,
+                    "Fehler-Werkstatt: ${lesson.title}",
+                    "$why – kurze Übungen reichen hier nicht mehr. Jetzt die Regel verstehen und einschleifen.",
+                    8,
+                    impact(ActivityKind.WORKSHOP) + lesson.weight(now) * 0.6 + 0.4,
+                    ref = lesson.key,
+                )
+        }
+        // Due patterns in the speaking training – open mistakes and the checks of fixed ones.
         val duePatterns = app.errorMemory.due(now)
         if (duePatterns.isNotEmpty()) {
             val weight = duePatterns.take(4).sumOf { it.weight(now) }
+            val checks = duePatterns.count { it.stage == ErrorStage.KONTROLLE }
+            val open = duePatterns.filter { it.stage != ErrorStage.KONTROLLE }
             out +=
                 PlanStep(
                     ActivityKind.DRILLS,
-                    "Sprech-Training: ${duePatterns.size} Fehler fällig",
-                    "Z. B. " + duePatterns.take(2).joinToString(", ") { "${it.title} (${it.total}×)" } + " – kostet dich jedes Mal Punkte in der Darstellung.",
+                    if (open.isEmpty()) "Kontrolle: sitzt es noch?" else "Sprech-Training: ${duePatterns.size} Fehler fällig",
+                    if (open.isEmpty()) {
+                        "Behoben, aber nicht vergessen: " + duePatterns.take(2).joinToString(", ") { it.title } + " – kurzer Test, ob es so bleibt."
+                    } else {
+                        "Z. B. " + open.take(2).joinToString(", ") { "${it.title} (${it.total}×)" } + " – kostet dich jedes Mal Punkte in der Darstellung." +
+                            if (checks > 0) " Dazu $checks Kontrolle${if (checks > 1) "n" else ""} von behobenen Fehlern." else ""
+                    },
                     6,
-                    impact(ActivityKind.DRILLS) + weight * 0.35,
+                    impact(ActivityKind.DRILLS) + weight * 0.35 + checks * 0.15,
+                )
+        }
+        // The Abi-Weg: a level that was passed and is due for its review.
+        runCatching { de.abicoach.path.PathEngine.due(app.worlds(), app.path.progress.value, now) }.getOrNull()?.firstOrNull()?.let { due ->
+            out +=
+                PlanStep(
+                    ActivityKind.REFRESH,
+                    "Auffrischen: ${due.level.title}",
+                    "Bestanden, aber fällig zur Wiederholung – kurz auffrischen, damit es bis zur Prüfung sitzt.",
+                    10,
+                    0.9,
+                    ref = due.level.id,
                 )
         }
         // Vocabulary.
@@ -360,16 +432,79 @@ object LearningBrain {
         return DayPlan(phase, budget, steps.ifEmpty { all.take(3) }.take(3))
     }
 
+    /**
+     * The plan of a whole day, in the order in which it is best done: first what is due for repetition, then the
+     * mistake that costs the most, then the main exercise, and – if time is left – something short to make it stick.
+     * [openBefore] are the kinds of step that stayed open on the last planned day: they get a second chance.
+     */
+    fun day(app: AbiCoachApp, now: Long = System.currentTimeMillis(), openBefore: List<String> = emptyList()): List<DayStep> {
+        val phase = phase(app)
+        val all =
+            candidates(app, now).map { c ->
+                if (c.kind.name in openBefore) c.copy(gain = c.gain * 1.15, reason = "Gestern offen geblieben. " + c.reason) else c
+            }.sortedByDescending { it.value }
+
+        fun step(role: StepRole, s: PlanStep) =
+            DayStep(
+                id = role.name.lowercase() + "-" + s.kind.name.lowercase(),
+                role = role,
+                kind = s.kind.name,
+                action = s.action,
+                title = s.title,
+                reason = s.reason,
+                minutes = s.minutes,
+                topic = s.topic,
+                patternKey = s.ref,
+                carried = s.kind.name in openBefore,
+            )
+        if (phase == Phase.START) return all.take(1).map { step(StepRole.SCHWERPUNKT, it) }
+        val budget = app.settings.dailyMinutes.coerceAtLeast(10)
+        val out = ArrayList<DayStep>()
+        var used = 0
+        // 1. What is due for repetition comes first: it is short, and forgetting is cheaper to prevent than to repair.
+        all.firstOrNull { it.kind == ActivityKind.VOCAB || it.kind == ActivityKind.REFRESH }?.let {
+            out += step(StepRole.WIEDERHOLEN, it)
+            used += it.minutes
+        }
+        // 2. The mistake that costs the most: the lesson if one is needed, otherwise the short drills.
+        (all.firstOrNull { it.kind == ActivityKind.WORKSHOP } ?: all.firstOrNull { it.kind == ActivityKind.DRILLS })?.let {
+            out += step(StepRole.FEHLER, it)
+            used += it.minutes
+        }
+        // 3. The main exercise: the best one that fits into the time of the day (close to the exam also a long one).
+        val mains = all.filter { it.kind in MAINS }
+        val long = phase == Phase.GENERALPROBE || phase == Phase.ENDSPURT
+        val main = mains.firstOrNull { long || it.minutes <= max(12, budget - used) + 10 } ?: mains.minByOrNull { it.minutes }
+        main?.let {
+            out += step(StepRole.SCHWERPUNKT, it)
+            used += it.minutes
+        }
+        // 4. Something short to finish with, if there is time left.
+        if (budget - used >= 5) {
+            all.firstOrNull { c -> c.kind !in MAINS && c.kind != ActivityKind.WORKSHOP && out.none { it.kind == c.kind.name } && c.minutes <= max(6, budget - used) }?.let {
+                out += step(StepRole.FESTIGEN, it)
+            }
+        }
+        return out
+    }
+
     /** The single best next step (shown after a debrief). */
     fun next(app: AbiCoachApp): PlanStep? = candidates(app).firstOrNull()
 
     /** The computed plan as text for the AI coach, which then words it. */
     fun explain(app: AbiCoachApp): String {
-        val plan = plan(app)
+        // The plan the student sees on the start page (made once a day), not a new calculation.
+        val today = app.daily.today(java.time.LocalDate.now().toString())
+        val plan =
+            today?.takeIf { it.steps.isNotEmpty() }?.let { d ->
+                DayPlan(phase(app), app.settings.dailyMinutes, d.steps.map { s ->
+                    PlanStep(runCatching { ActivityKind.valueOf(s.kind) }.getOrDefault(ActivityKind.CONVERSATION), (if (s.done) "(schon erledigt) " else "") + "${s.role.label}: ${s.title}", s.reason, s.minutes, 0.0, s.topic, s.patternKey)
+                })
+            } ?: plan(app)
         val sb = StringBuilder()
         sb.append("Lern-Gehirn der App (berechnet aus dem ganzen Lernstand): Phase „").append(plan.phase.label).append("“ – ").append(plan.phase.text)
         sb.append(" Zeit heute noch etwa ").append(plan.budget).append(" Min.\n")
-        sb.append("Empfohlene Schritte in dieser Reihenfolge (höchster erwarteter Punktgewinn pro Minute):\n")
+        sb.append("Der Tagesplan in dieser Reihenfolge (erst wiederholen, dann der teuerste Fehler, dann der Schwerpunkt mit dem höchsten erwarteten Punktgewinn pro Minute, zum Schluss festigen):\n")
         plan.steps.forEachIndexed { i, a -> sb.append(i + 1).append(". [").append(a.action).append("] ").append(a.title).append(" – ").append(a.reason).append(" (ca. ").append(a.minutes).append(" Min.)\n") }
         val others = candidates(app).filter { it !in plan.steps }.take(4)
         if (others.isNotEmpty()) sb.append("Weitere sinnvolle Kandidaten: ").append(others.joinToString("; ") { "[${it.action}] ${it.title}" }).append('\n')
@@ -447,7 +582,11 @@ object LearningBrain {
         val now = System.currentTimeMillis()
         val profile = app.profiles.profile.value
         val out = ArrayList<SessionGoal>()
-        val pattern = app.errorMemory.due(now).firstOrNull() ?: app.errorMemory.top(1, now).firstOrNull()
+        // A mistake that even came back after its lesson is the fixed goal of every session until it stays away.
+        val pattern =
+            app.errorMemory.atStage(ErrorStage.PRUEFUNGSZIEL, now).firstOrNull()
+                ?: app.errorMemory.due(now).firstOrNull { it.stage != ErrorStage.KONTROLLE }
+                ?: app.errorMemory.top(1, now).firstOrNull()
         if (pattern != null) {
             val ex = pattern.examples.firstOrNull()
             out +=

@@ -28,6 +28,12 @@ sealed interface Target {
 
     data object Pronunciation : Target
 
+    /** The Fehler-Werkstatt for one error pattern. */
+    data class Workshop(val patternKey: String) : Target
+
+    /** A level of the Abi-Weg. */
+    data class Level(val id: String) : Target
+
     data class Dossier(val topic: Int) : Target
 
     data class Setup(val setup: SessionSetup) : Target
@@ -100,6 +106,27 @@ object Planner {
     fun daysUntilExam(app: AbiCoachApp): Long? =
         runCatching { ChronoUnit.DAYS.between(LocalDate.now(), LocalDate.parse(app.settings.examDate.trim())) }.getOrNull()?.takeIf { it >= 0 }
 
+    /** What has to be set up before a plan makes sense: the key, the material, the exam date. */
+    fun setup(app: AbiCoachApp): List<Recommendation> {
+        val out = ArrayList<Recommendation>()
+        if (!app.ai.ready) {
+            out += Recommendation("KI-Schlüssel eintragen", "Ohne Schlüssel deiner KI (Google, OpenAI oder Anthropic) kann die App nicht zuhören.", R.drawable.key_24dp, Tint.RED, Target.Keys)
+        }
+        if (app.memory.docs.value.isEmpty()) {
+            out += Recommendation("Kursmaterial hochladen", "Schulbuch, Klausuren, Arbeitsblätter – damit alles zu deinem Kurs passt.", R.drawable.cloud_upload_24dp, Tint.YELLOW, Target.Course)
+        }
+        if (daysUntilExam(app) == null && LearningBrain.phase(app) != de.abicoach.learn.Phase.START) {
+            out += Recommendation("Prüfungstermin eintragen", "Dann plant die App bis zum Tag der Prüfung – mit Generalprobe und Endspurt.", R.drawable.event_24dp, Tint.NEUTRAL, Target.ExamDate)
+        }
+        return out
+    }
+
+    /** A step of today's plan as the place it leads to. */
+    fun target(app: AbiCoachApp, step: de.abicoach.learn.DayStep): Target {
+        val kind = runCatching { ActivityKind.valueOf(step.kind) }.getOrDefault(ActivityKind.CONVERSATION)
+        return recommendation(app, PlanStep(kind, step.title, step.reason, step.minutes, 0.0, step.topic, step.patternKey)).target
+    }
+
     fun today(app: AbiCoachApp): List<Recommendation> {
         val out = ArrayList<Recommendation>()
         val profile = app.profiles.profile.value
@@ -150,11 +177,13 @@ object Planner {
                 ActivityKind.PRONUNCIATION -> Target.Pronunciation
                 ActivityKind.DOSSIER -> Target.Dossier(step.topic)
                 ActivityKind.SPRINT -> Target.Setup(SessionSetup.sprint(feedback))
+                ActivityKind.WORKSHOP -> Target.Workshop(step.ref)
+                ActivityKind.REFRESH -> Target.Level(step.ref)
             }
         val tint =
             when (step.kind) {
                 ActivityKind.SIMULATION, ActivityKind.REAL_TASK, ActivityKind.PLACEMENT -> Tint.GREEN
-                ActivityKind.DRILLS, ActivityKind.VOCAB -> Tint.YELLOW
+                ActivityKind.DRILLS, ActivityKind.VOCAB, ActivityKind.WORKSHOP, ActivityKind.REFRESH -> Tint.YELLOW
                 else -> Tint.ACCENT
             }
         val conditions = if (examConditions) " · unter Prüfungsbedingungen" else ""

@@ -26,6 +26,20 @@ enum class PatternState(val label: String) {
     BEHOBEN("behoben"),
 }
 
+/**
+ * The ladder a kind of mistake climbs when it keeps coming back – and comes down again when it stays away. Each step
+ * means something different for the plan: watching, drilling, understanding the rule, making it the goal of every
+ * session, and – once it is gone – checking after a while that it really stays gone.
+ */
+enum class ErrorStage(val label: String, val text: String) {
+    MERKEN("Gemerkt", "Einmal aufgefallen – die App achtet darauf."),
+    TRAINING("Training", "Kommt wieder vor – kurze Sprech-Übungen in wachsendem Abstand."),
+    WERKSTATT("Werkstatt", "Kommt trotz Übung zurück – jetzt die Regel Schritt für Schritt verstehen."),
+    PRUEFUNGSZIEL("Prüfungsziel", "Kam sogar nach der Werkstatt zurück – dein festes Ziel in jeder Übung, bis er wegbleibt."),
+    KONTROLLE("Kontrolle", "Behoben – die App prüft nach zwei und nach sechs Wochen, ob es so bleibt."),
+    SICHER("Sicher", "Behoben und bei den Kontrollen bestanden."),
+}
+
 data class PatternExample(val wrong: String, val right: String, val at: Long, val source: String) {
     fun toJson(): JSONObject = JSONObject().put("wrong", wrong).put("right", right).put("at", at).put("source", source)
 
@@ -60,7 +74,28 @@ data class ErrorPattern(
     val lastDrillAt: Long = 0,
     /** Answers in the speaking training in a row that were right. */
     val drillStreak: Int = 0,
+    /** How often the mistake came back although it had seemed to get better. */
+    val relapses: Int = 0,
+    /** When the rule was last worked through in the Fehler-Werkstatt with success (0 = never). */
+    val lessonAt: Long = 0,
+    /** When a fixed mistake is checked again (0 = no check planned). */
+    val checkAt: Long = 0,
+    /** Checks passed since it was fixed. */
+    val checks: Int = 0,
 ) {
+    /** Where the mistake stands on the ladder (see [ErrorStage]). */
+    val stage: ErrorStage
+        get() =
+            when {
+                state == PatternState.BEHOBEN -> if (checks >= 2) ErrorStage.SICHER else ErrorStage.KONTROLLE
+                // The rule was worked through, and the mistake still came back afterwards.
+                lessonAt in 1 until lastSeen -> ErrorStage.PRUEFUNGSZIEL
+                // It keeps coming back (after it had got better, or in three sessions) and the rule was never worked through.
+                lessonAt == 0L && (relapses >= 1 || sessions >= 3) -> ErrorStage.WERKSTATT
+                total >= 2 || lessonAt > 0L -> ErrorStage.TRAINING
+                else -> ErrorStage.MERKEN
+            }
+
     val state: PatternState
         get() =
             when {
@@ -90,7 +125,16 @@ data class ErrorPattern(
         return (1.0 + ln(1.0 + total)) * (0.35 + 0.65 * recency) * stateFactor * basic
     }
 
-    fun isDue(now: Long): Boolean = state != PatternState.BEHOBEN && dueAt <= now
+    /** Due in the speaking training: an open mistake when its interval is over, a fixed one when its check is due. */
+    fun isDue(now: Long): Boolean = if (state == PatternState.BEHOBEN) checks < 2 && checkAt in 1..now else dueAt <= now
+
+    /** Sets or clears the date of the next check, depending on whether the mistake counts as fixed. */
+    fun settled(now: Long): ErrorPattern =
+        when {
+            state == PatternState.BEHOBEN && checkAt == 0L && checks < 2 -> copy(checkAt = now + (if (checks == 0) FIRST_CHECK_DAYS else SECOND_CHECK_DAYS) * DAY)
+            state != PatternState.BEHOBEN && (checkAt != 0L || checks != 0) -> copy(checkAt = 0, checks = 0)
+            else -> this
+        }
 
     /** One line for prompts: rule, how often, examples. */
     fun promptLine(): String {
@@ -104,9 +148,14 @@ data class ErrorPattern(
             .put("cleanStreak", cleanStreak).put("lastSession", lastSession).put("fromKlausur", fromKlausur)
             .put("dueAt", dueAt).put("intervalDays", intervalDays).put("ease", ease).put("drills", drills)
             .put("drillsOk", drillsOk).put("lastDrillAt", lastDrillAt).put("drillStreak", drillStreak)
+            .put("relapses", relapses).put("lessonAt", lessonAt).put("checkAt", checkAt).put("checks", checks)
 
     companion object {
         const val DAY = 86_400_000L
+
+        /** A fixed mistake is checked again after two weeks, and once more four weeks later. */
+        const val FIRST_CHECK_DAYS = 14L
+        const val SECOND_CHECK_DAYS = 28L
 
         /** Mistakes an examiner notices at once: they cost the most in the Darstellungsleistung. */
         private val BASIC = setOf("SVA", "VERB_TENSE", "VERB_FORM", "WORD_ORDER")
@@ -131,6 +180,10 @@ data class ErrorPattern(
                 drillsOk = o.optInt("drillsOk"),
                 lastDrillAt = o.optLong("lastDrillAt"),
                 drillStreak = o.optInt("drillStreak"),
+                relapses = o.optInt("relapses"),
+                lessonAt = o.optLong("lessonAt"),
+                checkAt = o.optLong("checkAt"),
+                checks = o.optInt("checks"),
             )
     }
 }
@@ -179,8 +232,11 @@ class ErrorMemoryStore(root: File) {
             if (index >= 0) {
                 val p = list[index]
                 val newSession = p.lastSession != sessionId
+                // It had seemed to get better (clean sessions or right answers in the training) – and is back.
+                val relapse = newSession && (p.state == PatternState.BESSER || p.state == PatternState.BEHOBEN)
                 list[index] =
                     p.copy(
+                        relapses = p.relapses + if (relapse) 1 else 0,
                         rule = p.rule.ifBlank { e.rule.trim().take(60) },
                         examples = (listOf(example) + p.examples).distinctBy { norm(it.right) }.take(6),
                         total = p.total + 1,
@@ -221,8 +277,18 @@ class ErrorMemoryStore(root: File) {
                 if (p.key !in seen && p.lastSeen < at) list[i] = p.copy(cleanStreak = p.cleanStreak + 1)
             }
         }
-        save(list.sortedByDescending { it.weight(at) }.take(MAX_PATTERNS))
+        save(list.map { it.settled(at) }.sortedByDescending { it.weight(at) }.take(MAX_PATTERNS))
     }
+
+    /** The rule of this mistake was worked through in the Fehler-Werkstatt with success. */
+    @Synchronized
+    fun lessonDone(key: String, now: Long = System.currentTimeMillis()) {
+        save(_patterns.value.map { if (it.key == key) it.copy(lessonAt = now) else it })
+    }
+
+    /** The mistakes on a given step of the ladder, the most expensive first. */
+    fun atStage(stage: ErrorStage, now: Long = System.currentTimeMillis()): List<ErrorPattern> =
+        _patterns.value.filter { it.stage == stage }.sortedByDescending { it.weight(now) }
 
     /** The pattern a mistake belongs to (same rule, or a very similar one in the same category). */
     fun matching(e: LiveError): ErrorPattern? = _patterns.value.getOrNull(findIndex(_patterns.value, e))
@@ -253,6 +319,14 @@ class ErrorMemoryStore(root: File) {
     fun reviewDrill(key: String, ok: Boolean, now: Long = System.currentTimeMillis()) {
         val list = _patterns.value.map { p ->
             if (p.key != key) return@map p
+            if (p.state == PatternState.BEHOBEN) {
+                // The check of a fixed mistake: passed means one more proof, failed means it is open again.
+                return@map if (ok) {
+                    p.copy(checks = p.checks + 1, checkAt = 0, drills = p.drills + 1, drillsOk = p.drillsOk + 1, lastDrillAt = now, drillStreak = p.drillStreak + 1).settled(now)
+                } else {
+                    p.copy(cleanStreak = 0, drillStreak = 0, relapses = p.relapses + 1, intervalDays = 0.0, dueAt = now + 18 * 3_600_000L, drills = p.drills + 1, lastDrillAt = now).settled(now)
+                }
+            }
             if (ok) {
                 val interval = (if (p.intervalDays < 1.0) 2.0 else p.intervalDays * p.ease).coerceAtMost(60.0)
                 p.copy(
@@ -275,7 +349,7 @@ class ErrorMemoryStore(root: File) {
                 )
             }
         }
-        save(list)
+        save(list.map { it.settled(now) })
     }
 
     /** Short text for the coach, the examiner and the plan. */

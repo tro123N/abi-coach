@@ -65,6 +65,17 @@ class AbiCoachApp : Application() {
     lateinit var pendingMaterial: de.abicoach.session.PendingMaterialStore
         private set
 
+    /** Today's plan with what is done, and everything that counted today. */
+    lateinit var daily: de.abicoach.learn.DailyStore
+        private set
+
+    /**
+     * Something was practised: it is ticked off in today's plan (if it was a step of it) and written into today's
+     * ledger with what it brought. Returns the step that was ticked off, or null for practice outside the plan.
+     */
+    fun counted(kind: String, title: String, effect: String, ref: String = ""): de.abicoach.learn.DayStep? =
+        runCatching { daily.complete(java.time.LocalDate.now().toString(), kind, title, effect, System.currentTimeMillis(), ref) }.getOrNull()
+
     /** Every kind of mistake the student makes, followed across sessions and Klausuren. */
     lateinit var errorMemory: de.abicoach.learn.ErrorMemoryStore
         private set
@@ -121,6 +132,7 @@ class AbiCoachApp : Application() {
         ai = AiHub(this, http, settings)
         dossiers = de.abicoach.memory.DossierStore(this)
         errorMemory = de.abicoach.learn.ErrorMemoryStore(this)
+        daily = de.abicoach.learn.DailyStore(this)
         insights = de.abicoach.learn.InsightStore(this)
         workshops = de.abicoach.learn.WorkshopStore(this)
         cloudJobs = de.abicoach.session.CloudJobStore(this)

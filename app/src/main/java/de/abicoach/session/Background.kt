@@ -246,6 +246,7 @@ object AnalysisRunner {
         val now = System.currentTimeMillis()
         // Content knowledge counts for the topic field of the session (and, in a simulation, for the part-2 topics).
         val topicPoints = debrief.skills[de.abicoach.profile.Skill.SACHWISSEN] ?: debrief.inhaltPoints
+        val before = app.profiles.profile.value.prognosis()?.total
         // A session with next to nothing said teaches the profile nothing.
         if (weight > 0.0) app.profiles.update { p ->
             var rated = p.withRatings(debrief.skills, weight, now, record.kind.short)
@@ -254,6 +255,20 @@ object AnalysisRunner {
             // A conversation over several topic fields (chosen in the setup) counts for each of them.
             if (record.task == null) record.extraTopics.forEach { t -> rated = rated.withTopic(t, topicPoints, weight * 0.6, now) }
             if (record.kind == SessionKind.PLACEMENT) rated.copy(placementDone = true, placementAt = now) else rated
+        }
+        // What this session brought, written next to it in today's plan – so it is visible that it counted.
+        runCatching {
+            fun fmt(v: Double) = "%.1f".format(v).replace('.', ',')
+            val after = app.profiles.profile.value.prognosis()?.total
+            val forecast =
+                when {
+                    weight <= 0.0 -> "zu kurz – zählt nicht für die Prognose"
+                    before != null && after != null -> "Prognose ${fmt(before)} → ${fmt(after)}"
+                    after != null -> "Prognose jetzt ${fmt(after)}"
+                    else -> ""
+                }
+            val goals = if (record.goals.isNotEmpty() && debrief.goalResults.isNotEmpty()) " · ${debrief.goalResults.count { it.reached }} von ${record.goals.size} Zielen" else ""
+            app.daily.effect(record.id, "${debrief.totalPoints} Punkte" + (if (forecast.isNotBlank()) " · $forecast" else "") + goals)
         }
         // The error memory: every mistake of this session, grouped by its rule, followed over time.
         val words = record.studentText.split(Regex("\\s+")).count { it.isNotBlank() }

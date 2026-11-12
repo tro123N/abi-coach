@@ -65,6 +65,7 @@ import de.abicoach.ui.components.CaptionText
 import de.abicoach.ui.components.CardTitle
 import de.abicoach.ui.components.ExpandableCard
 import de.abicoach.ui.components.Gap
+import de.abicoach.ui.components.PillRow
 import de.abicoach.ui.components.GoalRow
 import de.abicoach.ui.components.LoadingCard
 import de.abicoach.ui.components.Pill
@@ -269,6 +270,18 @@ fun ErrorsScreen(vm: AppViewModel) {
             AbiCard { BodyText("Noch keine Fehler gesammelt. Nach deiner ersten ausgewerteten Übung steht hier, woran du arbeiten solltest.") }
             return@DetailScaffold
         }
+        // The ladder every mistake climbs when it keeps coming back, and comes down when it stays away.
+        AbiCard(modifier = Modifier.testTag("error_ladder")) {
+            CardTitle("So arbeitet das Gedächtnis", icon = R.drawable.trending_up_24dp)
+            CaptionText("Gemerkt → Training → Werkstatt → Prüfungsziel → Kontrolle → Sicher")
+            Gap(4.dp)
+            CaptionText("Kommt ein Fehler wieder, steigt er eine Stufe höher und die App übt ihn gründlicher. Bleibt er drei Sitzungen weg, gilt er als behoben – und wird nach zwei und nach sechs Wochen noch einmal kontrolliert. Du musst nichts auswählen: Der Tagesplan holt jeden Fehler zur richtigen Zeit.")
+            val counts = de.abicoach.learn.ErrorStage.entries.map { st -> st to patterns.count { it.stage == st } }.filter { it.second > 0 }
+            if (counts.isNotEmpty()) {
+                Gap(6.dp)
+                PillRow(counts.map { "${it.first.label}: ${it.second}" })
+            }
+        }
         ActionButton(
             "Fehler-Werkstatt",
             R.drawable.school_24dp,
@@ -326,9 +339,12 @@ private fun PatternRow(vm: AppViewModel, p: ErrorPattern, now: Long) {
                 append(p.categoryLabel).append(" · ").append(p.total).append("× in ").append(p.sessions).append(if (p.sessions == 1) " Sitzung" else " Sitzungen")
                 if (p.fromKlausur > 0) append(" · ").append(p.fromKlausur).append("× in Klausuren")
                 if (p.cleanStreak > 0) append(" · seit ").append(p.cleanStreak).append(if (p.cleanStreak == 1) " Sitzung" else " Sitzungen").append(" weg")
-                if (p.state != PatternState.BEHOBEN && p.isDue(now)) append(" · fällig")
+                if (p.relapses > 0) append(" · ").append(p.relapses).append("× zurückgekommen")
+                if (p.isDue(now)) append(if (p.state == PatternState.BEHOBEN) " · Kontrolle fällig" else " · fällig")
+                else if (p.state == PatternState.BEHOBEN && p.checkAt > 0) append(" · Kontrolle am ").append(formatDate(p.checkAt).substringBefore(' '))
             }
             CaptionText(extra)
+            CaptionText("Stufe ${p.stage.label}: ${p.stage.text}", color = stateColor(p.state), modifier = Modifier.testTag("pattern_stage"))
             p.examples.firstOrNull()?.let { ex ->
                 Text("„${ex.wrong}“ → „${ex.right}“", fontSize = dimens.fonts.caption, color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f))
             }

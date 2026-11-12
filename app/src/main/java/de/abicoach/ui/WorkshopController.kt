@@ -244,6 +244,14 @@ class WorkshopController(private val app: AbiCoachApp, private val scope: Corout
         app.feedback.play(if (result.score >= 70) FeedbackType.RESULT_GOOD else FeedbackType.STOP)
         // A good round counts like a right answer in the speaking training (the pattern moves on in the review plan).
         app.errorMemory.reviewDrill(p.key, result.score >= 70)
+        // A lesson that went well moves the mistake down the ladder (back to short drills); if it comes back even
+        // after that, it becomes the fixed goal of every session.
+        if (result.score >= 70) app.errorMemory.lessonDone(p.key)
+        app.counted(
+            "WORKSHOP",
+            "Fehler-Werkstatt: ${p.title}",
+            "${result.score} % richtig – " + if (result.score >= 70) "Regel sitzt, weiter mit kurzen Übungen" else "noch nicht sicher, die Lektion kommt wieder",
+        )
         reflecting = true
         job =
             scope.launch {

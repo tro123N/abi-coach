@@ -116,7 +116,10 @@ fun DebriefScreen(vm: AppViewModel, id: String) {
             TranscriptSection(record)
             return@DetailScaffold
         }
-        SummaryCard(record, d)
+        // What this session brought for the whole – so it is visible that it counted.
+        val today by vm.app.daily.day.collectAsState()
+        val counted = today?.ledger?.lastOrNull { it.ref == record.id }?.let { e -> (if (e.planned) "Schritt deines Tagesplans erledigt · " else "Zählt für deinen Lernstand · ") + e.effect }
+        SummaryCard(record, d, counted)
         GoalResultsCard(record, d)
         NextStepCard(vm)
         d.progress?.let { ProgressCard(it, d) }
@@ -409,7 +412,7 @@ private fun HeroBar(label: String, value: Int) {
 }
 
 @Composable
-private fun SummaryCard(record: SessionRecord, d: Debrief) {
+private fun SummaryCard(record: SessionRecord, d: Debrief, counted: String? = null) {
     HeroCard(modifier = Modifier.testTag("debrief_summary")) {
         Text("${record.title} · ${Knowledge.topicShort(record.topicId)}", fontSize = 13.sp, lineHeight = 17.sp, color = Color.White.copy(alpha = 0.9f), maxLines = 2)
         Gap(12.dp)
@@ -433,6 +436,9 @@ private fun SummaryCard(record: SessionRecord, d: Debrief) {
         Gap(10.dp)
         Text(formatDate(record.startedAt) + " · " + ((record.durationSec + 30) / 60).coerceAtLeast(1) + " Min.", fontSize = 12.sp, color = Color.White.copy(alpha = 0.8f))
         if (!d.audioAnalysed) Text("Ohne Aufnahme bewertet – Aussprache und Flüssigkeit sind nur geschätzt.", fontSize = 12.sp, lineHeight = 16.sp, color = Color.White.copy(alpha = 0.8f))
+        if (counted != null) {
+            Text("✓ $counted", fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Medium, color = Color.White, modifier = Modifier.testTag("debrief_counted"))
+        }
         // What the plausibility check changed or noticed after the grading.
         d.guardNotes.forEach { note ->
             Text("Prüf-Check: $note", fontSize = 12.sp, lineHeight = 16.sp, color = Color.White.copy(alpha = 0.9f), modifier = Modifier.testTag("guard_note"))
