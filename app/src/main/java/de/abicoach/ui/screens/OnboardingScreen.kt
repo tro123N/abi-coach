@@ -216,7 +216,7 @@ fun OnboardingScreen(vm: AppViewModel) {
                             modifier = Modifier.testTag("setup_exam_date"),
                         )
                         Gap(12.dp)
-                        BodyText("Wie viele Punkte willst du erreichen?")
+                        de.abicoach.ui.components.BodyText("Wie viele Punkte willst du erreichen?")
                         Gap(6.dp)
                         ChoiceChips(de.abicoach.learn.Goal.CHOICES, settings.targetPoints, { "$it P." }, { vm.tap(); settings.targetPoints = it }, tagPrefix = "setup_goal")
                         CaptionText("Danach richtet sich dein Tagesplan. Du kannst das Ziel jederzeit ändern.")
