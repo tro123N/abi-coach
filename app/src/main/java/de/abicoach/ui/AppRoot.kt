@@ -240,41 +240,44 @@ private val SettingsTop = 30.dp
 private class MovingScope(private val inner: LazyListScope, private val state: LazyListState, private val born: Long, private val calm: () -> Boolean) : LazyListScope by inner {
     private var next = 0
 
-    @Composable
-    private fun LazyItemScope.Moving(index: Int, content: @Composable () -> Unit) {
-        // Only the cards that are there when the area opens rise in; cards that scroll into sight later just are there.
-        val fresh = remember { !calm() && android.os.SystemClock.uptimeMillis() - born < 350 }
-        val rise = remember { Animatable(if (fresh) 0f else 1f) }
-        if (fresh) {
-            LaunchedEffect(Unit) {
-                val order = (index - state.firstVisibleItemIndex).coerceIn(0, 7)
-                rise.animateTo(1f, tween(durationMillis = 380, delayMillis = order * 45, easing = androidx.compose.animation.core.FastOutSlowInEasing))
-            }
-        }
-        Column(
-            Modifier
-                .animateItem(
-                    fadeInSpec = tween(260),
-                    placementSpec = spring(dampingRatio = 0.86f, stiffness = 380f, visibilityThreshold = IntOffset.VisibilityThreshold),
-                    fadeOutSpec = tween(160),
-                )
-                .graphicsLayer {
-                    alpha = rise.value
-                    translationY = (1f - rise.value) * 26.dp.toPx()
-                },
-        ) { content() }
-    }
-
     override fun item(key: Any?, contentType: Any?, content: @Composable LazyItemScope.() -> Unit) {
         val index = next++
-        inner.item(key, contentType) { Moving(index) { content() } }
+        val (state, born, calm) = Triple(state, born, calm)
+        inner.item(key, contentType) { Moving(index, state, born, calm) { content() } }
     }
 
     override fun items(count: Int, key: ((index: Int) -> Any)?, contentType: (index: Int) -> Any?, itemContent: @Composable LazyItemScope.(index: Int) -> Unit) {
         val base = next
         next += count
-        inner.items(count, key, contentType) { i -> Moving(base + i) { itemContent(i) } }
+        val (state, born, calm) = Triple(state, born, calm)
+        inner.items(count, key, contentType) { i -> Moving(base + i, state, born, calm) { itemContent(i) } }
     }
+}
+
+/** One card of a main area with its motion (see [MovingScope]). */
+@Composable
+private fun LazyItemScope.Moving(index: Int, state: LazyListState, born: Long, calm: () -> Boolean, content: @Composable () -> Unit) {
+    // Only the cards that are there when the area opens rise in; cards that scroll into sight later just are there.
+    val fresh = remember { !calm() && android.os.SystemClock.uptimeMillis() - born < 350 }
+    val rise = remember { Animatable(if (fresh) 0f else 1f) }
+    if (fresh) {
+        LaunchedEffect(Unit) {
+            val order = (index - state.firstVisibleItemIndex).coerceIn(0, 7)
+            rise.animateTo(1f, tween(durationMillis = 380, delayMillis = order * 45, easing = androidx.compose.animation.core.FastOutSlowInEasing))
+        }
+    }
+    Column(
+        Modifier
+            .animateItem(
+                fadeInSpec = tween(260),
+                placementSpec = spring(dampingRatio = 0.86f, stiffness = 380f, visibilityThreshold = IntOffset.VisibilityThreshold),
+                fadeOutSpec = tween(160),
+            )
+            .graphicsLayer {
+                alpha = rise.value
+                translationY = (1f - rise.value) * 26.dp.toPx()
+            },
+    ) { content() }
 }
 
 /** A main area: the large title scrolls with the cards, which glide behind the floating bar at the bottom. */
