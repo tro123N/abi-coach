@@ -97,7 +97,7 @@ Danach startet auf Wunsch eine **geführte Tour durch die echte App**: Der Bilds
 - **Fehlerberichte:** Stürzt die App ab, schreibt sie vorher einen Bericht. Beim nächsten Start steht auf „Heute“ ein Hinweis; den Bericht kannst du ansehen und kopieren (auch unter Einstellungen → Update, Hilfe, Über → Fehlerberichte). Er bleibt auf dem Handy und enthält weder Schlüssel noch das, was du gesagt hast. Fehler in Hintergrundarbeit schließen die App nicht mehr – sie werden notiert, und du siehst eine Meldung.
 - **Nichts geht kaputt:** Lernprofil, Sitzungen, Fehlergedächtnis, Wortschatz und Abi-Weg werden erst in eine neue Datei geschrieben und dann getauscht; die vorige Fassung bleibt als Rückfall liegen. Ist eine Datei beschädigt, lädt die App die Fassung davor.
 - **Unterbrochene Übung:** Während einer Live-Sitzung legt die App alle 12 Sekunden eine Sicherheitskopie an. Schließt Android die App mittendrin (Akku leer, Anruf, zu wenig Speicher), ist die Übung beim nächsten Start als Sitzung da und kann ausgewertet werden; auch die Aufnahme wird repariert.
-- **Speicher:** Tonaufnahmen ausgewerteter Sitzungen löscht die App nach 30 Tagen (einstellbar unter Daten und Sicherung: 7, 30, 90 Tage oder nie). Auswertung, Mitschrift und Lernstand bleiben.
+- **Speicher:** Unter Daten und Sicherung siehst du, wie viel Platz die Tonaufnahmen brauchen, und kannst einstellen, dass die App die Aufnahme einer ausgewerteten Sitzung nach 7, 30 oder 90 Tagen löscht (Voreinstellung: nie). Auswertung, Mitschrift und Lernstand bleiben immer.
 - **Erinnerung an die Sicherung:** Nach 14 Tagen und fünf neuen Auswertungen ohne Sicherung erinnert „Heute“ daran, den Lernstand als Datei zu sichern.
 
 ## Einstellungen

@@ -240,11 +240,12 @@ class Settings(context: Context) {
     var uploadAudio by BoolPref("upload_audio", true)
 
     /**
-     * How many days the recording of an evaluated session is kept (0 = for ever). The evaluation, the transcript and
-     * everything learnt from it always stay; only the sound file goes, which is by far the biggest part.
+     * How many days the recording of an evaluated session is kept (0 = for ever, the default: the app deletes nothing
+     * the student did not ask for). The evaluation, the transcript and everything learnt from it always stay; only
+     * the sound file goes, which is by far the biggest part.
      */
     var keepAudioDays: Int
-        get() = prefs.getInt("keep_audio_days", 30)
+        get() = prefs.getInt("keep_audio_days", 0)
         set(value) {
             prefs.edit().putInt("keep_audio_days", value).apply()
             changed()

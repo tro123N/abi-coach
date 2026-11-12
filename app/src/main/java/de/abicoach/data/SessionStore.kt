@@ -67,18 +67,17 @@ class SessionStore(root: File) {
 
     /**
      * Frees space: deletes the recordings of sessions that are evaluated and older than [days] days (the evaluation,
-     * the transcript and everything learnt from it stay). Recordings without a session are removed too.
-     * Returns the bytes freed.
+     * the transcript and everything learnt from it stay); 0 keeps them for ever. Recordings without a session
+     * (nobody can reach them any more) are always removed. Returns the bytes freed.
      */
     @Synchronized
     fun tidyAudio(days: Int, now: Long = System.currentTimeMillis()): Long {
-        if (days <= 0) return 0L
         val byId = _sessions.value.associateBy { it.id }
         var freed = 0L
         audioDir.listFiles()?.forEach { f ->
             val id = f.name.substringBeforeLast("_p")
             val record = byId[id]
-            val old = now - f.lastModified() > days * 86_400_000L
+            val old = days > 0 && now - f.lastModified() > days * 86_400_000L
             // A recording nobody refers to any more (older than a day, so a session that is just starting is safe).
             val orphan = record == null && now - f.lastModified() > 86_400_000L
             if (orphan || (record != null && record.debrief != null && old)) {

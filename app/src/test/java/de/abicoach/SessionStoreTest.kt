@@ -100,8 +100,10 @@ class SessionStoreTest {
         val store = SessionStore(Fixtures.tempDir())
         store.save(Fixtures.record(id = "a", debrief = Fixtures.debrief()))
         val f = store.audioFile("a", 1).apply { writeBytes(ByteArray(10)); setLastModified(1L) }
-        assertEquals(0L, store.tidyAudio(0))
-        assertTrue(f.exists())
+        val orphan = store.audioFile("nobody", 1).apply { writeBytes(ByteArray(10)); setLastModified(1L) }
+        assertEquals(10L, store.tidyAudio(0))
+        assertTrue("the recording of a session stays", f.exists())
+        assertFalse("only the recording nobody can reach goes", orphan.exists())
     }
 
     @Test
